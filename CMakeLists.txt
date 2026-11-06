@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.20)
 project(orion2re LANGUAGES C CXX)
 
 include(CTest)
+include(GNUInstallDirs)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     if(CMAKE_SIZEOF_VOID_P EQUAL 4)
@@ -527,6 +528,7 @@ add_custom_target(package-base-data
     ${ORION2RE_PACKAGE_BASE_DATA_COMMANDS}
     WORKING_DIRECTORY "${ORION2RE_BASE_DATA_DIR}"
     DEPENDS ${ORION2RE_BASE_DATA_FILES}
+    BYPRODUCTS "${ORION2RE_PACKAGED_BASE_ARCHIVE}"
     VERBATIM
 )
 
@@ -711,6 +713,25 @@ if(ORION2RE_BUILD_GAME)
             )
         endforeach()
     endif()
+
+    # Install the game alongside its runtime data. The installed data
+    # directory keeps the same layout as the game directory used by
+    # development builds, so the VFS finds it with no extra search paths:
+    #   <datadir>/orion2re/data/base.zip
+    #   <datadir>/orion2re/data/mods/<mod>.zip
+    #   <datadir>/orion2re/data/orion2re.cfg
+    install(TARGETS orion2re
+        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    )
+    install(FILES "${ORION2RE_PACKAGED_BASE_ARCHIVE}"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/orion2re/data"
+    )
+    install(FILES ${ORION2RE_SUPPORTED_MOD_ARCHIVES}
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/orion2re/data/mods"
+    )
+    install(FILES "${ORION2RE_DEFAULT_CONFIG}"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/orion2re/data"
+    )
 endif()
 
 if(ORION2RE_BUILD_CONFIG_TOOL)
