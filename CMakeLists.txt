@@ -1002,6 +1002,10 @@ if(ORION2RE_EXCLUDE_RUNTIME_FROM_ALL)
     set_target_properties(orion2re-router PROPERTIES EXCLUDE_FROM_ALL YES)
 endif()
 
+install(TARGETS orion2re-router
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+)
+
 target_compile_features(orion2re-router PRIVATE cxx_std_20)
 target_include_directories(orion2re-router PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
