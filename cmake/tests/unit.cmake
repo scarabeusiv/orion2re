@@ -361,6 +361,7 @@ orion2re_add_unit_test(test_lua_mod_runtime
         src/game/techdata.cpp
         src/game/techinit.cpp
         src/game/compat.cpp
+        src/game/user_paths.cpp
         src/game/vfs.cpp
         src/game/vfs_file.cpp
         src/game/vfs_lbx.cpp
@@ -528,6 +529,7 @@ orion2re_add_unit_test(test_startup_directory
     PRODUCTION_SOURCES
         src/startup_directory.cpp
         src/game/compat.cpp
+        src/game/user_paths.cpp
         src/game/vfs.cpp
         src/game/vfs_file.cpp
         src/game/vfs_lbx.cpp
@@ -593,6 +595,7 @@ orion2re_add_unit_test(test_config_loader
         src/game/spy_bonus.cpp
         src/game/techdata.cpp
         src/game/compat.cpp
+        src/game/user_paths.cpp
         src/game/serialization.cpp
         src/game/vfs.cpp
         src/game/vfs_file.cpp
@@ -728,6 +731,7 @@ orion2re_add_unit_test(test_orbital_defense
         src/game/aidudes.cpp
         src/game/colcalc_config.cpp
         src/game/compat.cpp
+        src/game/user_paths.cpp
         src/game/ericnet.cpp
         src/game/production_rules.cpp
         src/game/special.cpp
@@ -884,6 +888,7 @@ orion2re_add_unit_test(test_plntsum_filters
     PRODUCTION_SOURCES
         src/game/bomb.cpp
         src/game/compat.cpp
+        src/game/user_paths.cpp
         src/game/plntsum.cpp
         src/game/harold.cpp
         src/game/struct.cpp
@@ -1936,6 +1941,7 @@ orion2re_add_unit_test(test_vfs
         tests/unit/vfs_test.cpp
     PRODUCTION_SOURCES
         src/game/compat.cpp
+        src/game/user_paths.cpp
         src/game/vfs.cpp
         src/game/vfs_file.cpp
         src/game/vfs_lbx.cpp
@@ -1951,6 +1957,7 @@ orion2re_add_unit_test(test_user_paths
         tests/unit/user_paths_test.cpp
     PRODUCTION_SOURCES
         src/game/compat.cpp
+        src/game/dos.cpp
         src/game/user_paths.cpp
     LINK_SDL
 )
@@ -2005,6 +2012,7 @@ orion2re_add_unit_test(test_farload_buffer_vfs
     PRODUCTION_SOURCES
         src/game/buffer.cpp
         src/game/compat.cpp
+        src/game/user_paths.cpp
         src/game/farload.cpp
         src/game/string_overrides.cpp
         src/config/text_encoding.cpp
