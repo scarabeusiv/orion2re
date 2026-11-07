@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a0f2a"/>
+      <stop offset="1" stop-color="#1d2e60"/>
+    </linearGradient>
+    <radialGradient id="planet" cx="0.38" cy="0.3" r="0.95">
+      <stop offset="0" stop-color="#a5f2e9"/>
+      <stop offset="0.5" stop-color="#2bb3a8"/>
+      <stop offset="1" stop-color="#0e6884"/>
+    </radialGradient>
+    <linearGradient id="hull" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.5" stop-color="#dbe6ff"/>
+      <stop offset="1" stop-color="#9fb2dd"/>
+    </linearGradient>
+    <linearGradient id="flame" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffe082"/>
+      <stop offset="0.55" stop-color="#ffb300"/>
+      <stop offset="1" stop-color="#ff7043"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="52" fill="url(#bg)"/>
+  <circle cx="208" cy="34" r="74" fill="url(#planet)"/>
+  <ellipse cx="208" cy="34" rx="102" ry="26" fill="none" stroke="#d7ecff" stroke-width="5" stroke-linecap="round" transform="rotate(-14 208 34)"/>
+  <circle cx="46" cy="58" r="5" fill="#ffffff"/>
+  <path d="M52 150 l4 11 11 4 -11 4 -4 11 -4 -11 -11 -4 11 -4 z" fill="#ffffff"/>
+  <circle cx="196" cy="196" r="5" fill="#cfe8ff"/>
+  <circle cx="66" cy="206" r="4" fill="#cfe8ff"/>
+  <g transform="rotate(-28 128 138)">
+    <path d="M116 176 Q104 204 128 234 Q152 204 140 176 Z" fill="url(#flame)"/>
+    <path d="M121 180 Q117 198 128 216 Q139 198 135 180 Z" fill="#fff8c4"/>
+    <path d="M112 132 L78 184 L114 158 Z" fill="#ff7043"/>
+    <path d="M144 132 L178 184 L142 158 Z" fill="#ff7043"/>
+    <path d="M128 42 L146 100 L146 178 L110 178 L110 100 Z" fill="url(#hull)"/>
+    <path d="M128 42 L146 100 L110 100 Z" fill="#ff7043"/>
+    <rect x="124" y="104" width="8" height="34" rx="4" fill="#157a8c"/>
+    <circle cx="128" cy="126" r="9" fill="#0d1330"/>
+  </g>
+</svg>

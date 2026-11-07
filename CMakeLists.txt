@@ -1068,3 +1068,19 @@ if(ORION2RE_BUILD_TESTS)
         endforeach()
     endif()
 endif()
+
+# Linux desktop integration, kept separate from the game binary and data
+# install rules: desktop entry and icon so the game appears in the
+# application launcher (and the window icon matches). The icon is an
+# original starship-and-planet SVG design (data/orion2re.svg), installed
+# scalable; the window icon is a 32x32 BMP render of it
+# (data/base/orion2re.bmp).
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    include(GNUInstallDirs)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/data/orion2re.desktop"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/applications"
+    )
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/data/orion2re.svg"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps"
+    )
+endif()
