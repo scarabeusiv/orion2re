@@ -3338,6 +3338,50 @@ DOCTEST_TEST_CASE("mod picker preview reports vdc-gm3 conflicting with ice") {
         std::vector<std::string>{"v150"});
 }
 
+DOCTEST_TEST_CASE("mod picker preview reports v150i and v120 conflicting with vdc-gm3") {
+    s_config_test_directory files;
+    for (const char* package_id : {"v150", "mirror_exhw", "v150i", "v120", "vdc-gm3"}) {
+        files.Copy_Tree(fs::path(LUA_SOURCE_PACKAGE_DIR) / package_id,
+            fs::path("data/mods") / package_id);
+    }
+    files.Write("main.cfg", "enable v150;\n");
+    files.Initialize_Vfs();
+    config::s_effective_config effective;
+    config::s_cfg_diagnostic diagnostic;
+    bool loaded = false;
+    DOCTEST_REQUIRE(config::Load_Startup_Config(
+        "main.cfg", "base_game", &effective, &loaded, &diagnostic));
+    DOCTEST_REQUIRE(loaded);
+
+    // The stale "vdc" conflict id in v150i/v120 was fixed to "vdc-gm3",
+    // so these pairs are now rejected instead of silently loading together.
+    config::s_mod_set_preview preview;
+    DOCTEST_CHECK_FALSE(config::Preview_Enabled_Mods(
+        {"v150i", "vdc-gm3"}, &preview, &diagnostic));
+    DOCTEST_CHECK(diagnostic.message ==
+        "package 'v150i' conflicts with active package 'vdc-gm3'");
+    DOCTEST_CHECK_FALSE(config::Preview_Enabled_Mods(
+        {"v120", "vdc-gm3"}, &preview, &diagnostic));
+    DOCTEST_CHECK(diagnostic.message ==
+        "package 'v120' conflicts with active package 'vdc-gm3'");
+    // Reverse order: vdc-gm3 resolves first, but v120's own entry still fires.
+    DOCTEST_CHECK_FALSE(config::Preview_Enabled_Mods(
+        {"vdc-gm3", "v120"}, &preview, &diagnostic));
+    DOCTEST_CHECK(diagnostic.message ==
+        "package 'v120' conflicts with active package 'vdc-gm3'");
+    // Reverse order for v150i as well: vdc-gm3 resolves first, but
+    // v150i's own entry still fires. The message names the packages in
+    // resolution order (vdc-gm3 first), but the conflict is still the
+    // same v150i entry firing.
+    DOCTEST_CHECK_FALSE(config::Preview_Enabled_Mods(
+        {"vdc-gm3", "v150i"}, &preview, &diagnostic));
+    DOCTEST_CHECK(diagnostic.message ==
+        "package 'vdc-gm3' conflicts with active package 'v150i'");
+    // The failed dry runs changed nothing.
+    DOCTEST_CHECK(config::Get_Active_Config()->package_order ==
+        std::vector<std::string>{"v150"});
+}
+
 DOCTEST_TEST_CASE("mod picker preview reports a missing mod and a missing dependency") {
     {
         s_config_test_directory files;
