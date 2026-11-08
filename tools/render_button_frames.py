@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Render orion2re-owned main-menu button frames from a bundled font.
+"""Render orion2re-owned main-menu button frames from the bundled font.
 
 The six original menu buttons are baked art: each button is three opaque
 frames (normal / hover / disabled) in MAINMENU.LBX with its label painted
 in. There is no blank panel sprite and no seventh button, so a new button
 cannot reuse the original art as-is. This tool is the systemic answer: it
-renders orion2re-owned button frames from a bundled open font, in the
+renders orion2re-owned button frames from a bundled bitmap font, in the
 original button style, for every supported language.
 
 Pipeline (per button, per language, per state):
@@ -24,34 +24,42 @@ Pipeline (per button, per language, per state):
     blanking, so a template that does not match fails loudly instead of
     producing a subtly wrong frame.
 
-2.  Font. Labels are rendered with Archivo Expanded Black (Archivo
-    variable font, wght 900, wdth 125), bundled unchanged at
-    data/base/fonts/Archivo[wdth,wght].ttf under the SIL Open Font
-    License 1.1 (data/base/fonts/OFL.txt). No free font matches the baked
-    label at its natural width: at 11 px cap height the closest
-    candidates render "QUIT GAME" at 75-114 px against the baked 128 px
-    (Archivo Expanded Black is the widest, at 114 px). The tool therefore
-    derives the horizontal scale at render time: the scale that makes
-    the reference label "QUIT GAME" exactly as wide as the baked label
-    (128 px at 11 px cap height). Re-rendering "QUIT GAME" through this
-    pipeline reproduces the original Quit frames to within
-    anti-aliasing texture (same silhouette, same weight).
+2.  Font. Labels are blitted from Moo2Menu, a bitmap font recreated
+    from the baked button labels themselves
+    (data/base/fonts/Moo2Menu.json, rebuilt by
+    tools/build_moo2menu_font.py from the original MAINMENU.LBX).
+    Q, U, I, T, G, A, M, E are byte-exact replicas of the QUIT GAME
+    frames; the other recovered letters are majority-consensus
+    resamples of the baked labels at QUIT scale; S and Z are designed
+    to match (no S or Z exists in any baked label). Each glyph carries
+    its exact palette indices per state, so there is no quantization
+    step: the emboss, anti-aliasing and per-state rendering of the
+    originals are reproduced, not approximated. The tool derives the
+    horizontal scale at render time: the scale that makes the reference
+    label "QUIT GAME" exactly as wide as the baked label (128 px at
+    11 px cap height). Re-rendering "QUIT GAME" through this pipeline
+    reproduces the original Quit frames pixel-for-pixel. (The previous
+    font, Archivo Expanded Black, reproduced them only to within
+    anti-aliasing texture, ~630-744 px of 3366 in the label box, and
+    has been removed; it was the renderer's only consumer.)
 
-3.  Stamp. The rendered label is quantized into the original label's
-    ink ramp instead of a flat colour, so it carries the same embossed
-    look: the top edge row of each glyph is index 159 and the bottom
-    edge row is index 159 in the normal state (in hover the top edge
-    is left as panel, matching the original hover frames, and the
-    descender is dropped; in disabled both edges are the face index
-    19). The face is index 19, partial-coverage side pixels are
-    indices 22/37. Labels are uppercased: the original buttons are
-    all-caps, and the render matches that style.
+3.  Blit. The composed label (12 rows: 11 cap rows plus 1 descender
+    row, palette indices per state, background transparent) is copied
+    into the blanked template's label box, centred horizontally. The
+    per-state bitmaps already encode each state's emboss: the normal
+    top/bottom edges, the hover top edge left as panel with its
+    dropped descender, and the disabled flattened edges. Labels are
+    uppercased: the original buttons are all-caps, and the render
+    matches that style.
 
 4.  Fit. A label that does not fit the 128 px label width is condensed
     horizontally (x-scale reduced, cap height kept at 11 px) until it
-    fits; the scale never goes below 0.70, below which the tool fails
+    fits; the scale never goes below 0.65, below which the tool fails
     and the label must be shortened. German "EINSTELLUNGEN" (13 caps)
-    is the only current label that needs this (x-scale about 0.71).
+    is the only current label that needs this (x-scale about 0.70).
+    Condensing resamples the composed label per ink class (LANCZOS);
+    labels that fit at the calibration scale are blitted exactly, with
+    no resampling.
 
 5.  Output. Each frame is written as a native orion2re bitmap: the
     s_animation_header layout produced by bitmap::Create_Bitmap_Header
@@ -71,8 +79,8 @@ Reproducing: `tools/render_button_frames.py` regenerates every frame.
 `--check` regenerates to a temporary directory and byte-compares
 against the committed files, so drift in the font, the templates or
 the rasterizer is caught instead of silently shipped. Rasterization
-depends on Pillow + FreeType, so --check can differ across library
-versions; the committed .bin files are the shipped truth.
+depends on Pillow for the condense step only; labels that fit at the
+calibration scale are blitted exactly and are Pillow-independent.
 `--extract-templates MAINMENU.LBX` re-derives the template PNGs from
 the user's original game data (entries 18/19/20 plus the palette of
 entry 2); the committed templates are the checked-in result of that
@@ -89,7 +97,7 @@ import tempfile
 from pathlib import Path
 
 try:
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image
 except ImportError:
     print("render_button_frames: Pillow is required (pip install pillow)",
           file=sys.stderr)
@@ -97,7 +105,7 @@ except ImportError:
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TOOL_DIR = REPO_ROOT / "tools" / "button_art"
-FONT_PATH = REPO_ROOT / "data" / "base" / "fonts" / "Archivo[wdth,wght].ttf"
+FONT_PATH = REPO_ROOT / "data" / "base" / "fonts" / "Moo2Menu.json"
 MANIFEST_PATH = TOOL_DIR / "buttons.json"
 OUTPUT_ROOT = REPO_ROOT / "data" / "base" / "buttons"
 
@@ -107,15 +115,14 @@ TEMPLATE_SIZE = (153, 22)
 LABEL_BOX = (13, 140, 5, 16)  # x0, x1, y0, y1 inclusive
 LABEL_WIDTH = LABEL_BOX[1] - LABEL_BOX[0] + 1  # 128
 CAP_HEIGHT = 11
-FONT_VARIATION = [900, 125]  # Archivo fvar order is (wght, wdth)
 # Reference label the horizontal scale is calibrated against: the
 # baked "QUIT GAME" label is LABEL_WIDTH px wide at CAP_HEIGHT px cap
 # height. The scale is derived at render time (reference width /
-# LABEL_WIDTH), never a magic constant, so it stays correct across
-# rasterizers. A label wider than the box after scaling is condensed
-# further by the fit step.
+# LABEL_WIDTH), never a magic constant, so it stays correct if the
+# font's advances change. A label wider than the box after scaling is
+# condensed further by the fit step.
 REFERENCE_LABEL = "QUIT GAME"
-MIN_X_SCALE = 0.70
+MIN_X_SCALE = 0.65
 LANGUAGES = ("en", "de", "fr", "es", "it")
 STATES = ("normal", "hover", "disabled")
 
@@ -123,15 +130,6 @@ STATES = ("normal", "hover", "disabled")
 PANEL_FILL = {"normal": 209, "disabled": 159}
 HOVER_ACCENT_ROWS = {3, 8, 12, 16, 20}
 HOVER_PANEL_INDICES = {139, 140, 141}
-
-# Label ink ramp per state: (top edge, bottom edge, face, mid, low).
-# Hover has no top edge and no descender, matching the original hover
-# frames; disabled renders both edges in the face index.
-INK = {
-    "normal": (159, 159, 19, 22, 37),
-    "hover": (None, 159, 19, 22, 37),
-    "disabled": (19, 19, 19, 22, 37),
-}
 
 TEMPLATE_FILES = {
     "normal": TOOL_DIR / "template-quit-normal.png",
@@ -142,6 +140,112 @@ TEMPLATE_FILES = {
 # Native bitmap frame layout (bitmap::Create_Bitmap_Header).
 BITMAP_FRAME_DATA_OFFSET = 16
 BITMAP_DRAW_MODE = 1
+
+# Ink-class priority when resampled classes overlap during the
+# condense step (face first).
+RESAMPLE_PRIO = [19, 159, 22, 37, 58, 6, 209, 145, 152, 68, 97, 113,
+                 32, 43, 82, 122, 147, 148, 151, 149, 28, 29]
+
+
+def load_font(path=FONT_PATH):
+    """Load the Moo2Menu bitmap font (JSON)."""
+    if not path.is_file():
+        raise ValueError(f"font not found: {path}")
+    with open(path, encoding="utf-8") as handle:
+        font = json.load(handle)
+    if font.get("name") != "Moo2Menu":
+        raise ValueError(f"{path}: not a Moo2Menu font")
+    if font.get("cap_height") != CAP_HEIGHT:
+        raise ValueError(
+            f"{path}: cap height {font.get('cap_height')}, "
+            f"expected {CAP_HEIGHT}")
+    return font
+
+
+def label_ink_width(font, text):
+    """Ink width of a label at natural scale: sum of advances, with
+    the last letter contributing its ink width instead of its advance
+    (the trailing gap is not ink)."""
+    width = 0
+    for ch in text:
+        if ch == " ":
+            width += font["space_advance"]
+        else:
+            width += font["glyphs"][ch]["advance"]
+    last = text[-1]
+    if last != " ":
+        width -= (font["glyphs"][last]["advance"]
+                  - font["glyphs"][last]["width"])
+    return width
+
+
+def resample_grid(grid, width):
+    """Resample an indexed grid horizontally to `width` px, per ink
+    class (LANCZOS, threshold 0.5). Used only by the fit step."""
+    height = len(grid)
+    old_width = len(grid[0])
+    out = [[None] * width for _ in range(height)]
+    vals = sorted({c for row in grid for c in row if c is not None},
+                  key=lambda v: RESAMPLE_PRIO.index(v)
+                  if v in RESAMPLE_PRIO else 99)
+    for value in vals:
+        img = Image.new("F", (old_width, height))
+        pixels = img.load()
+        for y in range(height):
+            for x in range(old_width):
+                pixels[x, y] = 1.0 if grid[y][x] == value else 0.0
+        resized = img.resize((width, height), Image.LANCZOS)
+        rp = resized.load()
+        for y in range(height):
+            for x in range(width):
+                if out[y][x] is None and rp[x, y] >= 0.5:
+                    out[y][x] = value
+    return out
+
+
+def render_label(text, font, state):
+    """Compose an uppercased label from the bitmap font.
+
+    Returns (grid, x_scale, width): grid rows are palette indices
+    (None = background), 12 rows (cap + descender), fitted to
+    LABEL_WIDTH. The label is condensed horizontally until it fits;
+    labels that fit at the calibration scale are exact, unresampled.
+    """
+    text = text.upper()
+    for ch in text:
+        if ch != " " and ch not in font["glyphs"]:
+            raise ValueError(f"label {text!r}: no glyph for {ch!r}")
+
+    # Horizontal scale: the factor that makes the reference label
+    # exactly as wide as the baked label. Derived, not constant, so
+    # the calibration survives font changes.
+    x_scale = LABEL_WIDTH / label_ink_width(font, REFERENCE_LABEL)
+    width = label_ink_width(font, text)
+    scaled_width = round(width * x_scale)
+    if scaled_width > LABEL_WIDTH:
+        x_scale = LABEL_WIDTH / width
+        scaled_width = LABEL_WIDTH
+        if x_scale < MIN_X_SCALE:
+            raise ValueError(
+                f"label {text!r} needs x-scale {x_scale:.2f} to fit "
+                f"{LABEL_WIDTH}px, below the {MIN_X_SCALE} floor; "
+                "shorten it")
+
+    grid = [[None] * width for _ in range(CAP_HEIGHT + 1)]
+    x = 0
+    for ch in text:
+        if ch == " ":
+            x += font["space_advance"]
+            continue
+        glyph = font["glyphs"][ch]
+        for ry, row in enumerate(glyph["bitmap"][state]):
+            for rx, value in enumerate(row):
+                if value is not None:
+                    grid[ry][x + rx] = value
+        x += glyph["advance"]
+    if scaled_width != width:
+        grid = resample_grid(grid, scaled_width)
+    return grid, x_scale, scaled_width
 
 
 def load_template(state):
@@ -204,111 +308,25 @@ def blank(template, state):
     return out
 
 
-def render_label(text, font_path=FONT_PATH):
-    """Render an uppercased label to a float coverage grid.
-
-    Returns (coverage, size, x_scale, width): coverage rows are cap-top
-    aligned, values in [0, 1]. The label is condensed horizontally
-    until it fits LABEL_WIDTH.
-    """
-    text = text.upper()
-    if not font_path.is_file():
-        raise ValueError(f"font not found: {font_path}")
-
-    def cap_height(size):
-        font = ImageFont.truetype(str(font_path), size)
-        font.set_variation_by_axes(FONT_VARIATION)
-        probe = Image.new("L", (64, 64), 0)
-        draw = ImageDraw.Draw(probe)
-        box = draw.textbbox((0, 0), "H", font=font)
-        return box[3] - box[1]
-
-    low, high = 4, 200
-    for _ in range(12):
-        mid = (low + high) // 2
-        if cap_height(mid) < CAP_HEIGHT:
-            low = mid
-        else:
-            high = mid
-    # Smallest size whose cap height reaches CAP_HEIGHT (low is the
-    # largest size still short of it).
-    size = high
-    font = ImageFont.truetype(str(font_path), size)
-    font.set_variation_by_axes(FONT_VARIATION)
-
-    def natural_width(label):
-        probe = Image.new("L", (1024, 128), 0)
-        draw = ImageDraw.Draw(probe)
-        draw.text((10, 10), label, font=font, fill=255)
-        box = probe.getbbox()
-        if box is None:
-            raise ValueError(f"label {label!r} renders empty")
-        return box[2] - box[0]
-
-    # Horizontal scale: the factor that makes the reference label
-    # exactly as wide as the baked label. Derived, not constant, so
-    # the calibration survives rasterizer differences.
-    x_scale = LABEL_WIDTH / natural_width(REFERENCE_LABEL)
-
-    for _ in range(8):
-        width = round(natural_width(text) * x_scale)
-        if width <= LABEL_WIDTH:
-            break
-        x_scale *= LABEL_WIDTH / width
-        if x_scale < MIN_X_SCALE:
-            raise ValueError(
-                f"label {text!r} needs x-scale {x_scale:.2f} to fit "
-                f"{LABEL_WIDTH}px, below the {MIN_X_SCALE} floor; shorten it")
-    else:
-        raise ValueError(f"label {text!r} did not converge to fit")
-
-    canvas = Image.new("L", (1024, 128), 0)
-    draw = ImageDraw.Draw(canvas)
-    draw.text((10, 10), text, font=font, fill=255)
-    box = canvas.getbbox()
-    crop = canvas.crop(box)
-    scaled = crop.resize((width, crop.height), Image.LANCZOS)
-    pixels = scaled.tobytes()
-    rows = [[pixels[y * width + x] / 255.0 for x in range(width)]
-            for y in range(scaled.height)]
-    return rows, size, x_scale, width
-
-
-def stamp(blanked, coverage, state):
-    """Stamp a coverage grid into a blanked template, in the label box."""
-    top_ink, bottom_ink, face, mid, low = INK[state]
+def blit(blanked, grid):
+    """Blit a composed label grid into a blanked template, centred
+    horizontally in the label box, cap-top aligned. The grid already
+    carries the exact palette indices for its state."""
     x0, x1, y0, y1 = LABEL_BOX
-    height = len(coverage)
-    width = len(coverage[0])
+    height = len(grid)
+    width = len(grid[0])
     out = [row[:] for row in blanked]
     x_start = x0 + (LABEL_WIDTH - width) // 2
-    y_start = y0  # coverage rows are cap-top aligned
-    significant = [[value > 0.08 for value in row] for row in coverage]
+    y_start = y0  # grid rows are cap-top aligned
     for yy in range(height):
         for xx in range(width):
-            if not significant[yy][xx]:
+            value = grid[yy][xx]
+            if value is None:
                 continue
             gx, gy = x_start + xx, y_start + yy
             if not (x0 <= gx <= x1 and y0 <= gy <= y1):
                 continue
-            above = significant[yy - 1][xx] if yy > 0 else False
-            below = significant[yy + 1][xx] if yy < height - 1 else False
-            if not above:
-                if top_ink is None:
-                    continue  # hover: no top edge
-                out[gy][gx] = top_ink
-            elif not below:
-                if state == "hover" and yy >= CAP_HEIGHT:
-                    continue  # hover: no descender
-                out[gy][gx] = bottom_ink
-            else:
-                value = coverage[yy][xx]
-                if value >= 0.6:
-                    out[gy][gx] = face
-                elif value >= 0.3:
-                    out[gy][gx] = mid
-                else:
-                    out[gy][gx] = low
+            out[gy][gx] = value
     return out
 
 
@@ -350,6 +368,7 @@ def load_manifest():
 
 def render_all(output_root, button_filter=None, lang_filter=None,
                preview_dir=None):
+    font = load_font()
     templates = {state: load_template(state) for state in STATES}
     check_label_box(templates["normal"])
     buttons = load_manifest()
@@ -363,14 +382,14 @@ def render_all(output_root, button_filter=None, lang_filter=None,
                 continue
             label = button["labels"][lang]
             for state in STATES:
-                coverage, size, x_scale, width = render_label(label)
+                grid, x_scale, width = render_label(label, font, state)
                 blanked = blank(templates[state], state)
-                stamped = stamp(blanked, coverage, state)
-                data = frame_bytes(stamped)
+                blitted = blit(blanked, grid)
+                data = frame_bytes(blitted)
                 path = output_root / button_id / lang / f"{state}.bin"
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(data)
-                written.append((str(path), width, size, x_scale))
+                written.append((str(path), width, x_scale))
                 if preview_dir is not None:
                     with Image.open(TEMPLATE_FILES["normal"]) as template:
                         palette = list(template.getpalette() or [0] * 768)
@@ -482,8 +501,8 @@ def main(argv=None):
             return 0
     written = render_all(OUTPUT_ROOT, arguments.button, arguments.lang,
                          arguments.preview_dir)
-    for path, width, size, x_scale in written:
-        print(f"{path}: label {width}px, font size {size}, x-scale {x_scale:.3f}")
+    for path, width, x_scale in written:
+        print(f"{path}: label {width}px, x-scale {x_scale:.3f}")
     return 0
 
 

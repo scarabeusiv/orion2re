@@ -4,8 +4,8 @@ The original menu buttons are baked art in `MAINMENU.LBX`: three opaque
 frames each (normal / hover / disabled) with the label painted in. There
 is no blank panel sprite and no seventh button, so new buttons cannot
 reuse the original art. `../render_button_frames.py` renders
-orion2re-owned frames from a bundled open font instead; its module
-docstring documents the full pipeline (template, font, stamp, fit,
+orion2re-owned frames from a bundled bitmap font instead; its module
+docstring documents the full pipeline (template, font, blit, fit,
 output format).
 
 Contents:
@@ -24,10 +24,15 @@ Contents:
   and re-running the tool; the game only needs the button id wired to
   `button_art::Load_Button_Frames`.
 - The font lives with the game data, not here:
-  `data/base/fonts/Archivo[wdth,wght].ttf` (Archivo variable font,
-  SIL OFL 1.1, `data/base/fonts/OFL.txt`), bundled unchanged. The
-  rendered frames ship in `data/base/buttons/<id>/<lang>/<state>.bin`
-  and are part of `base.zip`; the runtime never reads the font.
+  `data/base/fonts/Moo2Menu.json`, a bitmap font recreated from the
+  baked button labels themselves (see `../build_moo2menu_font.py`,
+  which rebuilds it from the original `MAINMENU.LBX`). Q, U, I, T, G,
+  A, M, E are byte-exact replicas of the QUIT GAME frames; the other
+  recovered letters are majority-consensus resamples of the baked
+  labels at QUIT scale; S and Z are designed to match. The rendered
+  frames ship in `data/base/buttons/<id>/<lang>/<state>.bin` and are
+  part of `base.zip`; the runtime never reads the font.
 
 Reproduce everything with `tools/render_button_frames.py`, and verify
-with `tools/render_button_frames.py --check`.
+with `tools/render_button_frames.py --check`. Rebuild the font with
+`tools/build_moo2menu_font.py MAINMENU.LBX`.
