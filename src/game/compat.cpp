@@ -175,7 +175,15 @@ bool Resolve_File_Path_Case(const char* path, char* resolved_path, size_t resolv
     }
 
     if (SDL_GetPathInfo(resolved_path, &path_info)) {
-        return true;
+        // A directory needs no name resolved here: returning it as-is keeps
+        // the recursion grounded (a directory is resolved by the enumeration
+        // of its parent when it is a component of a longer path).
+        // A file, however, must have its on-disk name resolved below: on a
+        // case-insensitive filesystem the path can exist without matching
+        // the on-disk case, and returning the requested case would be wrong.
+        if (path_info.type == SDL_PATHTYPE_DIRECTORY) {
+            return true;
+        }
     }
 
     slash = strrchr(open_path, '/');
