@@ -558,7 +558,9 @@ namespace SETTINGS_SCREEN {
             for (size_t index = 0; index < type->value_count; ++index) {
                 stride = std::max(stride, strlen(type->values[index].name) + 1);
             }
-            std::vector<char> items(type->value_count * stride, '\0');
+            // One extra slot: Get_List_Field reads items until an
+            // empty entry, so the list needs a terminator.
+            std::vector<char> items((type->value_count + 1) * stride, '\0');
             std::vector<uint8_t> flags(type->value_count, 1);
             int16_t width = 16;
             for (size_t index = 0; index < type->value_count; ++index) {
