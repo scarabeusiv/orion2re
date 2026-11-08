@@ -770,7 +770,6 @@ namespace SETTINGS_SCREEN {
                 if (!entry.conflicts.empty()) {
                     meta += "; Conflicts: " + Join_Ids(entry.conflicts);
                 }
-                meta += entry.enabled ? "; Enabled" : "; Disabled";
             }
             return help + " | " + meta;
         }
@@ -815,9 +814,11 @@ namespace SETTINGS_SCREEN {
                         Truncate_To_Width(title_text, TITLE_WIDTH).c_str());
                     fonts::Set_Font_Style(4,
                         selected ? &g_highlight_colors : &g_normal_colors);
+                    // The checkbox alone states the state; the word
+                    // next to it only repeated it.
                     const std::string value_text = entry.broken
                         ? "Broken"
-                        : (entry.enabled ? "[x] Enabled" : "[ ] Disabled");
+                        : (entry.enabled ? "[x]" : "[ ]");
                     fonts::Print(VALUE_X, y,
                         Truncate_To_Width(value_text, VALUE_WIDTH).c_str());
                     continue;
