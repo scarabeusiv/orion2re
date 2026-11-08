@@ -113,6 +113,11 @@ namespace SETTINGS_SCREEN {
             int16_t prev_field = -1;
             int16_t next_field = -1;
             int16_t done_field = -1;
+            int16_t show_all_field = -1;
+            // Show all is global for the screen, not per tab: the user
+            // is either browsing the most-used settings or everything.
+            // It resets when the screen reopens (fresh state).
+            bool show_all = false;
             int16_t tab_fields[CATEGORY_COUNT];
             int16_t row_fields[ROWS_PER_PAGE];
         };
@@ -358,10 +363,18 @@ namespace SETTINGS_SCREEN {
             const config::e_settings_category wanted =
                 Settings_Category_For_Tab(g_state.category);
             for (size_t index = 0; index < g_state.rows.size(); ++index) {
-                if (config::Settings_Category_For_Path(g_state.rows[index].path) ==
+                if (config::Settings_Category_For_Path(g_state.rows[index].path) !=
                     wanted) {
-                    g_state.visible_rows.push_back((int)index);
+                    continue;
                 }
+                // Secondary settings stay hidden until Show all. The
+                // catalogue on the Mods tab is not a setting row, so
+                // it is never filtered.
+                if (!g_state.show_all &&
+                    !config::Settings_Is_Primary_For_Path(g_state.rows[index].path)) {
+                    continue;
+                }
+                g_state.visible_rows.push_back((int)index);
             }
         }
 
@@ -442,6 +455,11 @@ namespace SETTINGS_SCREEN {
             g_state.next_field = g_state.page + 1 < Page_Count()
                 ? fields::Add_Hidden_Field(110, NAV_Y, 184, NAV_Y_END, "N", 0)
                 : -1;
+            // Show all sits in the footer between the centred note and
+            // Done: the note ends near x=444 at most, Done starts at
+            // 556, so 456-544 is clear on every tab.
+            g_state.show_all_field = fields::Add_Hidden_Field(
+                456, NAV_Y, 544, NAV_Y_END, "", 0);
             g_state.done_field = fields::Add_Hidden_Field(556, NAV_Y, 624, NAV_Y_END, "", 0);
         }
 
@@ -452,6 +470,17 @@ namespace SETTINGS_SCREEN {
             }
             g_state.page = next;
             g_state.selected = next * ROWS_PER_PAGE;
+            Rebuild_Fields();
+        }
+
+        void Toggle_Show_All() {
+            g_state.show_all = !g_state.show_all;
+            g_state.page = 0;
+            g_state.selected = 0;
+            Rebuild_Visible_Rows();
+            g_state.status = g_state.show_all
+                ? "Showing all settings, including advanced and ordering options."
+                : "Showing the most-used settings. Use Show all for the rest.";
             Rebuild_Fields();
         }
 
@@ -905,6 +934,7 @@ namespace SETTINGS_SCREEN {
                 fonts::Print(110, FOOTER_Y, "Next");
             }
             fonts::Print(556, FOOTER_Y, "Done");
+            fonts::Print(456, FOOTER_Y, g_state.show_all ? "Show less" : "Show all");
             const char* footer_note = mods_tab
                 ? "Mod changes apply immediately"
                 : "* = takes effect after restart";
@@ -972,6 +1002,8 @@ namespace SETTINGS_SCREEN {
                     Change_Page(-1);
                 } else if (input == g_state.next_field) {
                     Change_Page(1);
+                } else if (input == g_state.show_all_field) {
+                    Toggle_Show_All();
                 } else if (input == g_state.edit_field) {
                     // Enter commits (input_field_active is cleared by the
                     // field system on Enter); a click only focuses the
