@@ -238,7 +238,10 @@ namespace config {
                     }
                 }
                 seen->insert(key);
-                const std::filesystem::path included_directory = canonical.parent_path();
+                // Nested includes resolve lexically beside the including
+                // file as referenced, mirroring the loader. The canonical
+                // path is only for cycle detection and reading.
+                const std::filesystem::path included_directory = resolved.parent_path();
                 if (!Check_Includes(included_directory, included_document, source_name, seen,
                         depth + 1, diagnostic)) {
                     return false;
@@ -435,7 +438,15 @@ namespace config {
         }
         std::unordered_set<std::string> seen;
         seen.insert(target.string());
-        if (!Check_Includes(target.parent_path(), document, path.c_str(),
+        // Includes resolve lexically beside the path as passed, mirroring
+        // the loader (which never resolves symlinks when locating
+        // includes). Only the write itself goes through the canonical
+        // target; resolving includes beside the target would check the
+        // wrong directory when the config is a symlink into another
+        // directory.
+        const std::filesystem::path lexical_directory =
+            std::filesystem::absolute(path).parent_path();
+        if (!Check_Includes(lexical_directory, document, path.c_str(),
                 &seen, 0, diagnostic)) {
             return false;
         }

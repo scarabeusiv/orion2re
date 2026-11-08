@@ -33,10 +33,12 @@ namespace config {
     //   surgical replacement, so the writer refuses instead of dropping it);
     // - a desired mod ID is not a valid identifier, or is duplicated;
     // - a live `include` target cannot be read, fails to parse, or itself
-    //   enables a mod: the writer only updates enable lines in the file it
-    //   was given, so an included enable would make the written set differ
-    //   from the effective set. Includes are resolved relative to the
-    //   config file's directory, mirroring the loader;
+    //   enables a mod (Write_Enabled_Mods only; the in-memory Rewrite_
+    //   API has no filesystem access and cannot check includes): the writer
+    //   only updates enable lines in the file it was given, so an included
+    //   enable would make the written set differ from the effective set.
+    //   Includes are resolved relative to the config file's directory,
+    //   mirroring the loader;
     // - a live `enable` statement sits after a `stop` statement: the loader
     //   stops reading at `stop`, so only enable statements before it are
     //   live and managed; anything after it is left byte-for-byte. If the

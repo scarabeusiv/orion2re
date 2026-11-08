@@ -948,6 +948,7 @@ namespace config {
         s_mod_set_preview* preview,
         s_cfg_diagnostic* diagnostic) {
         if (preview == nullptr || diagnostic == nullptr) return false;
+        *preview = {};
         *diagnostic = {};
         if (!active_config_ready) {
             diagnostic->message = "active configuration is not initialized";
