@@ -534,6 +534,23 @@ namespace SETTINGS_SCREEN {
             g_state.edit_field = fields::Add_Continuous_String_Input_Field(
                 VALUE_X, y, VALUE_WIDTH, ROW_HEIGHT - 2, g_state.edit_buffer,
                 max_length, 0, 0, 0, 0);
+            // The row's full-width hidden field always wins Scan_Field
+            // over the edit field added after it, so a click can never
+            // focus the edit field through the field system: every
+            // click in the value area cancels and reopens the edit
+            // instead, and typing does nothing. Activate it directly,
+            // mirroring the field system's own click activation for a
+            // continuous input field (fields.cpp,
+            // Interpret_Mouse_Input): the buffer becomes the working
+            // text, the first Backspace clears it, and Enter copies it
+            // back to the buffer for Commit_Edit.
+            strlcpy(fields::continuous_string, g_state.edit_buffer,
+                sizeof(fields::continuous_string));
+            fields::input_field_active = 1;
+            fields::active_input_field_first = 1;
+            fields::cursor_position = 0;
+            fields::cursor_on = 0;
+            fields::active_input_field_number = g_state.edit_field;
         }
 
         void Open_Dropdown(int visible) {
