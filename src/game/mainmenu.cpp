@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "string_overrides.h"
 
+#include "button_art.h"
 #include "config/mod_manager.h"
 
 namespace MAINMENU {
@@ -25,6 +26,7 @@ namespace MAINMENU {
     uint8_t credits_column_one;
     int16_t credits_field = -1000;
     int16_t settings_field = -1000;
+    button_art::s_button_frames settings_frames;
 
     namespace {
         constexpr int16_t MOD_LIST_LEFT = 70;
@@ -257,9 +259,10 @@ namespace MAINMENU {
         mainmenu->fields[MAIN_MENU_BTN_NEW].field = fields::Add_Hidden_Field(0x19F, 0xCD, 0x237, 0xE2, "N", 0x29);
         mainmenu->fields[MAIN_MENU_BTN_MULTIPLAY].field = fields::Add_Hidden_Field(0x19F, 0xE4, 0x237, 0xF9, "M", 0x29);
         mainmenu->fields[MAIN_MENU_BTN_HELP].field = fields::Add_Hidden_Field(0x19F, 0xFA, 0x237, 0x10F, "H", 0x29);
-        // Settings is a text button (drawn in Draw_Main_Menu_Screen,
-        // like the Credits link) while Quit keeps its sprite frames
-        // at the new position.
+        // Settings uses pre-rendered orion2re-owned frames (loaded
+        // in Reload_Main_Menu_Screen); the text button in
+        // Draw_Main_Menu_Screen is only the fallback when they are
+        // missing, e.g. a base.zip predating them.
         settings_field = fields::Add_Hidden_Field(SETTINGS_FIELD_LEFT, SETTINGS_FIELD_TOP,
             SETTINGS_FIELD_RIGHT, SETTINGS_FIELD_BOTTOM, "S", 0x29);
         mainmenu->fields[MAIN_MENU_BTN_QUIT].field = fields::Add_Hidden_Field(0x19F, QUIT_FIELD_TOP,
@@ -294,6 +297,15 @@ namespace MAINMENU {
             entry_index += 3;
             RUSS::Mox_Update();
         }
+
+        // orion2re-owned frames for the Settings button, rendered by
+        // tools/render_button_frames.py. A missing or malformed file
+        // leaves the frames null and Draw_Main_Menu_Screen falls back
+        // to the text button.
+        button_art::Load_Button_Frames("settings",
+            (uint8_t)MOX::settings.language,
+            MOX::screen_seg,
+            &settings_frames);
     }
 
     void __cdecl Set_Main_Menu_Screen_Help_List_Aux(s_help_box* help_data, int16_t count) {
@@ -447,23 +459,31 @@ namespace MAINMENU {
 
         // The background paints the six original labels at their
         // original positions; the drawn frames above cover them.
-        // This fills the Settings row and draws the text button
-        // there (hover-highlighted like the Credits link).
-        graphics::Fill(SETTINGS_FIELD_LEFT, SETTINGS_FIELD_TOP,
-            SETTINGS_FIELD_RIGHT, SETTINGS_FIELD_BOTTOM, 0);
-        {
-            s_colors colors = *MISC::Font_Colors2(4,
-                settings_field == MOX::scanned_field ? 0xD5 : 0xD2,
-                settings_field == MOX::scanned_field ? 0xDC : 0xD7);
-            fonts::Set_Outline_Color(0xFD, 0xFD);
-            fonts::Set_Font_Style_Outline(3, &colors);
-            fonts::Set_Font_Spacing(1);
-            const int16_t label_y = SETTINGS_FIELD_TOP +
-                (SETTINGS_FIELD_BOTTOM - SETTINGS_FIELD_TOP + 1 -
-                    fonts::Get_Font_Height()) / 2;
-            fonts::Print_Centered(
-                (SETTINGS_FIELD_LEFT + SETTINGS_FIELD_RIGHT) / 2,
-                label_y, Settings_Label());
+        // Without frames (stale base.zip) the text button is the
+        // fallback.
+        if (settings_frames.normal != nullptr) {
+            animate::Draw(SETTINGS_FIELD_LEFT, SETTINGS_FIELD_TOP, settings_frames.normal);
+            if (settings_field == MOX::scanned_field &&
+                settings_frames.hover != nullptr) {
+                animate::Draw(SETTINGS_FIELD_LEFT, SETTINGS_FIELD_TOP, settings_frames.hover);
+            }
+        } else {
+            graphics::Fill(SETTINGS_FIELD_LEFT, SETTINGS_FIELD_TOP,
+                SETTINGS_FIELD_RIGHT, SETTINGS_FIELD_BOTTOM, 0);
+            {
+                s_colors colors = *MISC::Font_Colors2(4,
+                    settings_field == MOX::scanned_field ? 0xD5 : 0xD2,
+                    settings_field == MOX::scanned_field ? 0xDC : 0xD7);
+                fonts::Set_Outline_Color(0xFD, 0xFD);
+                fonts::Set_Font_Style_Outline(3, &colors);
+                fonts::Set_Font_Spacing(1);
+                const int16_t label_y = SETTINGS_FIELD_TOP +
+                    (SETTINGS_FIELD_BOTTOM - SETTINGS_FIELD_TOP + 1 -
+                        fonts::Get_Font_Height()) / 2;
+                fonts::Print_Centered(
+                    (SETTINGS_FIELD_LEFT + SETTINGS_FIELD_RIGHT) / 2,
+                    label_y, Settings_Label());
+            }
         }
 
         if (mod_list_active) {
