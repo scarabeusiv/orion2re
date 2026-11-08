@@ -12,6 +12,7 @@
 #include "config/config_loader.h"
 #include "config/config_runtime.h"
 #include "config/config_writer.h"
+#include "config/mod_catalogue.h"
 #include "config/settings_value.h"
 #include "game/fields.h"
 #include "game/fonts.h"
@@ -30,12 +31,14 @@ namespace SETTINGS_SCREEN {
 
         constexpr int16_t TITLE_X = 16;
         constexpr int16_t TITLE_Y = 8;
+        constexpr int16_t TAB_Y = 30;
+        constexpr int16_t TAB_HEIGHT = 18;
         constexpr int16_t TITLE_WIDTH = 348;
         constexpr int16_t VALUE_X = 372;
         constexpr int16_t VALUE_WIDTH = 244;
-        constexpr int16_t FIRST_ROW_Y = 38;
+        constexpr int16_t FIRST_ROW_Y = 58;
         constexpr int16_t ROW_HEIGHT = 22;
-        constexpr int ROWS_PER_PAGE = 15;
+        constexpr int ROWS_PER_PAGE = 14;
         constexpr int16_t HELP_Y = 376;
         constexpr int16_t HELP_LINE_HEIGHT = 14;
         constexpr int16_t STATUS_Y = 412;
@@ -54,27 +57,101 @@ namespace SETTINGS_SCREEN {
             APPLY_FAILED,
         };
 
+        // Categories, in tab order. A tab is the cleanest fit for the
+        // existing field system: the screen is already a paged list
+        // with Prev/Next/Done fields, so a tab is one more row of
+        // hidden fields above the list, and each tab keeps its own
+        // page and selection. Sections (one long list with headers)
+        // would break the paging and edit-field geometry instead.
+        constexpr int CATEGORY_INTERNALS = 0;
+        constexpr int CATEGORY_GAMEPLAY = 1;
+        constexpr int CATEGORY_MODS = 2;
+        constexpr int CATEGORY_COUNT = 3;
+
+        const char* CATEGORY_LABELS[CATEGORY_COUNT] = {
+            "Game Internals",
+            "Gameplay",
+            "Mods",
+        };
+
+        config::e_settings_category Settings_Category_For_Tab(int category) {
+            switch (category) {
+                case CATEGORY_GAMEPLAY:
+                    return config::SETTINGS_CATEGORY_GAMEPLAY;
+                case CATEGORY_MODS:
+                    return config::SETTINGS_CATEGORY_MODS;
+                case CATEGORY_INTERNALS:
+                default:
+                    return config::SETTINGS_CATEGORY_GAME_INTERNALS;
+            }
+        }
+
         struct s_settings_screen_state {
             std::vector<config::s_settings_row> rows;
+            // Indices into rows for the current settings category.
+            std::vector<int> visible_rows;
+            // Catalogue entries for the Mods category.
+            std::vector<config::s_mod_catalogue_entry> mods;
+            // Working enabled set, in file order: the `enable` lines
+            // of the config file. A toggle previews, writes and
+            // applies from this set, then refreshes it from the
+            // preview's resolved order (the order written to the file).
+            std::vector<std::string> enabled_ids;
+            int category = CATEGORY_INTERNALS;
             int page = 0;
+            // Index within the current category's list (visible rows
+            // for settings, catalogue entries for mods).
             int selected = 0;
             std::string status;
             std::string target_path;
             std::string seed_path;
             bool target_ready = false;
+            // Visible index of the row being edited, or -1.
             int editing_row = -1;
             char edit_buffer[512] = {};
             int16_t edit_field = -1;
             int16_t prev_field = -1;
             int16_t next_field = -1;
             int16_t done_field = -1;
+            int16_t tab_fields[CATEGORY_COUNT];
             int16_t row_fields[ROWS_PER_PAGE];
         };
 
         s_settings_screen_state g_state;
 
+        // Rows on the current tab. The Mods tab lists its settings
+        // rows first (the two mod-adjacent settings) and then the
+        // catalogue entries, so every row stays reachable.
+        int Visible_Count() {
+            if (g_state.category == CATEGORY_MODS) {
+                return (int)g_state.visible_rows.size() + (int)g_state.mods.size();
+            }
+            return (int)g_state.visible_rows.size();
+        }
+
+        // True when a visible index on the Mods tab names a catalogue
+        // entry rather than a settings row.
+        bool Is_Mod_Row(int visible) {
+            return g_state.category == CATEGORY_MODS &&
+                visible >= (int)g_state.visible_rows.size();
+        }
+
+        // Catalogue index for a visible index on the Mods tab.
+        int Mod_Index(int visible) {
+            return visible - (int)g_state.visible_rows.size();
+        }
+
         int Page_Count() {
-            return (int)((g_state.rows.size() + ROWS_PER_PAGE - 1) / ROWS_PER_PAGE);
+            const int count = Visible_Count();
+            if (count == 0) {
+                return 1;
+            }
+            return (count + ROWS_PER_PAGE - 1) / ROWS_PER_PAGE;
+        }
+
+        // Rows index for a visible index in a settings category.
+        int Visible_Row_Index(int visible) {
+            return g_state.visible_rows[(size_t)visible];
         }
 
         std::string Truncate_To_Width(const std::string& text, int16_t max_width) {
@@ -125,6 +202,17 @@ namespace SETTINGS_SCREEN {
             } else {
                 *line2 = current;
             }
+        }
+
+        std::string Join_Ids(const std::vector<std::string>& ids) {
+            std::string joined;
+            for (const std::string& id : ids) {
+                if (!joined.empty()) {
+                    joined += ", ";
+                }
+                joined += id;
+            }
+            return joined;
         }
 
         // The file the settings UI writes: the one config. When the user
@@ -242,6 +330,51 @@ namespace SETTINGS_SCREEN {
             return true;
         }
 
+        // The working enabled set: the `enable` lines of the file the
+        // screen writes, falling back to the file the game loaded when
+        // the target does not exist yet (first session, nothing seeded),
+        // and to the active package order when neither file can be read.
+        void Read_Enabled_Set() {
+            g_state.enabled_ids.clear();
+            config::s_cfg_diagnostic diagnostic;
+            if (!g_state.target_path.empty() &&
+                config::Read_Enabled_Mods(g_state.target_path,
+                    &g_state.enabled_ids, &diagnostic)) {
+                return;
+            }
+            const config::s_active_config* active = config::Get_Active_Config();
+            if (active != nullptr && !active->entry_filesystem_path.empty() &&
+                config::Read_Enabled_Mods(active->entry_filesystem_path,
+                    &g_state.enabled_ids, &diagnostic)) {
+                return;
+            }
+            if (active != nullptr) {
+                g_state.enabled_ids = active->package_order;
+            }
+        }
+
+        void Rebuild_Visible_Rows() {
+            g_state.visible_rows.clear();
+            const config::e_settings_category wanted =
+                Settings_Category_For_Tab(g_state.category);
+            for (size_t index = 0; index < g_state.rows.size(); ++index) {
+                if (config::Settings_Category_For_Path(g_state.rows[index].path) ==
+                    wanted) {
+                    g_state.visible_rows.push_back((int)index);
+                }
+            }
+        }
+
+        void Refresh_Mods() {
+            g_state.mods = config::Build_Mod_Catalogue(g_state.enabled_ids);
+            if (g_state.selected >= Visible_Count()) {
+                g_state.selected = Visible_Count() - 1;
+            }
+            if (g_state.selected < 0) {
+                g_state.selected = 0;
+            }
+        }
+
         e_apply_result Apply_Row(const config::s_settings_row& row,
             const std::string& config_text, const std::string& display_text) {
             if (!g_state.target_ready) {
@@ -279,14 +412,22 @@ namespace SETTINGS_SCREEN {
             return APPLY_LIVE;
         }
 
-        // Rebuilds the row and navigation fields for the current page.
-        // Only call when no edit field is open: the edit field is added
-        // separately by Open_Edit and removed by Commit/Cancel_Edit.
+        // Rebuilds the tab, row and navigation fields for the current
+        // page. Only call when no edit field is open: the edit field is
+        // added separately by Open_Edit and removed by Commit/Cancel_Edit.
         void Rebuild_Fields() {
             fields::Clear_Fields();
+            fonts::Set_Font_Style(4, &g_normal_colors);
+            int16_t tab_x = TITLE_X;
+            for (int category = 0; category < CATEGORY_COUNT; ++category) {
+                const int16_t width = (int16_t)(
+                    fonts::Get_String_Width(CATEGORY_LABELS[category]) + 16);
+                g_state.tab_fields[category] = fields::Add_Hidden_Field(
+                    tab_x, TAB_Y, tab_x + width - 1, TAB_Y + TAB_HEIGHT - 1, "", 0);
+                tab_x += width + 8;
+            }
             const int first = g_state.page * ROWS_PER_PAGE;
-            const int count = std::min(ROWS_PER_PAGE,
-                (int)g_state.rows.size() - first);
+            const int count = std::min(ROWS_PER_PAGE, Visible_Count() - first);
             for (int index = 0; index < count; ++index) {
                 const int16_t y = FIRST_ROW_Y + (int16_t)index * ROW_HEIGHT;
                 g_state.row_fields[index] = fields::Add_Hidden_Field(
@@ -314,6 +455,30 @@ namespace SETTINGS_SCREEN {
             Rebuild_Fields();
         }
 
+        void Switch_Category(int category) {
+            if (category == g_state.category) {
+                return;
+            }
+            if (g_state.editing_row >= 0) {
+                g_state.editing_row = -1;
+                g_state.edit_field = -1;
+            }
+            g_state.category = category;
+            g_state.page = 0;
+            g_state.selected = 0;
+            Rebuild_Visible_Rows();
+            if (category == CATEGORY_MODS) {
+                Read_Enabled_Set();
+                Refresh_Mods();
+                g_state.status =
+                    "Click a mod to enable or disable it. Broken mods cannot be enabled.";
+            } else {
+                g_state.status =
+                    "Click a setting to change it. * marks settings that need a restart.";
+            }
+            Rebuild_Fields();
+        }
+
         void Cancel_Edit() {
             g_state.editing_row = -1;
             g_state.edit_field = -1;
@@ -321,7 +486,7 @@ namespace SETTINGS_SCREEN {
         }
 
         bool Commit_Edit() {
-            const int row_index = g_state.editing_row;
+            const int row_index = Visible_Row_Index(g_state.editing_row);
             const config::s_settings_row& row = g_state.rows[row_index];
             config::s_typed_value value;
             std::string config_text;
@@ -340,7 +505,8 @@ namespace SETTINGS_SCREEN {
             return true;
         }
 
-        void Open_Edit(int row_index) {
+        void Open_Edit(int visible) {
+            const int row_index = Visible_Row_Index(visible);
             const config::s_settings_row& row = g_state.rows[row_index];
             config::s_typed_value value;
             if (!config::Get_Settings_Row_Value(row, &value)) {
@@ -361,16 +527,17 @@ namespace SETTINGS_SCREEN {
                         sizeof(g_state.edit_buffer) - 1)
                     : 64;
             }
-            g_state.editing_row = row_index;
+            g_state.editing_row = visible;
             fonts::Set_Font_Style(4, &g_normal_colors);
             const int16_t y = FIRST_ROW_Y +
-                (int16_t)(row_index - g_state.page * ROWS_PER_PAGE) * ROW_HEIGHT;
+                (int16_t)(visible - g_state.page * ROWS_PER_PAGE) * ROW_HEIGHT;
             g_state.edit_field = fields::Add_Continuous_String_Input_Field(
                 VALUE_X, y, VALUE_WIDTH, ROW_HEIGHT - 2, g_state.edit_buffer,
                 max_length, 0, 0, 0, 0);
         }
 
-        void Open_Dropdown(int row_index) {
+        void Open_Dropdown(int visible) {
+            const int row_index = Visible_Row_Index(visible);
             const config::s_settings_row& row = g_state.rows[row_index];
             const config::s_type_descriptor* type =
                 config::Get_Variable_Type(row.variable_id);
@@ -408,7 +575,7 @@ namespace SETTINGS_SCREEN {
             const int16_t list_height =
                 (int16_t)((type->value_count + 1) * (size_t)y_step);
             int16_t y = FIRST_ROW_Y +
-                (int16_t)(row_index - g_state.page * ROWS_PER_PAGE) * ROW_HEIGHT;
+                (int16_t)(visible - g_state.page * ROWS_PER_PAGE) * ROW_HEIGHT;
             if (y + list_height > 470) {
                 y = 470 - list_height;
             }
@@ -437,8 +604,9 @@ namespace SETTINGS_SCREEN {
                 type->values[choice].name);
         }
 
-        void Handle_Row_Click(int row_index) {
-            g_state.selected = row_index;
+        void Handle_Row_Click(int visible) {
+            g_state.selected = visible;
+            const int row_index = Visible_Row_Index(visible);
             const config::s_settings_row& row = g_state.rows[row_index];
             switch (row.widget) {
                 case config::SETTINGS_WIDGET_TOGGLE: {
@@ -453,16 +621,102 @@ namespace SETTINGS_SCREEN {
                     return;
                 }
                 case config::SETTINGS_WIDGET_DROPDOWN:
-                    Open_Dropdown(row_index);
+                    Open_Dropdown(visible);
                     return;
                 case config::SETTINGS_WIDGET_EDIT:
-                    Open_Edit(row_index);
+                    Open_Edit(visible);
                     return;
                 case config::SETTINGS_WIDGET_INFO:
                 default:
                     g_state.status = row.info;
                     return;
             }
+        }
+
+        // A mod toggle: dry-run the candidate set through the staging
+        // path, then write the resolved order to the config file and
+        // apply it with a full load. The file is written before the
+        // apply, so a failed apply still leaves the picked set as the
+        // set the next start loads. Nothing is written when the
+        // preview fails.
+        // `mod_index` is the catalogue index, not the visible row:
+        // the Mods tab lists its settings rows first.
+        void Handle_Mod_Click(int mod_index) {
+            g_state.selected = (int)g_state.visible_rows.size() + mod_index;
+            // Copy the id out: Refresh_Mods() below replaces the
+            // catalogue vector, so a reference into it would dangle.
+            const config::s_mod_catalogue_entry entry = g_state.mods[(size_t)mod_index];
+            if (entry.broken) {
+                g_state.status = "'" + entry.id + "' is broken: " + entry.reason;
+                return;
+            }
+            if (!g_state.target_ready) {
+                g_state.status = "Mods cannot be saved: no configuration file target.";
+                return;
+            }
+            std::vector<std::string> candidate = g_state.enabled_ids;
+            const auto found = std::find(candidate.begin(), candidate.end(), entry.id);
+            const bool enabling = found == candidate.end();
+            if (enabling) {
+                // Newly enabled mods append after the order already in
+                // the file; the resolver orders the written set.
+                candidate.push_back(entry.id);
+            } else {
+                candidate.erase(found);
+            }
+            config::s_cfg_diagnostic diagnostic;
+            config::s_mod_set_preview preview;
+            if (!config::Preview_Enabled_Mods(candidate, &preview, &diagnostic)) {
+                g_state.status = "Cannot " + std::string(enabling ? "enable '" : "disable '") +
+                    entry.id + "': " + diagnostic.message;
+                return;
+            }
+            std::string error;
+            if (!Ensure_User_Config(&error)) {
+                g_state.status = "Could not save mods: " + error + ".";
+                return;
+            }
+            if (!config::Write_Enabled_Mods(g_state.target_path,
+                    preview.package_order, &diagnostic)) {
+                g_state.status = "Could not save mods: " + diagnostic.message;
+                return;
+            }
+            g_state.enabled_ids = preview.package_order;
+            Refresh_Mods();
+            if (!config::Apply_Enabled_Mods(candidate, &diagnostic)) {
+                g_state.status = "Saved to orion2re.cfg, but the live apply failed (" +
+                    diagnostic.message +
+                    "). The new set takes effect after a restart.";
+                return;
+            }
+            const std::string active = preview.package_order.empty()
+                ? "no mods"
+                : Join_Ids(preview.package_order);
+            g_state.status = "'" + entry.id + "' " +
+                (enabling ? "enabled" : "disabled") + ". Active mods: " + active + ".";
+        }
+
+        std::string Mod_Help_Text(const config::s_mod_catalogue_entry& entry) {
+            std::string help = entry.description.empty() ? entry.id : entry.description;
+            std::string meta;
+            if (entry.broken) {
+                meta = "Broken: " + entry.reason;
+            } else {
+                meta = entry.source == config::MOD_SOURCE_USER ? "Source: user mods"
+                    : "Source: bundled";
+                if (!entry.dependencies.empty()) {
+                    std::vector<std::string> ids;
+                    for (const config::s_mod_dependency& dependency : entry.dependencies) {
+                        ids.push_back(dependency.id);
+                    }
+                    meta += "; Needs: " + Join_Ids(ids);
+                }
+                if (!entry.conflicts.empty()) {
+                    meta += "; Conflicts: " + Join_Ids(entry.conflicts);
+                }
+                meta += entry.enabled ? "; Enabled" : "; Disabled";
+            }
+            return help + " | " + meta;
         }
 
         void Draw_Settings_Screen() {
@@ -477,16 +731,43 @@ namespace SETTINGS_SCREEN {
                 g_state.page + 1, Page_Count());
             fonts::Print(640 - 16 - fonts::Get_String_Width(page_text), TITLE_Y, page_text);
 
+            int16_t tab_x = TITLE_X;
+            for (int category = 0; category < CATEGORY_COUNT; ++category) {
+                fonts::Set_Font_Style(4,
+                    category == g_state.category ? &g_highlight_colors : &g_normal_colors);
+                fonts::Print(tab_x + 8, TAB_Y + 2, CATEGORY_LABELS[category]);
+                tab_x += (int16_t)(fonts::Get_String_Width(CATEGORY_LABELS[category]) + 16) + 8;
+            }
+
+            const bool mods_tab = g_state.category == CATEGORY_MODS;
             const int first = g_state.page * ROWS_PER_PAGE;
-            const int count = std::min(ROWS_PER_PAGE,
-                (int)g_state.rows.size() - first);
+            const int count = std::min(ROWS_PER_PAGE, Visible_Count() - first);
             for (int index = 0; index < count; ++index) {
-                const int row_index = first + index;
-                const config::s_settings_row& row = g_state.rows[row_index];
+                const int visible = first + index;
                 const int16_t y = FIRST_ROW_Y + (int16_t)index * ROW_HEIGHT;
-                const bool selected = row_index == g_state.selected;
+                const bool selected = visible == g_state.selected;
                 fonts::Set_Font_Style(4,
                     selected ? &g_highlight_colors : &g_normal_colors);
+                if (Is_Mod_Row(visible)) {
+                    const config::s_mod_catalogue_entry& entry =
+                        g_state.mods[(size_t)Mod_Index(visible)];
+                    std::string title_text = entry.name;
+                    if (!entry.version_text.empty()) {
+                        title_text += " " + entry.version_text;
+                    }
+                    fonts::Print(TITLE_X, y,
+                        Truncate_To_Width(title_text, TITLE_WIDTH).c_str());
+                    fonts::Set_Font_Style(4,
+                        selected ? &g_highlight_colors : &g_normal_colors);
+                    const std::string value_text = entry.broken
+                        ? "Broken"
+                        : (entry.enabled ? "[x] Enabled" : "[ ] Disabled");
+                    fonts::Print(VALUE_X, y,
+                        Truncate_To_Width(value_text, VALUE_WIDTH).c_str());
+                    continue;
+                }
+                const config::s_settings_row& row =
+                    g_state.rows[(size_t)Visible_Row_Index(visible)];
                 const std::string title_text = Truncate_To_Width(row.title, TITLE_WIDTH);
                 fonts::Print(TITLE_X, y, title_text.c_str());
                 if (row.restart_required) {
@@ -498,7 +779,7 @@ namespace SETTINGS_SCREEN {
                     }
                 }
                 // The edit field draws its own text while it is open.
-                if (row_index == g_state.editing_row) {
+                if (visible == g_state.editing_row) {
                     continue;
                 }
                 fonts::Set_Font_Style(4,
@@ -506,6 +787,13 @@ namespace SETTINGS_SCREEN {
                 std::string value_text;
                 if (row.widget == config::SETTINGS_WIDGET_INFO) {
                     value_text = row.info;
+                } else if (row.widget == config::SETTINGS_WIDGET_TOGGLE) {
+                    // Checkbox-style booleans, as in the original GAME
+                    // SETTINGS dialog: [x] on, [ ] off.
+                    config::s_typed_value value;
+                    value_text = config::Get_Settings_Row_Value(row, &value)
+                        ? (value.bool_value ? "[x]" : "[ ]")
+                        : "?";
                 } else {
                     config::s_typed_value value;
                     value_text = config::Get_Settings_Row_Value(row, &value)
@@ -516,11 +804,15 @@ namespace SETTINGS_SCREEN {
                     Truncate_To_Width(value_text, VALUE_WIDTH).c_str());
             }
 
-            const config::s_settings_row& selected_row =
-                g_state.rows[g_state.selected];
+            std::string help_text;
+            if (mods_tab && Is_Mod_Row(g_state.selected)) {
+                help_text = Mod_Help_Text(g_state.mods[(size_t)Mod_Index(g_state.selected)]);
+            } else if (Visible_Count() > 0) {
+                help_text = g_state.rows[(size_t)Visible_Row_Index(g_state.selected)].description;
+            }
             std::string help_line1;
             std::string help_line2;
-            Wrap_Text(selected_row.description, TEXT_WIDTH, &help_line1, &help_line2);
+            Wrap_Text(help_text, TEXT_WIDTH, &help_line1, &help_line2);
             fonts::Set_Font_Style(4, &g_normal_colors);
             fonts::Print(TITLE_X, HELP_Y, help_line1.c_str());
             if (!help_line2.empty()) {
@@ -536,9 +828,11 @@ namespace SETTINGS_SCREEN {
                 fonts::Print(110, FOOTER_Y, "Next");
             }
             fonts::Print(556, FOOTER_Y, "Done");
-            const char* restart_note = "* = takes effect after restart";
-            fonts::Print((640 - fonts::Get_String_Width(restart_note)) / 2, FOOTER_Y,
-                restart_note);
+            const char* footer_note = mods_tab
+                ? "Mod changes apply immediately"
+                : "* = takes effect after restart";
+            fonts::Print((640 - fonts::Get_String_Width(footer_note)) / 2, FOOTER_Y,
+                footer_note);
 
             fields::Draw_Visible_Fields();
         }
@@ -557,6 +851,8 @@ namespace SETTINGS_SCREEN {
         g_state.status =
             "Click a setting to change it. * marks settings that need a restart.";
         Resolve_Target();
+        Read_Enabled_Set();
+        Rebuild_Visible_Rows();
 
         video::Set_Refresh_Full();
         fields::Clear_Fields();
@@ -607,13 +903,28 @@ namespace SETTINGS_SCREEN {
                         Commit_Edit();
                     }
                 } else {
-                    const int first = g_state.page * ROWS_PER_PAGE;
-                    const int count = std::min(ROWS_PER_PAGE,
-                        (int)g_state.rows.size() - first);
-                    for (int index = 0; index < count; ++index) {
-                        if (input == g_state.row_fields[index]) {
-                            Handle_Row_Click(first + index);
+                    bool handled = false;
+                    for (int category = 0; category < CATEGORY_COUNT; ++category) {
+                        if (input == g_state.tab_fields[category]) {
+                            Switch_Category(category);
+                            handled = true;
                             break;
+                        }
+                    }
+                    if (!handled) {
+                        const int first = g_state.page * ROWS_PER_PAGE;
+                        const int count = std::min(ROWS_PER_PAGE,
+                            Visible_Count() - first);
+                        for (int index = 0; index < count; ++index) {
+                            if (input == g_state.row_fields[index]) {
+                                const int visible = first + index;
+                                if (Is_Mod_Row(visible)) {
+                                    Handle_Mod_Click(Mod_Index(visible));
+                                } else {
+                                    Handle_Row_Click(visible);
+                                }
+                                break;
+                            }
                         }
                     }
                 }
