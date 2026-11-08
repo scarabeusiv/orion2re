@@ -3249,6 +3249,14 @@ DOCTEST_TEST_CASE("mod picker preview reports v150i and v120 conflicting with vd
         {"vdc-gm3", "v120"}, &preview, &diagnostic));
     DOCTEST_CHECK(diagnostic.message ==
         "package 'v120' conflicts with active package 'vdc-gm3'");
+    // Reverse order for v150i as well: vdc-gm3 resolves first, but
+    // v150i's own entry still fires. The message names the packages in
+    // resolution order (vdc-gm3 first), but the conflict is still the
+    // same v150i entry firing.
+    DOCTEST_CHECK_FALSE(config::Preview_Enabled_Mods(
+        {"vdc-gm3", "v150i"}, &preview, &diagnostic));
+    DOCTEST_CHECK(diagnostic.message ==
+        "package 'vdc-gm3' conflicts with active package 'v150i'");
     // The failed dry runs changed nothing.
     DOCTEST_CHECK(config::Get_Active_Config()->package_order ==
         std::vector<std::string>{"v150"});

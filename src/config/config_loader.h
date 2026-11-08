@@ -102,6 +102,12 @@ namespace config {
     // file is NOT written; persisting the choice is the config writer's job.
     // Until the file is updated, a file-based reload (Alt+R) refuses with
     // a package-order change, as it should.
+    // Limitation: Apply rebuilds the candidate fresh from defaults plus
+    // the documents, so in-memory overrides not present in the document
+    // (recorded via Record_Active_Native_Config_Write) are dropped. That
+    // is latent today (no production caller records overrides before an
+    // Apply), but a future settings writer must re-apply its overrides
+    // after Apply, or Apply must be taught to preserve them.
     bool Apply_Enabled_Mods(const std::vector<std::string>& enabled_mods,
         s_cfg_diagnostic* diagnostic);
 

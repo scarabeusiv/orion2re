@@ -128,6 +128,43 @@ DOCTEST_TEST_CASE("a symlinked config is written through, keeping the link") {
     DOCTEST_CHECK(!diagnostic.message.empty());
 }
 
+DOCTEST_TEST_CASE("a symlinked config resolves includes beside the link, not the target") {
+    Temp_Dir dir;
+    const std::filesystem::path target_dir = dir.path / "real";
+    const std::filesystem::path link_dir = dir.path / "link";
+    std::filesystem::create_directories(target_dir);
+    std::filesystem::create_directories(link_dir);
+    const std::filesystem::path target_path = target_dir / "orion2re.cfg";
+    const std::filesystem::path link_path = link_dir / "orion2re.cfg";
+    // The config includes "extra.cfg". The loader resolves it lexically
+    // beside the link, so an extra.cfg beside the link is the one that
+    // takes effect -- even though the config file itself lives beside
+    // the target.
+    Write_File(target_path, "include \"extra.cfg\";\nenable a;\n");
+    std::error_code error;
+    std::filesystem::create_symlink(target_path, link_path, error);
+    DOCTEST_REQUIRE(!error);
+
+    // An extra.cfg beside the link that enables a mod must be refused:
+    // the loader would see the included mod, so the written set would
+    // not match the effective set.
+    Write_File(link_dir / "extra.cfg", "enable sneaky;\n");
+    config::s_cfg_diagnostic diagnostic;
+    DOCTEST_CHECK_FALSE(
+        config::Write_Enabled_Mods(link_path.string(), {"b"}, &diagnostic));
+    DOCTEST_CHECK(!diagnostic.message.empty());
+    DOCTEST_CHECK(Read_File(target_path) == "include \"extra.cfg\";\nenable a;\n");
+
+    // A harmless extra.cfg beside the link (a setting, no enable) is
+    // resolved and read, so the write succeeds -- proving the writer
+    // looked beside the link. An extra.cfg beside the target only is
+    // invisible to the loader and must not be consulted.
+    Write_File(link_dir / "extra.cfg", "interface fullscreen = false;\n");
+    Write_File(target_dir / "extra.cfg", "enable sneaky;\n");
+    DOCTEST_REQUIRE(config::Write_Enabled_Mods(link_path.string(), {"b"}, &diagnostic));
+    DOCTEST_CHECK(Read_File(target_path) == "include \"extra.cfg\";\nenable b;\n");
+}
+
 DOCTEST_TEST_CASE("desired order is the written order") {
     std::string rewritten;
     config::s_cfg_diagnostic diagnostic;
