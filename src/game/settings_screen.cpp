@@ -673,15 +673,23 @@ namespace SETTINGS_SCREEN {
                 g_state.status = "Mods cannot be saved: no configuration file target.";
                 return;
             }
-            std::vector<std::string> candidate = g_state.enabled_ids;
-            const auto found = std::find(candidate.begin(), candidate.end(), entry.id);
-            const bool enabling = found == candidate.end();
+            const std::vector<std::string> previous_enabled = g_state.enabled_ids;
+            const auto found = std::find(previous_enabled.begin(),
+                previous_enabled.end(), entry.id);
+            const bool enabling = found == previous_enabled.end();
+            std::vector<std::string> candidate;
             if (enabling) {
                 // Newly enabled mods append after the order already in
                 // the file; the resolver orders the written set.
+                candidate = previous_enabled;
                 candidate.push_back(entry.id);
             } else {
-                candidate.erase(found);
+                // A dependency chain is a unit: disabling a mod also
+                // disables its dependents and any dependency nothing
+                // remaining needs (see Prune_Disabled_Mod_Set), so no
+                // partial chain is left behind.
+                candidate = config::Prune_Disabled_Mod_Set(g_state.mods,
+                    previous_enabled, entry.id);
             }
             config::s_cfg_diagnostic diagnostic;
             config::s_mod_set_preview preview;
@@ -711,11 +719,40 @@ namespace SETTINGS_SCREEN {
             const std::string active = preview.package_order.empty()
                 ? "no mods"
                 : Join_Ids(preview.package_order);
+            std::string extra;
+            if (enabling) {
+                // Dependencies the resolver pulled in alongside the mod.
+                std::vector<std::string> pulled;
+                for (const std::string& id : preview.package_order) {
+                    if (std::find(candidate.begin(), candidate.end(), id) ==
+                        candidate.end()) {
+                        pulled.push_back(id);
+                    }
+                }
+                if (!pulled.empty()) {
+                    extra = ". Also enabled: " + Join_Ids(pulled);
+                }
+            } else {
+                // Chain members the disable took with it.
+                std::vector<std::string> removed;
+                for (const std::string& id : previous_enabled) {
+                    if (id != entry.id &&
+                        std::find(candidate.begin(), candidate.end(), id) ==
+                            candidate.end()) {
+                        removed.push_back(id);
+                    }
+                }
+                if (!removed.empty()) {
+                    extra = ". Also disabled: " + Join_Ids(removed);
+                }
+            }
             g_state.status = "'" + entry.id + "' " +
-                (enabling ? "enabled" : "disabled") + ". Active mods: " + active + ".";
+                (enabling ? "enabled" : "disabled") + extra +
+                ". Active mods: " + active + ".";
         }
 
-        std::string Mod_Help_Text(const config::s_mod_catalogue_entry& entry) {
+        std::string Mod_Help_Text(const config::s_mod_catalogue_entry& entry,
+            const std::vector<config::s_mod_catalogue_entry>& catalogue) {
             std::string help = entry.description.empty() ? entry.id : entry.description;
             std::string meta;
             if (entry.broken) {
@@ -729,6 +766,25 @@ namespace SETTINGS_SCREEN {
                         ids.push_back(dependency.id);
                     }
                     meta += "; Needs: " + Join_Ids(ids);
+                }
+                // Enabled mods that need this one: disabling it disables
+                // them too, so the chain is visible before the click.
+                // (The row's [x]/[ ] already states this mod's own
+                // state, so it is not repeated here in words.)
+                std::vector<std::string> required_by;
+                for (const config::s_mod_catalogue_entry& other : catalogue) {
+                    if (!other.enabled || other.id == entry.id) {
+                        continue;
+                    }
+                    for (const config::s_mod_dependency& dependency : other.dependencies) {
+                        if (dependency.id == entry.id) {
+                            required_by.push_back(other.id);
+                            break;
+                        }
+                    }
+                }
+                if (!required_by.empty()) {
+                    meta += "; Required by: " + Join_Ids(required_by);
                 }
                 if (!entry.conflicts.empty()) {
                     meta += "; Conflicts: " + Join_Ids(entry.conflicts);
@@ -826,7 +882,8 @@ namespace SETTINGS_SCREEN {
 
             std::string help_text;
             if (mods_tab && Is_Mod_Row(g_state.selected)) {
-                help_text = Mod_Help_Text(g_state.mods[(size_t)Mod_Index(g_state.selected)]);
+                help_text = Mod_Help_Text(g_state.mods[(size_t)Mod_Index(g_state.selected)],
+                    g_state.mods);
             } else if (Visible_Count() > 0) {
                 help_text = g_state.rows[(size_t)Visible_Row_Index(g_state.selected)].description;
             }
