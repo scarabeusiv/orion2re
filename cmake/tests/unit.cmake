@@ -2159,6 +2159,41 @@ target_compile_definitions(test_sprite_art PRIVATE
     SPRITE_ART_BASE_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data/base"
 )
 
+orion2re_add_unit_test(test_ui_kit
+    SOURCES
+        tests/unit/ui_kit_test.cpp
+    PRODUCTION_SOURCES
+        src/game/buffer.cpp
+        src/game/button_art.cpp
+        src/game/compat.cpp
+        src/game/farload.cpp
+        src/game/sprite_art.cpp
+        src/game/ui_kit.cpp
+        src/game/string_overrides.cpp
+        src/config/text_encoding.cpp
+        vendors/yyjson/src/yyjson.c
+        src/game/vfs.cpp
+        src/game/vfs_file.cpp
+        src/game/vfs_lbx.cpp
+        src/game/vfs_path.cpp
+        src/game/vfs_zip.cpp
+    FAKE_SOURCES
+        tests/fakes/fake_allocate.cpp
+        tests/fakes/fake_animate.cpp
+        tests/fakes/fake_exitm.cpp
+        tests/fakes/fake_memory.cpp
+        tests/fakes/fake_platform_exit.cpp
+        tests/fakes/fake_sound.cpp
+        tests/fakes/fake_test_state.cpp
+        tests/fakes/fake_ui_kit_runtime.cpp
+        tests/fakes/fake_video.cpp
+    LIBRARIES
+        miniz
+    LINK_SDL
+)
+
+target_include_directories(test_ui_kit PRIVATE "${ORION2RE_VENDORED_YYJSON_DIR}/src")
+
 foreach(TARGET_NAME IN ITEMS test_newgame test_homegen test_mapgen_planet_max
     test_lua_mod_runtime test_refit_cost test_design_weapon_damage test_shield_table
     test_ground_commando test_mainpups_leader_technology test_racesel_digest)
