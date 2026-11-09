@@ -46,9 +46,10 @@ namespace SETTINGS_SCREEN {
         // box spans the whole width between the list and the bottom
         // bar, like the colony screen's bottom info area. The colony
         // screens' panels are baked into their 640x480 background
-        // art, so the frame here is the engine-drawn equivalent: a
-        // thin light-grey outer line with a dark inner line, thin
-        // grey panel borders, and framed row slots.
+        // art, so the frame here is the kit's Window_Frame: the
+        // bevelled metal band baked into the colony screens'
+        // backgrounds, 9-12 px per side, drawn in theme colours,
+        // with thin grey panel borders and framed row slots inside.
         //
         // Asset sourcing: the colony sprites were audited against
         // COLSUM.LBX (rendered and measured, 2026-11-09), and the
@@ -113,27 +114,30 @@ namespace SETTINGS_SCREEN {
         //   fields::down_mouse_button on the RETURN field and the
         //   auto function redraws the screen on every hold tick, so
         //   the draw picks the pressed frame until release.
-        constexpr int16_t TITLE_X = 16;
+        constexpr int16_t TITLE_X = 19;
         constexpr int16_t TITLE_Y = 8;
         constexpr int16_t TITLE_WIDTH = 348;
         constexpr int16_t VALUE_X = 372;
         constexpr int16_t VALUE_WIDTH = 244;
-        // List panel: position and width are this screen's; its
-        // height, first-row y, row pitch and scroll track come from
-        // the kit layout (ui_kit::List_Layout), which derives them
-        // from the theme's Spacing -- the colony's 30 px rows on a
-        // 31 px pitch, header 3 px above the first row. The panel
-        // ends at the last row's bottom edge.
-        constexpr int16_t LIST_PANEL_X = 8;
+        // List panel: its x and width come from the window frame's
+        // content rect (Make_List_Layout); its y is this screen's
+        // (below the title), and its height, first-row y, row pitch
+        // and scroll track come from the kit layout
+        // (ui_kit::List_Layout), which derives them from the
+        // theme's Spacing -- the colony's 30 px rows on a 31 px
+        // pitch, header 3 px above the first row. The panel ends
+        // list_footing below the last row's bottom edge.
         constexpr int16_t LIST_PANEL_Y = 30;
-        constexpr int16_t LIST_PANEL_W = 624;
         // SETTING / VALUE header plates, like the colony list's
-        // header boxes (NAME, FARMERS, ...), at the top of the list
-        // panel, aligned to the name and value columns.
+        // raised header boxes (NAME, FARMERS, ...), at the top of
+        // the list panel, aligned to the name and value columns.
+        // The SETTING plate starts at the panel's left edge plus 2
+        // and ends 4 px before the VALUE plate, like the colony's
+        // plates (its face is lighter than the list interior).
         constexpr int16_t HEADER_Y = 32;
         constexpr int16_t HEADER_HEIGHT = 22;
-        constexpr int16_t HEADER_SETTING_X = 10;
-        constexpr int16_t HEADER_SETTING_W = 354;
+        constexpr int16_t HEADER_SETTING_X = 13;
+        constexpr int16_t HEADER_SETTING_W = 351;
         constexpr int16_t HEADER_VALUE_X = 368;
         constexpr int16_t HEADER_VALUE_W = 248;
         constexpr int ROWS_PER_PAGE = 10;
@@ -161,24 +165,20 @@ namespace SETTINGS_SCREEN {
         // row's description lives here, with a "Requires restart."
         // line for the settings it applies to and the status line
         // below it. No permanent restart legend anywhere else.
-        // Its top comes from the kit layout (4 px below the last
-        // row, the colony's list-to-info gap) and its bottom sits
+        // Its top comes from the kit layout (4 px below the panel,
+        // the colony's list-to-info gap) and its bottom sits
         // the theme's info-to-bar gap above the bottom bar, so the
         // box fills the space between the list and the bar. The
-        // text keeps a 6 px top pad inside the box.
-        constexpr int16_t HELP_PANEL_X = 2;
-        constexpr int16_t HELP_PANEL_W = 636;
+        // text keeps a 6 px top pad inside the box. Its x and width
+        // come from the window frame's content rect, at the draw site.
         constexpr int16_t HELP_PAD_TOP = 6;
         constexpr int16_t HELP_LINE_HEIGHT = 15;
         // Bottom bar: the category selectors on the left, Show more
         // and RETURN side by side on the right, all on one line —
         // Show more and RETURN never wrap to a second line. The bar
-        // sits at y 446 like the colony's sort buttons (24 tall),
-        // leaving the colony's 9 px of window below it.
-        constexpr int16_t CAT_Y = 446;
-        constexpr int16_t FOOTER_Y = 451;
-        constexpr int16_t NAV_Y = 446;
-        constexpr int16_t NAV_Y_END = 470;
+        // is the frame's bottom bar (24 tall, like the colony's sort
+        // buttons), so its y and end come from the frame
+        // (Bottom_Bar_Y/Bottom_Bar_End), never from constants here.
         // Show more and RETURN, side by side at the right end of the
         // bottom bar. The widths fit their labels with room to spare:
         // "Show more" measures ~102 px, "RETURN" ~64 px, so the
@@ -442,11 +442,35 @@ namespace SETTINGS_SCREEN {
         // the theme's frames; the screen never names a sprite id.
         std::unique_ptr<ui_kit::Colony_Theme> g_theme;
 
+        // The window frame for this screen: the whole 640x480
+        // window, drawn by the kit's Window_Frame. Every rect inside
+        // the window -- the list panel, the tab bar, the help box,
+        // the bottom-bar buttons -- is derived from this frame's
+        // content rect, never from hard-coded screen constants.
+        // Only call once g_theme is built (Settings_Screen builds
+        // it before any field rebuild or draw).
+        ui_kit::Window_Frame Make_Window_Frame() {
+            return ui_kit::Window_Frame(0, 0, 640, 480, *g_theme);
+        }
+
+        // The bottom bar's y and exclusive end: the frame's bottom
+        // bar, Tab_Height tall, its bottom on the content bottom.
+        int16_t Bottom_Bar_Y() {
+            return Make_Window_Frame().bottom_bar_y(
+                g_theme->Tab_Height());
+        }
+
+        int16_t Bottom_Bar_End() {
+            return (int16_t)(Bottom_Bar_Y() + g_theme->Tab_Height());
+        }
+
         // The tab bar for the current category set: the rects come
         // from the bar, so the click fields and the draw cannot drift
-        // apart.
+        // apart. The bar sits in the frame's bottom bar, starting
+        // at the content's left edge.
         ui_kit::Tab_Bar Make_Tab_Bar() {
-            ui_kit::Tab_Bar bar(TITLE_X, CAT_Y, *g_theme);
+            ui_kit::Tab_Bar bar(Make_Window_Frame().content_x(),
+                Bottom_Bar_Y(), *g_theme);
             for (int category = 0; category < CATEGORY_COUNT; ++category) {
                 bar.Add_Tab(CATEGORY_LABELS[category],
                     category == g_state.category);
@@ -457,12 +481,14 @@ namespace SETTINGS_SCREEN {
         // The list layout for this screen: the panel rect, header
         // rect, row rects and scroll track, derived from the
         // theme's Spacing (game/ui_kit.h), so the fields, the draw
-        // and the scrolling all share one geometry. Only call once
-        // g_theme is built (Settings_Screen builds it before any
-        // field rebuild or draw).
+        // and the scrolling all share one geometry. The panel's x
+        // and width come from the window frame's content rect.
+        // Only call once g_theme is built (Settings_Screen builds
+        // it before any field rebuild or draw).
         ui_kit::List_Layout Make_List_Layout() {
-            return ui_kit::List_Layout(LIST_PANEL_X, LIST_PANEL_Y,
-                LIST_PANEL_W, ROW_FIELD_X_END, HEADER_Y, HEADER_HEIGHT,
+            const ui_kit::Window_Frame frame = Make_Window_Frame();
+            return ui_kit::List_Layout(frame.content_x(), LIST_PANEL_Y,
+                frame.content_w(), ROW_FIELD_X_END, HEADER_Y, HEADER_HEIGHT,
                 ROWS_PER_PAGE, g_theme->Spacing());
         }
 
@@ -486,8 +512,8 @@ namespace SETTINGS_SCREEN {
         // engine-drawn button's 76x24.
         int16_t Return_Button_Y() {
             return g_return_frame != nullptr
-                ? (int16_t)(NAV_Y_END - g_return_frame->height + 1)
-                : NAV_Y;
+                ? (int16_t)(Bottom_Bar_End() - g_return_frame->height + 1)
+                : Bottom_Bar_Y();
         }
 
         int16_t Return_Button_W() {
@@ -983,10 +1009,11 @@ namespace SETTINGS_SCREEN {
             // every category. They share the bar's single line and
             // never wrap.
             g_state.show_all_field = fields::Add_Hidden_Field(
-                SHOW_MORE_X, NAV_Y, SHOW_MORE_X + SHOW_MORE_W - 1, NAV_Y_END, "", 0);
+                SHOW_MORE_X, Bottom_Bar_Y(), SHOW_MORE_X + SHOW_MORE_W - 1,
+                Bottom_Bar_End(), "", 0);
             g_state.done_field = fields::Add_Hidden_Field(
                 RETURN_X, Return_Button_Y(),
-                RETURN_X + Return_Button_W() - 1, NAV_Y_END, "", 0);
+                RETURN_X + Return_Button_W() - 1, Bottom_Bar_End(), "", 0);
         }
 
         void Toggle_Show_All() {
@@ -1552,12 +1579,13 @@ namespace SETTINGS_SCREEN {
             video::Set_Page_Off();
             graphics::Fill(0, 0, 639, 479, 0);
 
-            // Full-window colony chrome (game/ui_kit.h): a thin
-            // light outer line at the very edge and a dark inner
-            // line directly adjacent to it, no gap and no corner
-            // rivets, like the frame baked into the colony
-            // screens' backgrounds, with the centred title.
-            ui_kit::Draw_Window_Frame(*g_theme, 0, 0, 640, 480, "Settings");
+            // Full-window colony chrome (game/ui_kit.h): the
+            // bevelled metal frame baked into the colony screens'
+            // backgrounds, drawn by the kit's Window_Frame, with
+            // the centred title. The frame positions everything
+            // inside it: the list panel, the tab bar, the help box.
+            const ui_kit::Window_Frame frame = Make_Window_Frame();
+            frame.Draw("Settings");
             fonts::Set_Font_Style(4, &g_normal_colors);
 
             // List panel, like the colony list: the kit draws the
@@ -1570,14 +1598,25 @@ namespace SETTINGS_SCREEN {
             ui_kit::Draw_List_Background(*g_theme, layout);
             ui_kit::Draw_List_Columns(*g_theme, Make_List_Columns(layout));
 
-            // Header plates, like the colony list's header boxes
-            // (NAME, FARMERS, WORKERS, ...): bordered boxes over
-            // the name and value columns at the top of the list panel.
+            // Header plates, like the colony list's raised header
+            // boxes (NAME, FARMERS, WORKERS, ...): bevelled plates
+            // over the name and value columns at the top of the list
+            // panel, their face lighter than the list interior.
             // Drawn after the panel fill, so the fill does not cover them.
-            const auto draw_header_plate = [](int16_t x, int16_t w, const char* label) {
+            const ui_kit::List_Style list_style = g_theme->List_Style();
+            const auto draw_header_plate = [&](int16_t x, int16_t w, const char* label) {
                 graphics::Fill(x, HEADER_Y, x + w - 1, HEADER_Y + HEADER_HEIGHT - 1,
-                    PANEL_INTERIOR);
-                graphics::Box(x, HEADER_Y, w, HEADER_HEIGHT, 1, PANEL_BORDER);
+                    list_style.plate_face);
+                // Raised bevel: light on the top and left, shade on
+                // the bottom and right, like the colony's plates.
+                graphics::Fill(x, HEADER_Y, x + w - 1, HEADER_Y,
+                    list_style.frame_light);
+                graphics::Fill(x, HEADER_Y, x, HEADER_Y + HEADER_HEIGHT - 1,
+                    list_style.frame_light);
+                graphics::Fill(x, HEADER_Y + HEADER_HEIGHT - 1, x + w - 1,
+                    HEADER_Y + HEADER_HEIGHT - 1, list_style.frame_shade);
+                graphics::Fill(x + w - 1, HEADER_Y, x + w - 1,
+                    HEADER_Y + HEADER_HEIGHT - 1, list_style.frame_shade);
                 fonts::Set_Font_Style(4, &g_title_colors);
                 const int16_t label_x = (int16_t)(x +
                     (w - fonts::Get_String_Width(label)) / 2);
@@ -1716,13 +1755,13 @@ namespace SETTINGS_SCREEN {
             const ui_kit::Spacing spacing = g_theme->Spacing();
             const int16_t desc_y = layout.info_y();
             const int16_t desc_bottom =
-                (int16_t)(NAV_Y - 1 - spacing.info_to_bar);
+                (int16_t)(Bottom_Bar_Y() - 1 - spacing.info_to_bar);
             const int16_t desc_h = (int16_t)(desc_bottom - desc_y + 1);
-            graphics::Fill(HELP_PANEL_X, desc_y,
-                HELP_PANEL_X + HELP_PANEL_W - 1, desc_y + desc_h - 1,
+            graphics::Fill(frame.content_x(), desc_y,
+                frame.content_right() - 1, desc_y + desc_h - 1,
                 PANEL_INTERIOR);
-            graphics::Box(HELP_PANEL_X, desc_y, HELP_PANEL_W, desc_h, 1,
-                PANEL_BORDER);
+            graphics::Box(frame.content_x(), desc_y, frame.content_w(),
+                desc_h, 1, PANEL_BORDER);
             std::string help_text;
             bool restart_required = false;
             if (mods_tab && Is_Mod_Row(g_state.selected)) {
@@ -1764,14 +1803,17 @@ namespace SETTINGS_SCREEN {
             // Show more is a toggle that stays pressed while the
             // secondary rows are shown.
             Make_Tab_Bar().Draw();
-            const auto draw_action_button = [](int16_t x, int16_t w, const char* label,
+            const int16_t bar_y =
+                frame.bottom_bar_y(g_theme->Tab_Height());
+            const int16_t bar_h = g_theme->Tab_Height();
+            const auto draw_action_button = [&](int16_t x, int16_t w, const char* label,
                 bool primary, bool pressed) {
-                Draw_Metal_Button(x, NAV_Y, w, NAV_Y_END - NAV_Y, primary, pressed);
+                Draw_Metal_Button(x, bar_y, w, bar_h, primary, pressed);
                 fonts::Set_Font_Style(4,
                     primary ? &g_light_text_colors : &g_dark_text_colors);
                 const int16_t label_x = (int16_t)(x +
                     (w - fonts::Get_String_Width(label)) / 2);
-                fonts::Print(label_x, FOOTER_Y, label);
+                fonts::Print(label_x, (int16_t)(bar_y + 5), label);
             };
             // Show more is a RETURN-style metal toggle: the metal
             // face (not the blue primary face), latched pressed
