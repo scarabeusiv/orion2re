@@ -298,7 +298,7 @@ DOCTEST_TEST_SUITE("ui kit") {
     DOCTEST_TEST_CASE("tab bar lays tabs out from label widths with padding and a 1 px gap") {
         using namespace test_ui_kit_detail;
         Fake_Theme theme;
-        ui_kit::Tab_Bar bar(16, 446, theme);
+        ui_kit::Tab_Bar bar(16, 446, 126, theme);
         bar.Add_Tab("A", true);
         bar.Add_Tab("BB", false);
         bar.Add_Tab("CCC", false);
@@ -317,6 +317,28 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(bar.height() == 24);
     }
 
+    DOCTEST_TEST_CASE("tab bar fills the strip to its right edge in proportion to label widths") {
+        using namespace test_ui_kit_detail;
+        Fake_Theme theme;
+        ui_kit::Tab_Bar bar(16, 446, 226, theme);
+        bar.Add_Tab("A", true);
+        bar.Add_Tab("BB", false);
+        bar.Add_Tab("CCC", false);
+
+        // Natural widths 26/36/46 (total 108) over 208 px of tab
+        // width (226 - 16 - 2 gaps): 50/69/89, ending at 226.
+        DOCTEST_REQUIRE(bar.tabs().size() == 3);
+        DOCTEST_CHECK(bar.tabs()[0].width == 50);
+        DOCTEST_CHECK(bar.tabs()[1].width == 69);
+        DOCTEST_CHECK(bar.tabs()[2].width == 89);
+        DOCTEST_CHECK(bar.tabs()[0].x == 16);
+        DOCTEST_CHECK(bar.tabs()[1].x == 16 + 50 + 1);
+        DOCTEST_CHECK(bar.tabs()[2].x == 16 + 50 + 1 + 69 + 1);
+        DOCTEST_CHECK(bar.End_X() == 226);
+        DOCTEST_CHECK(bar.y() == 446);
+        DOCTEST_CHECK(bar.height() == 24);
+    }
+
     DOCTEST_TEST_CASE("tab bar draws the active frame for the active tab and centres the labels") {
         using namespace test_ui_kit_detail;
         const std::string normal = Make_Frame_Pixels(10, 1, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
@@ -328,10 +350,11 @@ DOCTEST_TEST_SUITE("ui kit") {
             ui_kit::Frame((const s_animation_header*)active.data());
         theme.frames.left_slice = 2;
         theme.frames.right_slice = 2;
+        theme.frames.normal.middle_column = 5; // value 6, tiled
 
         test::fakes::Reset_All_();
         Scoped_Video_Page page;
-        ui_kit::Tab_Bar bar(0, 0, theme);
+        ui_kit::Tab_Bar bar(0, 0, 63, theme);
         bar.Add_Tab("A", true);
         bar.Add_Tab("BB", false);
         bar.Draw();
@@ -342,6 +365,10 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(page.At(1, 0) == 12);
         DOCTEST_CHECK(page.At(27, 0) == 1);
         DOCTEST_CHECK(page.At(28, 0) == 2);
+        // The normal tab's flat middle is one face column tiled
+        // (three-slice), not the whole middle repeated.
+        DOCTEST_CHECK(page.At(29, 0) == 6);
+        DOCTEST_CHECK(page.At(60, 0) == 6);
         // Labels are centred in their tabs, at the theme's y offset,
         // with the active flag carried through to the font.
         DOCTEST_REQUIRE(theme.font.prints.size() == 2);
@@ -367,7 +394,7 @@ DOCTEST_TEST_SUITE("ui kit") {
         theme.frames.right_slice = 2;
 
         Scoped_Video_Page page;
-        ui_kit::Tab_Bar bar(0, 0, theme);
+        ui_kit::Tab_Bar bar(0, 0, 26, theme);
         bar.Add_Tab("A", true); // 26 wide: middle resampled 6 -> 22
         bar.Draw();
 
@@ -393,7 +420,7 @@ DOCTEST_TEST_SUITE("ui kit") {
 
         test::fakes::Reset_All_();
         Scoped_Video_Page page;
-        ui_kit::Tab_Bar bar(0, 0, theme);
+        ui_kit::Tab_Bar bar(0, 0, 63, theme);
         bar.Add_Tab("A", true);
         bar.Add_Tab("BB", false);
         bar.Draw();
@@ -424,7 +451,7 @@ DOCTEST_TEST_SUITE("ui kit") {
         theme.frames.right_slice = 2;
 
         Scoped_Video_Page page;
-        ui_kit::Tab_Bar bar(0, 0, theme);
+        ui_kit::Tab_Bar bar(0, 0, 49, theme);
         bar.Add_Tab("A", true);
         bar.Add_Tab("BB", false);
         // Alt metrics: padding 4, gap 3, height 30, label offset 10.
@@ -480,10 +507,15 @@ DOCTEST_TEST_SUITE("ui kit") {
         const ui_kit::Tab_Frames frames = theme.Tab_Frames();
         DOCTEST_CHECK(frames.normal.frame.Is_Null());
         DOCTEST_CHECK(frames.active.frame.Is_Null());
+        // The rest frame three-slices on its flat face column; the
+        // selected frame resamples its blue gradient.
+        DOCTEST_CHECK(frames.normal.middle_column == 7);
+        DOCTEST_CHECK_FALSE(frames.normal.resample_middle);
+        DOCTEST_CHECK(frames.active.resample_middle);
 
         test::fakes::Reset_All_();
         Scoped_Video_Page page;
-        ui_kit::Tab_Bar bar(0, 0, theme);
+        ui_kit::Tab_Bar bar(0, 0, 63, theme);
         bar.Add_Tab("A", true);
         bar.Add_Tab("BB", false);
         bar.Draw();
@@ -556,7 +588,7 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK_FALSE(frames.active.frame.Is_Null());
         DOCTEST_CHECK_FALSE(frames.normal.resample_middle);
         DOCTEST_CHECK(frames.active.resample_middle);
-        DOCTEST_CHECK(frames.left_slice == 4);
+        DOCTEST_CHECK(frames.left_slice == 7);
         DOCTEST_CHECK(frames.right_slice == 0);
 
         DOCTEST_CHECK(theme.Tab_Padding() == 8);
@@ -1290,7 +1322,7 @@ DOCTEST_TEST_SUITE("ui kit") {
         theme.frames.right_slice = 2;
 
         Scoped_Video_Page page;
-        ui_kit::Tab_Bar bar(0, 0, theme);
+        ui_kit::Tab_Bar bar(0, 0, 63, theme);
         bar.Add_Tab("A", false, true); // held, not active
         bar.Add_Tab("BB", false);
         bar.Draw();

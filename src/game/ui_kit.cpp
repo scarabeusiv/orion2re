@@ -24,11 +24,25 @@ namespace ui_kit {
 
         // The colony sort-button frame, COLSUM.LBX anims[4], 50x24:
         // bevelled on the left and top, flat black on the right, so
-        // the stretched draw keeps a 4 px left slice and no right
+        // the stretched draw keeps a 7 px left slice and no right
         // slice. The bevel itself is 4 px wide (grey ramp plus the
-        // teal line on the rest frame, blue ramp on the selected).
-        constexpr int16_t kSelector_Left_Slice = 4;
+        // teal line on the rest frame, blue ramp on the selected),
+        // but its corner tails reach column 6 (row 2) and column 4
+        // (row 22), so a 4 px slice would drop them: the slice is
+        // 7 px, and the middle starts at the first flat-face column
+        // (kSelector_Middle_Column).
+        constexpr int16_t kSelector_Left_Slice = 7;
         constexpr int16_t kSelector_Right_Slice = 0;
+
+        // The rest frame's three-slice middle column: column 7, the
+        // first column past the 7 px left slice, is the flat face
+        // (menu 50) on every row of the derived frame -- columns
+        // 7..11 are the modal middle value on all 24 rows
+        // (measured from data/base/sprites/selector-frame/normal.bin;
+        // columns 4..6 carry the top bevel's tail on row 2 and column
+        // 4 on row 22, so tiling the whole middle would repeat them
+        // once per tile on a wide tab).
+        constexpr int16_t kSelector_Middle_Column = 7;
 
         // Tab metrics, measured from the colony sort buttons
         // (colsum.cpp: y 446, 24 tall; next x = x + width + 1).
@@ -268,6 +282,7 @@ namespace ui_kit {
         ui_kit::Tab_Frames frames;
         frames.normal.frame = tab_normal_;
         frames.normal.resample_middle = false;
+        frames.normal.middle_column = kSelector_Middle_Column;
         frames.active.frame = tab_active_;
         // The selected frame's middle is a blue gradient, brightest
         // at the edges and dark in the middle: resample it across
@@ -537,6 +552,14 @@ namespace ui_kit {
             if (frame.resample_middle) {
                 frame.frame.Draw_Stretched_Resampled(x_, y_, width_,
                     frames.left_slice, frames.right_slice);
+            } else if (frame.middle_column >= 0) {
+                // Flat middle, one face column tiled: the same
+                // three-slice cut as a metal button. Tiling the
+                // whole middle would repeat the bevel tail the
+                // source frame carries past its left slice.
+                frame.frame.Draw_Three_Slice(x_, y_, width_,
+                    frames.left_slice, frame.middle_column,
+                    frames.right_slice);
             } else {
                 frame.frame.Draw_Stretched(x_, y_, width_,
                     frames.left_slice, frames.right_slice);
@@ -626,18 +649,62 @@ namespace ui_kit {
         }
     }
 
-    Tab_Bar::Tab_Bar(int16_t x, int16_t y, const Theme& theme)
-        : x_(x), y_(y), theme_(theme) {}
+    Tab_Bar::Tab_Bar(int16_t x, int16_t y, int16_t right,
+        const Theme& theme)
+        : x_(x), y_(y), right_(right), theme_(theme) {}
 
     void Tab_Bar::Add_Tab(const char* label, bool active, bool pressed) {
         Tab tab;
         tab.label = label;
         tab.active = active;
         tab.pressed = pressed;
-        tab.width = (int16_t)(theme_.Tab_Font().Width(label) +
+        tab.natural_width = (int16_t)(theme_.Tab_Font().Width(label) +
             2 * theme_.Tab_Padding());
-        tab.x = tabs_.empty() ? x_ : (int16_t)(End_X() + theme_.Tab_Gap());
         tabs_.push_back(tab);
+        Relayout();
+    }
+
+    void Tab_Bar::Relayout() {
+        // The strip fills [x_, right_): the tabs divide the width
+        // in proportion to their natural widths (label + padding,
+        // like the colony's sort buttons), with the theme's gap
+        // between them, so the strip reads as one continuous row
+        // ending exactly at right_. The last tab absorbs the
+        // rounding remainder; a strip narrower than the natural
+        // widths shrinks the tabs proportionally, never below 1 px.
+        const int16_t count = (int16_t)tabs_.size();
+        if (count == 0) {
+            return;
+        }
+        const int16_t gap = theme_.Tab_Gap();
+        int32_t total_natural = 0;
+        for (const Tab& tab : tabs_) {
+            total_natural += tab.natural_width;
+        }
+        const int16_t available =
+            (int16_t)(right_ - x_ - (count - 1) * gap);
+        int16_t x = x_;
+        int32_t used = 0;
+        for (int16_t index = 0; index < count; ++index) {
+            int16_t width;
+            if (total_natural <= 0) {
+                // No natural width to proportion (empty labels, no
+                // padding): split the strip equally.
+                width = (int16_t)(available / count);
+            } else if (index + 1 < count) {
+                width = (int16_t)(tabs_[(size_t)index].natural_width *
+                    available / total_natural);
+            } else {
+                width = (int16_t)(available - used);
+            }
+            if (width < 1) {
+                width = 1;
+            }
+            tabs_[(size_t)index].width = width;
+            tabs_[(size_t)index].x = x;
+            x = (int16_t)(x + width + gap);
+            used += width;
+        }
     }
 
     const std::vector<Tab_Bar::Tab>& Tab_Bar::tabs() const {

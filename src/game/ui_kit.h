@@ -116,12 +116,16 @@ namespace ui_kit {
 
     // One tab frame: the derived sprite plus how its middle is
     // treated when the tab is wider than the frame. A flat middle
-    // (the rest frame) tiles invisibly; a gradient middle (the
-    // selected frame's blue field) must be resampled, or the
-    // gradient repeats like stripes.
+    // (the rest frame) tiles one text-free face column
+    // (middle_column, three-slice, like a metal button); a gradient
+    // middle (the selected frame's blue field) must be resampled,
+    // or the gradient repeats like stripes. middle_column < 0
+    // means the theme names no single face column: the whole middle
+    // tiles, as before.
     struct Tab_Frame {
         Frame frame;
         bool resample_middle = false;
+        int16_t middle_column = -1;
     };
 
     // Both tab frames, the bevel slices, and the fallback fill the
@@ -248,7 +252,9 @@ namespace ui_kit {
     // families, and the settings screen's value cells are a third
     // use of the same click-a-cell idea:
     // - Selector: a derived COLSUM sort-button frame (Tab_Frames),
-    //   stretched to the button width, label rendered at runtime.
+    //   cut into three slices at the button width -- the bevel as-is,
+    //   one text-free face column tiled across a flat middle, the
+    //   gradient middle resampled -- label rendered at runtime.
     // - Metal: a RETURN cut into three slices -- the derived
     //   frame's domes as-is, one text-free face column tiled
     //   across the middle, the label rendered at runtime -- so
@@ -463,14 +469,15 @@ namespace ui_kit {
         bool primary_ = false;
     };
 
-    // A row of tabs: layout (widths from label + padding, gap
-    // between tabs) and drawing, one Selector Button per tab, so
-    // the tabs are kit buttons with the same frame, text and
-    // pressed/active states as every other button. Owns the
-    // geometry, so the click fields and the drawing can never drift
-    // apart: the screen builds its fields from Tab_Bar::tabs().
-    // A tab's label must outlive the bar: Add_Tab keeps the
-    // caller's pointer, it does not copy the text.
+    // A row of tabs: one continuous strip filling [x, right),
+    // layout (widths in proportion to label + padding, gap between
+    // tabs) and drawing, one Selector Button per tab, so the tabs
+    // are kit buttons with the same frame, text and pressed/active
+    // states as every other button. Owns the geometry, so the click
+    // fields and the drawing can never drift apart: the screen
+    // builds its fields from Tab_Bar::tabs(). A tab's label must
+    // outlive the bar: Add_Tab keeps the caller's pointer, it does
+    // not copy the text.
     class Tab_Bar {
       public:
         struct Tab {
@@ -479,9 +486,10 @@ namespace ui_kit {
             bool pressed = false;
             int16_t x = 0;
             int16_t width = 0;
+            int16_t natural_width = 0; // label + padding, pre-fill
         };
 
-        Tab_Bar(int16_t x, int16_t y, const Theme& theme);
+        Tab_Bar(int16_t x, int16_t y, int16_t right, const Theme& theme);
         void Add_Tab(const char* label, bool active,
             bool pressed = false);
         const std::vector<Tab>& tabs() const;
@@ -491,8 +499,11 @@ namespace ui_kit {
         void Draw() const;
 
       private:
+        void Relayout();
+
         int16_t x_;
         int16_t y_;
+        int16_t right_; // exclusive end of the strip
         const Theme& theme_;
         std::vector<Tab> tabs_;
     };

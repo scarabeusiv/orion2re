@@ -70,7 +70,9 @@ Contents:
   palette, so the active state overrides it onto the menu's own
   blues (50/84/103/138). The sort button is asymmetric as authored
   — bevelled on the left and top, flat black on the right — so the
-  stretched draw keeps a 4 px left slice and no right slice. The
+  stretched draw keeps a 7 px left slice and no right slice: the
+bevel is 4 px but its corner tails reach column 6, so the slice
+carries them as-is. The
   rest frame's flat middle tiles; the selected frame's gradient
   middle is resampled to the tab width
   (sprite_art::Draw_Sprite_Frame_Stretched_Resampled), or the
