@@ -112,9 +112,9 @@ namespace test_metal_button_detail {
               disabled_data(Make_Frame(85, 26, 0x33)) {
             frames.left_slice = 2;
             frames.right_slice = 2;
-            frames.fallback_face = 242;
-            frames.fallback_highlight = 247;
-            frames.fallback_shadow = 232;
+            frames.fallback_face = 241;
+            frames.fallback_highlight = 15;
+            frames.fallback_shadow = 233;
             frames.normal = ui_kit::Frame(
                 (const s_animation_header*)normal_data.c_str());
             frames.pressed = ui_kit::Frame(
@@ -181,9 +181,10 @@ namespace test_metal_button_detail {
 DOCTEST_TEST_SUITE("metal button") {
     DOCTEST_TEST_CASE("width is the label plus padding, height is the frame height") {
         using namespace test_metal_button_detail;
-        Fake_Font label, disabled;
+        Fake_Font label, pressed, disabled;
         Test_Frames test_frames;
-        metal_button::Button button(test_frames.frames, label, disabled);
+        metal_button::Button button(test_frames.frames, label, pressed,
+                                    disabled);
         // 10 px per character, 10 px padding per side.
         DOCTEST_CHECK(button.Width_For_Label("MORE") == 40 + 20);
         DOCTEST_CHECK(button.Width_For_Label("LESS") == 40 + 20);
@@ -193,9 +194,10 @@ DOCTEST_TEST_SUITE("metal button") {
 
     DOCTEST_TEST_CASE("draw writes the state's frame and centres the label") {
         using namespace test_metal_button_detail;
-        Fake_Font label, disabled;
+        Fake_Font label, pressed, disabled;
         Test_Frames test_frames;
-        metal_button::Button button(test_frames.frames, label, disabled);
+        metal_button::Button button(test_frames.frames, label, pressed,
+                                    disabled);
         test::fakes::Reset_All_();
         Scoped_Video_Page page;
         button.Draw(100, 200, 60, "MORE", metal_button::State::kNormal);
@@ -212,8 +214,12 @@ DOCTEST_TEST_SUITE("metal button") {
 
         button.Draw(100, 200, 60, "MORE", metal_button::State::kPressed);
         DOCTEST_CHECK(page.At(100, 200) == 0x22);
-        DOCTEST_REQUIRE(label.prints.size() == 2);
-        DOCTEST_CHECK(label.prints[1].text == "MORE");
+        // Pressed takes the orange pressed font, not the label font.
+        DOCTEST_REQUIRE(pressed.prints.size() == 1);
+        DOCTEST_CHECK(pressed.prints[0].text == "MORE");
+        DOCTEST_CHECK(pressed.prints[0].x == 110);
+        DOCTEST_CHECK(pressed.prints[0].y == 207);
+        DOCTEST_CHECK(label.prints.size() == 1);
 
         button.Draw(100, 200, 60, "MORE", metal_button::State::kDisabled);
         DOCTEST_CHECK(page.At(100, 200) == 0x33);
@@ -225,31 +231,36 @@ DOCTEST_TEST_SUITE("metal button") {
 
     DOCTEST_TEST_CASE("draw falls back to the engine-drawn button when a frame is missing") {
         using namespace test_metal_button_detail;
-        Fake_Font label, disabled;
+        Fake_Font label, pressed, disabled;
         Test_Frames test_frames(/*null_disabled=*/true);
         test_frames.frames.normal = ui_kit::Frame();
         test_frames.frames.pressed = ui_kit::Frame();
-        metal_button::Button button(test_frames.frames, label, disabled);
+        metal_button::Button button(test_frames.frames, label, pressed,
+                                    disabled);
         test::fakes::Reset_All_();
         Scoped_Video_Page page;
         button.Draw(100, 200, 60, "MORE", metal_button::State::kNormal);
-        // Flat face 242, highlight 247 top/left, shadow 232
+        // Flat face 241, dark border 15 top/left, 233
         // bottom/right: one face fill plus four bevel fills.
         DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 5);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 242);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 247);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 247);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[3].color == 232);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[4].color == 232);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 241);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 15);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 15);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].color == 233);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[4].color == 233);
         DOCTEST_REQUIRE(label.prints.size() == 1);
         DOCTEST_CHECK(label.prints[0].text == "MORE");
 
-        // Pressed inverts the bevel.
+        // Pressed inverts the bevel and darkens the face one step,
+        // and takes the orange pressed font.
         test::fakes::Reset_All_();
         button.Draw(100, 200, 60, "MORE", metal_button::State::kPressed);
         DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 5);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 232);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[3].color == 247);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 240);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 233);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].color == 15);
+        DOCTEST_REQUIRE(pressed.prints.size() == 1);
+        DOCTEST_CHECK(pressed.prints[0].text == "MORE");
 
         // Disabled is flat and low contrast.
         test::fakes::Reset_All_();

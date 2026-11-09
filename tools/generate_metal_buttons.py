@@ -3,56 +3,69 @@
 
 The game's metallic buttons (RETURN, the sort buttons, ACCEPT) are
 the visual reference, but these frames are ORIGINAL WORK: they are
-computed here from a design spec -- a bevel geometry and a metallic
-gradient in menu-palette indices -- not extracted from the LBX files.
-Nothing in this script reads game data. If it quacks like a duck
-and looks like a duck by observation, that is fine; a verbatim copy
-of the LBX pixels would not be.
+computed here from a design spec -- a border geometry and a domed
+face gradient in menu-palette indices -- not extracted from the LBX
+files, and not grabbed from a screenshot of a rendered button
+either. Nothing in this script reads game data or game output. If
+it quacks like a duck and looks like a duck by observation, that is
+fine; a verbatim copy of the game's pixels would not be.
 
 Design (observed from the game's buttons, 640x480 game pixels):
-the button is a raised metallic slab, 85x26 (the RETURN button's
-size, the canonical metallic button). A 2 px bevel frames it: a
-light outer edge on the top/left and a dark outer edge on the
-bottom/right, with an inner edge one step darker/lighter, and a
-vertical metallic gradient between them -- lighter at the top,
-darker at the bottom, so the face reads as metal, not flat.
+the button is a dark metallic slab, 85x26 (the RETURN button's
+size, the canonical metallic button). A 2 px dark border frames it
+-- the real button's top and bottom edges are dark (48, 56, 60),
+not a light raised bevel -- and the face between them is a domed
+metal gradient: dark at the top edge, rising to a bright plateau
+in the middle, with a one-row specular highlight at the vertical
+centre, then falling to dark at the bottom edge. The face reads as
+a rounded metal bar, light in the middle and dark at the edges,
+which is what makes it match the real button sitting next to it:
+the earlier light-grey design (face 246 -> 240, light bevel) read
+as washed out against the real RETURN, whose face lives in the
+72-136 range.
 
-The three states:
-- normal: raised bevel (light top/left, dark bottom/right), gradient
-  246 -> 240 down the face.
-- pressed: the bevel inverts (dark top/left, light bottom/right)
-  and the face darkens (242 -> 238) -- the button reads as pushed in.
-  A latched toggle stays in this state while it is on.
+The three states (menu-palette indices, MAINMENU.LBX entry 2's
+embedded palette; the grey ramp there is 228-249):
+- normal: dark border (15 top/left, 233 bottom/right, 17 inner),
+  face dome 234 -> 241, specular band 245 at the centre row,
+  falling to 236 at the bottom.
+- pressed: the same border; the face's top rows go into shadow
+  (230 -> 233 -> 234, the button pushed in) and the dome sits one
+  step darker (240 plateau, 243 specular). A latched toggle stays
+  in this state while it is on. The label itself lights up orange
+  at runtime (palette 221, the pressed RETURN text's own orange) --
+  that is the metal_button component's pressed font, not the frame.
 - disabled: flat, low contrast -- a 235/233 bevel that barely
   reads, and a flat 236 face with no gradient. The label (drawn at
   runtime, in a dim colour) carries the rest of the meaning.
 
-Colours are menu-palette indices (MAINMENU.LBX entry 2's embedded
-palette, the palette the settings screen renders in). The grey ramp
-there is 228-249, a blue-grey ramp from (16,16,24) to (204,204,212):
-  232 (52,52,60)   shadow -- the dark bevel edge
-  234 (72,72,80)   inner shade
-  236 (88,88,96)   disabled face
-  238 (108,108,116) pressed face bottom
-  240 (124,124,132) normal face bottom
-  242 (144,144,152) the metal face the settings screen already uses
-  244 (164,164,172) inner highlight
-  246 (180,180,188) normal face top
-  247 (188,188,196) highlight -- the light bevel edge
+Colours are menu-palette indices. The grey ramp:
+  230 (36,36,40)    pressed shadow top
+  233 (60,60,68)    border bottom / pressed shadow
+  234 (72,72,80)    face top
+  235 (80,80,88)    disabled bevel / pressed face bottom
+  236 (88,88,96)    face bottom / disabled face
+  238 (108,108,116) face rise
+  240 (124,124,132) pressed plateau
+  241 (136,136,144) face plateau -- the face's dominant colour
+  243 (152,152,160) pressed specular
+  245 (172,172,180) specular band
+  15  (48,48,44)    border -- the real button's dark top edge
+  17  (56,56,48)    border inner
 
-The gradient is a linear interpolation through the ramp indices,
-row by row; consecutive rows often share an index, which is how a
-24-row gradient reads smooth in a 256-colour palette.
+The face profile is a piecewise-linear dome through key points
+(row, index), so the rise, plateau, specular band and fall are
+each explicit. The gradient is vertical, so tiling the middle
+horizontally is invisible -- one frame serves any button width.
 
 Frames land in data/base/sprites/metal-button/<state>.bin, in the
 same native bitmap layout tools/extract_sprite.py produces (12-byte
 s_animation_header, one frame offset of 16, width*height
 palette-index bytes, padded to a multiple of 4), so the runtime
 loads them with sprite_art::Load_Sprite_Frame and draws them with
-sprite_art::Draw_Sprite_Frame_Stretched (the gradient is vertical,
-so tiling the middle horizontally is invisible -- one frame serves
-any button width). The frames carry no text: the label is interposed
-at runtime, centred, by the metal_button component.
+sprite_art::Draw_Sprite_Frame_Stretched. The frames carry no text:
+the label is interposed at runtime, centred, by the metal_button
+component.
 
 Reproduce everything with `tools/generate_metal_buttons.py`, and
 verify with the same command plus `--check`.
@@ -68,81 +81,85 @@ BITMAP_FRAME_DATA_OFFSET = 16
 
 WIDTH = 85
 HEIGHT = 26
-BEVEL = 2  # px of bevel on each edge
+BORDER = 2  # px of dark border on each edge
 
 # Menu-palette indices (see the module docstring for the RGB values).
-HIGHLIGHT = 247  # light bevel edge
-INNER_HIGHLIGHT = 244
-FACE_TOP = 246
-FACE = 242
-FACE_BOTTOM = 240
-INNER_SHADE = 234
-SHADOW = 232  # dark bevel edge
-PRESSED_FACE_TOP = 242
-PRESSED_FACE_BOTTOM = 238
+BORDER_DARK = 15    # dark border edge
+BORDER_INNER = 17   # border inner edge
+BORDER_BOTTOM = 233  # dark border bottom/right edge
+FACE_TOP = 234
+FACE_PLATEAU = 241
+FACE_SPECULAR = 245
+FACE_BOTTOM = 236
+PRESSED_SHADOW_TOP = 230
+PRESSED_SHADOW = 233
+PRESSED_PLATEAU = 240
+PRESSED_SPECULAR = 243
+PRESSED_BOTTOM = 235
 DISABLED_BEVEL_LIGHT = 235
 DISABLED_FACE = 236
 DISABLED_BEVEL_DARK = 233
 
+# Face profile: (row, palette index) key points; the face is a
+# piecewise-linear dome through them. Rows are absolute (0-25);
+# the face itself is rows BORDER..HEIGHT-1-BORDER.
+NORMAL_PROFILE = (
+    (2, 234), (6, 241), (12, 241), (13, 245), (14, 241), (19, 241),
+    (23, 236),
+)
+PRESSED_PROFILE = (
+    (2, 230), (3, 233), (4, 234), (6, 240), (12, 240), (13, 243),
+    (14, 240), (19, 240), (23, 235),
+)
+
 STATES = ("normal", "pressed", "disabled")
 
 
-def gradient_row(top_index, bottom_index, row, first_row, last_row):
-    """Linear interpolation through the ramp indices for one row."""
-    if last_row <= first_row:
-        return top_index
-    t = (row - first_row) / (last_row - first_row)
-    return round(top_index + (bottom_index - top_index) * t)
+def profile_value(profile, row):
+    """Piecewise-linear interpolation through the profile points."""
+    if row <= profile[0][0]:
+        return profile[0][1]
+    if row >= profile[-1][0]:
+        return profile[-1][1]
+    for (r0, v0), (r1, v1) in zip(profile, profile[1:]):
+        if r0 <= row <= r1:
+            if r1 == r0:
+                return v1
+            t = (row - r0) / (r1 - r0)
+            return round(v0 + (v1 - v0) * t)
+    return profile[-1][1]
 
 
 def frame_pixels(state):
     """Compute the index grid for one state. No game data is read."""
-    if state == "normal":
-        outer_top = outer_left = HIGHLIGHT
-        outer_bottom = outer_right = SHADOW
-        inner_top = inner_left = INNER_HIGHLIGHT
-        inner_bottom = inner_right = INNER_SHADE
-        face_top, face_bottom = FACE_TOP, FACE_BOTTOM
-    elif state == "pressed":
-        outer_top = outer_left = SHADOW
-        outer_bottom = outer_right = HIGHLIGHT
-        inner_top = inner_left = INNER_SHADE
-        inner_bottom = inner_right = INNER_HIGHLIGHT
-        face_top, face_bottom = PRESSED_FACE_TOP, PRESSED_FACE_BOTTOM
-    elif state == "disabled":
-        outer_top = outer_left = DISABLED_BEVEL_LIGHT
-        outer_bottom = outer_right = DISABLED_BEVEL_DARK
-        inner_top = inner_left = DISABLED_FACE
-        inner_bottom = inner_right = DISABLED_FACE
-        face_top = face_bottom = DISABLED_FACE
-    else:
-        raise ValueError(f"unknown state {state!r}")
+    if state == "disabled":
+        grid = [[DISABLED_FACE] * WIDTH for _ in range(HEIGHT)]
+        for y in range(HEIGHT):
+            for x in range(WIDTH):
+                if y == 0:
+                    grid[y][x] = DISABLED_BEVEL_LIGHT
+                elif y == HEIGHT - 1:
+                    grid[y][x] = DISABLED_BEVEL_DARK
+                elif x == 0:
+                    grid[y][x] = DISABLED_BEVEL_LIGHT
+                elif x == WIDTH - 1:
+                    grid[y][x] = DISABLED_BEVEL_DARK
+        return grid
 
+    profile = NORMAL_PROFILE if state == "normal" else PRESSED_PROFILE
     grid = [[0] * WIDTH for _ in range(HEIGHT)]
     for y in range(HEIGHT):
         for x in range(WIDTH):
-            if y == 0:
-                value = outer_top
-            elif y == HEIGHT - 1:
-                value = outer_bottom
-            elif x == 0:
-                value = outer_left
-            elif x == WIDTH - 1:
-                value = outer_right
-            elif y == 1:
-                value = inner_top
-            elif y == HEIGHT - 2:
-                value = inner_bottom
-            elif x == 1:
-                value = inner_left
-            elif x == WIDTH - 2:
-                value = inner_right
+            if y == 0 or x == 0:
+                value = BORDER_DARK
+            elif y == HEIGHT - 1 or x == WIDTH - 1:
+                value = BORDER_BOTTOM
+            elif y == 1 or x == 1:
+                value = BORDER_INNER
+            elif y == HEIGHT - 2 or x == WIDTH - 2:
+                value = BORDER_DARK
             else:
-                # Interior: vertical metallic gradient. The disabled
-                # face is flat (face_top == face_bottom), so this is
-                # a no-op there.
-                value = gradient_row(face_top, face_bottom, y, BEVEL,
-                                     HEIGHT - 1 - BEVEL)
+                value = profile_value(profile, y)
             grid[y][x] = value
     return grid
 

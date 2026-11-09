@@ -60,24 +60,36 @@ Contents:
   face at rest and a blue-white face when active (see
   src/game/ui_kit.h, Colony_Theme).
 
-- `metal-button` — NOT derived from game art. The metallic button
+- `metal-button` — NOT derived from game art, and NOT grabbed
+  from a screenshot of a rendered button either. The metallic button
   frames (blank, pressed, disabled) are original work, created from
   scratch by observing how the game's metallic buttons look: a 2 px
-  bevel with a highlight top/left and a shadow bottom/right, a
-  vertical metallic gradient fill, in the menu palette's grey ramp.
+  dark border (the real button's top and bottom edges are dark, not
+  a light raised bevel) around a domed face gradient -- dark at the
+  top edge, rising to a bright plateau in the middle, a one-row
+  specular highlight at the vertical centre, then falling to dark
+  at the bottom edge -- in the menu palette's grey ramp.
   `tools/generate_metal_buttons.py` computes them from that design
-  spec — it reads no game data — and writes
+  spec — it reads no game data and no game output — and writes
   `data/base/sprites/metal-button/{normal,pressed,disabled}.bin`
   (85x26, the RETURN size). Reproduce with
   `tools/generate_metal_buttons.py`, verify with the same command
   plus `--check`. The frames carry no label: the button component
   (`src/game/metal_button.h`) interposes the label at runtime with
   the game font, so one frame serves any short label (MORE, LESS,
-  RETURN). The pressed state inverts the bevel and darkens the fill;
-  the disabled state is a flat face with a low-contrast bevel. The
-  component draws the frame stretched (2 px slices preserved at both
-  edges) and falls back to an engine-drawn button in the same colours
-  when a frame is missing, so a stale base.zip still renders.
+  RETURN). The pressed state darkens the face's top rows into
+  shadow and lights the label up orange (palette 221, the pressed
+  RETURN text's own orange); the disabled state is a flat face with
+  a low-contrast bevel. The component draws the frame stretched
+  (2 px slices preserved at both edges) and falls back to an
+  engine-drawn button in the same colours when a frame is missing,
+  so a stale base.zip still renders.
+  A 3-slice grab of the rendered RETURN button was considered and
+  rejected: the button is a sprite (COLSUM.LBX entry 1), so grabbing
+  its render would be a verbatim copy via screenshot, and blanking
+  its baked text cannot be done cleanly -- vertical interpolation
+  of the face behind the text misses by 2-6 palette steps, and the
+  specular band is unrecoverable that way.
 
 ## What cannot be derived from game art
 

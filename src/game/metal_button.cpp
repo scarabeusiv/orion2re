@@ -6,23 +6,25 @@
 
 namespace metal_button {
     namespace {
-        // The generated frames, 85x26 with a 2 px bevel (see
+        // The generated frames, 85x26 with a 2 px border (see
         // tools/generate_metal_buttons.py). The gradient is vertical,
         // so the middle tiles invisibly and the bevel slices are the
-        // bevel width on each side.
+        // border width on each side.
         constexpr int16_t kButton_Height = 26;
         constexpr int16_t kBevel_Slice = 2;
         // Label padding per side, like the colony buttons' 8-10 px.
         constexpr int16_t kLabel_Padding = 10;
 
         // Engine-drawn fallback colours, in menu-palette indices --
-        // the same metal face, highlight and shadow the settings
-        // screen's Draw_Metal_Button already uses, so a stale
-        // base.zip renders the same button, just without the
-        // generated gradient.
-        constexpr uint8_t kFallback_Face = 242;
-        constexpr uint8_t kFallback_Highlight = 247;
-        constexpr uint8_t kFallback_Shadow = 232;
+        // the generated frames' own colours, so a stale base.zip
+        // renders the same button, just without the generated
+        // gradient: the face's dominant colour, the dark border
+        // top/left and bottom/right, and the pressed face one step
+        // darker with the bevel inverted.
+        constexpr uint8_t kFallback_Face = 241;
+        constexpr uint8_t kFallback_Highlight = 15;
+        constexpr uint8_t kFallback_Shadow = 233;
+        constexpr uint8_t kFallback_Pressed_Face = 240;
         // Disabled fallback: the generated disabled frame's own
         // colours (flat 236 face, 235/233 bevel).
         constexpr uint8_t kFallback_Disabled_Face = 236;
@@ -36,7 +38,8 @@ namespace metal_button {
             uint8_t bottom = kFallback_Shadow;
             if (state == State::kPressed) {
                 // Pressed inverts the bevel (dark top/left, light
-                // bottom/right).
+                // bottom/right) and darkens the face one step.
+                face = kFallback_Pressed_Face;
                 top = kFallback_Shadow;
                 bottom = kFallback_Highlight;
             } else if (state == State::kDisabled) {
@@ -75,9 +78,10 @@ namespace metal_button {
     }
 
     Button::Button(Frames frames, const ui_kit::Font& label_font,
+                   const ui_kit::Font& pressed_font,
                    const ui_kit::Font& disabled_font)
         : frames_(frames), label_font_(label_font),
-          disabled_font_(disabled_font) {}
+          pressed_font_(pressed_font), disabled_font_(disabled_font) {}
 
     int16_t Button::Width_For_Label(const char* label) const {
         return (int16_t)(label_font_.Width(label) + 2 * kLabel_Padding);
@@ -108,11 +112,14 @@ namespace metal_button {
             Draw_Fallback(x, y, width, state);
         }
         // The label is interposed at runtime, centred on the frame.
-        // Disabled takes the dimmer font; normal and pressed take
-        // the label font (the pressed frame already reads as lit).
-        const ui_kit::Font& font = state == State::kDisabled
-                                       ? disabled_font_
-                                       : label_font_;
+        // Pressed takes the orange font, so the label lights up like
+        // the real RETURN does when held; disabled takes the dimmer
+        // font; normal takes the label font.
+        const ui_kit::Font& font = state == State::kPressed
+                                       ? pressed_font_
+                                       : state == State::kDisabled
+                                             ? disabled_font_
+                                             : label_font_;
         const int16_t label_x =
             (int16_t)(x + (width - font.Width(label)) / 2);
         const int16_t label_y =

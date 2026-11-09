@@ -225,12 +225,16 @@ namespace SETTINGS_SCREEN {
         s_colors g_colony_highlight_colors = {{150, 155, 155, 152, 153, 155, 155, 155}};
         s_colors g_colony_dim_colors = {{244, 249, 248, 249, 248, 249, 248, 249}};
 
-        // Flat text colours for the raised metallic buttons: dark
-        // text on the light metal face, light text on the blue
-        // primary face. A font style maps glyph shade to a palette
-        // index, so a flat array renders a single-colour label.
+        // Flat text colours for the metallic buttons: dark text on
+        // the domed metal face, light text on the blue primary
+        // face. A font style maps glyph shade to a palette index,
+        // so a flat array renders a single-colour label.
         s_colors g_dark_text_colors = {{230, 230, 230, 230, 230, 230, 230, 230}};
         s_colors g_light_text_colors = {{247, 247, 247, 247, 247, 247, 247, 247}};
+        // Pressed button label: the orange the real RETURN lights
+        // up with when held (palette 221, the pressed frame's own
+        // orange), so a latched toggle reads as lit.
+        s_colors g_button_pressed_text_colors = {{221, 221, 221, 221, 221, 221, 221, 221}};
         // Disabled button label: dimmer than the dark text, so a
         // disabled button reads as inactive on the flat face.
         s_colors g_button_disabled_text_colors = {{234, 234, 234, 234, 234, 234, 234, 234}};
@@ -455,12 +459,16 @@ namespace SETTINGS_SCREEN {
         // RETURN's fallback when its derived sprite is missing
         // (game/metal_button.h): the generated metal-button frames
         // with the label interposed at runtime. The label font is
-        // style 4 with the dark text colours; the disabled font is
-        // the same style with a dim grey. Built in Settings_Screen()
-        // alongside the RETURN frames.
+        // style 4 with the dark text colours; the pressed font is
+        // the same style in the orange the real RETURN lights up
+        // with when held; the disabled font is the same style with
+        // a dim grey. Built in Settings_Screen() alongside the
+        // RETURN frames.
         metal_button::Frames g_metal_frames;
         ui_kit::Engine_Font g_button_font(4, g_dark_text_colors,
             g_dark_text_colors);
+        ui_kit::Engine_Font g_button_pressed_font(4,
+            g_button_pressed_text_colors, g_button_pressed_text_colors);
         ui_kit::Engine_Font g_button_disabled_font(4,
             g_button_disabled_text_colors, g_button_disabled_text_colors);
         std::unique_ptr<metal_button::Button> g_metal_button;
@@ -1885,7 +1893,7 @@ namespace SETTINGS_SCREEN {
         // engine-drawn button in the same colours.
         g_metal_frames = metal_button::Load_Frames(MOX::screen_seg);
         g_metal_button = std::make_unique<metal_button::Button>(g_metal_frames,
-            g_button_font, g_button_disabled_font);
+            g_button_font, g_button_pressed_font, g_button_disabled_font);
         // The theme loads its own frames; the screen never names a
         // sprite id or sees a frame pointer.
         g_theme = ui_kit::Load_Colony_Theme(MOX::screen_seg,
