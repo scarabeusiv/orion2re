@@ -91,9 +91,11 @@ namespace SETTINGS_SCREEN {
         //   palette 1 for the whole screen is not an alternative: it
         //   turns the settings text pink/red and the panels
         //   blue/green/red. The sprite's pressed frame (orange text)
-        //   is derived too, but not wired: the screen draws its
-        //   buttons statically, and a press flash would need
-        //   field-state plumbing.
+        //   is derived too, and wired in Return_Frame below: while
+        //   the mouse is held on RETURN, the field system holds
+        //   fields::down_mouse_button on the RETURN field and the
+        //   auto function redraws the screen on every hold tick, so
+        //   the draw picks the pressed frame until release.
         constexpr int16_t TITLE_X = 16;
         constexpr int16_t TITLE_Y = 8;
         constexpr int16_t TITLE_WIDTH = 348;
@@ -410,6 +412,9 @@ namespace SETTINGS_SCREEN {
         // (a base.zip predating them): every use below falls back to
         // the engine-drawn equivalent.
         s_animation_header* g_return_frame = nullptr;
+        // Pressed RETURN frame (orange text), same 85x26 size, so
+        // the RETURN geometry follows g_return_frame either way.
+        s_animation_header* g_return_frame_pressed = nullptr;
         s_animation_header* g_selector_frame = nullptr;
         s_animation_header* g_selector_frame_active = nullptr;
 
@@ -425,6 +430,23 @@ namespace SETTINGS_SCREEN {
         int16_t Return_Button_W() {
             return g_return_frame != nullptr ? g_return_frame->width
                                              : RETURN_W;
+        }
+
+        // The RETURN frame for this draw: the pressed frame while
+        // the field system holds the RETURN field down (a mouse
+        // hold, or a keyboard press -- Push_Field_Down sets
+        // fields::down_mouse_button and the auto function redraws
+        // on every hold tick), else the rest frame. A missing
+        // pressed frame falls back to the rest frame; the caller
+        // falls back to the engine-drawn button when that is
+        // missing too.
+        const s_animation_header* Return_Frame() {
+            if (g_state.done_field >= 0
+                && fields::down_mouse_button == g_state.done_field
+                && g_return_frame_pressed != nullptr) {
+                return g_return_frame_pressed;
+            }
+            return g_return_frame;
         }
 
         // Rows on the current tab. The Mods tab lists its settings
@@ -1706,8 +1728,9 @@ namespace SETTINGS_SCREEN {
             };
             draw_action_button(SHOW_MORE_X, SHOW_MORE_W,
                 g_state.show_all ? "Show less" : "Show more", true);
-            if (g_return_frame != nullptr) {
-                sprite_art::Draw_Sprite_Frame(g_return_frame, RETURN_X,
+            const s_animation_header* return_frame = Return_Frame();
+            if (return_frame != nullptr) {
+                sprite_art::Draw_Sprite_Frame(return_frame, RETURN_X,
                     Return_Button_Y());
             } else {
                 draw_action_button(RETURN_X, RETURN_W, "RETURN", false);
@@ -1745,6 +1768,8 @@ namespace SETTINGS_SCREEN {
         // back to the engine-drawn button.
         g_return_frame = sprite_art::Load_Sprite_Frame("return", "normal",
             MOX::screen_seg);
+        g_return_frame_pressed = sprite_art::Load_Sprite_Frame("return",
+            "pressed", MOX::screen_seg);
         g_selector_frame = sprite_art::Load_Sprite_Frame("selector-frame",
             "normal", MOX::screen_seg);
         g_selector_frame_active = sprite_art::Load_Sprite_Frame(
