@@ -132,6 +132,34 @@ namespace ui_kit {
         int16_t title_y = 0;
     };
 
+    // Spacing: the empty space between and around the bands of a
+    // colony-style window -- list rows, description box, bottom bar.
+    // Measured from the colony summary screen (colsum.cpp and the
+    // baked COLSUM background, 640x480 game pixels): rows are 30 px
+    // cells on a 31 px pitch, so 1 px of empty background shows
+    // between adjacent rows; the header plate's bottom edge sits
+    // 3 px above the first row; the description box starts 4 px
+    // below the last row and ends 7 px above the bottom bar.
+    struct Spacing {
+        int16_t row_height = 30;         // one list row's cell height
+        int16_t row_gap = 1;             // empty background between rows
+        int16_t header_to_first_row = 3; // header bottom -> first row top
+        int16_t list_to_info = 4;        // last row bottom -> info box top
+        int16_t info_to_bar = 7;         // info box bottom -> bottom bar top
+        int16_t Row_Pitch() const {
+            return (int16_t)(row_height + row_gap);
+        }
+    };
+
+    // List background colours: panel interior, panel border, row
+    // frame lines -- the colony list's dark interior and grey frame,
+    // in the theme's palette.
+    struct List_Style {
+        uint8_t interior = 0;
+        uint8_t border = 0;
+        uint8_t separator = 0;
+    };
+
     // A theme is everything about a window's look that varies with
     // the art set: fonts, tab frames, window chrome, tab metrics.
     // Screens take a const Theme&; a hi-res asset set is a second
@@ -155,6 +183,10 @@ namespace ui_kit {
         // Print y of the tab label relative to the tab top. The
         // colony baked labels ink rows 8-16 of the 24 px frame.
         virtual int16_t Tab_Label_Y_Offset() const = 0;
+        // The window's band spacing and the list's background
+        // colours (see Spacing / List_Style above).
+        virtual ui_kit::Spacing Spacing() const = 0;
+        virtual ui_kit::List_Style List_Style() const = 0;
     };
 
     // The colony look: derived COLSUM sort-button frames, font
@@ -171,6 +203,8 @@ namespace ui_kit {
         const Font& Tab_Font() const override;
         ui_kit::Tab_Frames Tab_Frames() const override;
         ui_kit::Window_Style Window_Style() const override;
+        ui_kit::Spacing Spacing() const override;
+        ui_kit::List_Style List_Style() const override;
         int16_t Tab_Padding() const override;
         int16_t Tab_Gap() const override;
         int16_t Tab_Height() const override;
@@ -222,6 +256,65 @@ namespace ui_kit {
         const Theme& theme_;
         std::vector<Tab> tabs_;
     };
+
+    // Geometry of a colony-style list: panel rect, header rect, row
+    // rects, scroll track, description-box top. Derived from the
+    // theme's Spacing plus the panel's position, so the screen's
+    // fields, drawing and scrolling can never drift apart. Row i
+    // occupies [first_row_y + i*pitch, +row_height); the row_gap
+    // pixels between rows show the panel background -- the colony's
+    // empty space between cells. The panel ends at the last row's
+    // bottom edge; the description box starts list_to_info below it.
+    class List_Layout {
+      public:
+        List_Layout(int16_t panel_x, int16_t panel_y, int16_t panel_w,
+            int16_t content_right, int16_t header_y, int16_t header_h,
+            int rows, const Spacing& spacing);
+        int16_t panel_x() const { return panel_x_; }
+        int16_t panel_y() const { return panel_y_; }
+        int16_t panel_w() const { return panel_w_; }
+        int16_t panel_h() const { return panel_h_; }
+        int16_t content_right() const { return content_right_; }
+        int16_t header_y() const { return header_y_; }
+        int16_t header_h() const { return header_h_; }
+        int rows() const { return rows_; }
+        int16_t first_row_y() const { return first_row_y_; }
+        int16_t row_y(int index) const {
+            return (int16_t)(first_row_y_ + index * spacing_.Row_Pitch());
+        }
+        int16_t row_height() const { return spacing_.row_height; }
+        int16_t row_pitch() const { return spacing_.Row_Pitch(); }
+        // Scroll track: first row top to last row bottom, the span
+        // the rows themselves occupy.
+        int16_t scroll_track_y() const { return first_row_y_; }
+        int16_t scroll_track_h() const { return scroll_track_h_; }
+        // Description-box top: list_to_info below the panel bottom.
+        int16_t info_y() const { return info_y_; }
+
+      private:
+        int16_t panel_x_;
+        int16_t panel_y_;
+        int16_t panel_w_;
+        int16_t panel_h_;
+        int16_t content_right_;
+        int16_t header_y_;
+        int16_t header_h_;
+        int rows_;
+        int16_t first_row_y_;
+        int16_t scroll_track_h_;
+        int16_t info_y_;
+        Spacing spacing_;
+    };
+
+    // List empty space: panel fill and border, plus one frame line
+    // at the top and bottom of every row, like the colony's cells --
+    // so an empty row still reads as a framed cell, and the row_gap
+    // between two frame lines is empty panel background. The last
+    // row's bottom line is the panel border itself. Row frame lines
+    // stop at content_right (the list edge), short of the scrollbar
+    // strip, like the colony list's cells stop short of its bar.
+    void Draw_List_Background(const Theme& theme,
+        const List_Layout& layout);
 
     // Full-window frame: thin light outer line, dark inner line,
     // centred title -- the frame baked into the colony screens'

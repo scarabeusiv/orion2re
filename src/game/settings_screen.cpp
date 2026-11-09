@@ -118,10 +118,15 @@ namespace SETTINGS_SCREEN {
         constexpr int16_t TITLE_WIDTH = 348;
         constexpr int16_t VALUE_X = 372;
         constexpr int16_t VALUE_WIDTH = 244;
+        // List panel: position and width are this screen's; its
+        // height, first-row y, row pitch and scroll track come from
+        // the kit layout (ui_kit::List_Layout), which derives them
+        // from the theme's Spacing -- the colony's 30 px rows on a
+        // 31 px pitch, header 3 px above the first row. The panel
+        // ends at the last row's bottom edge.
         constexpr int16_t LIST_PANEL_X = 8;
         constexpr int16_t LIST_PANEL_Y = 30;
         constexpr int16_t LIST_PANEL_W = 624;
-        constexpr int16_t LIST_PANEL_H = 326;
         // SETTING / VALUE header plates, like the colony list's
         // header boxes (NAME, FARMERS, ...), at the top of the list
         // panel, aligned to the name and value columns.
@@ -131,20 +136,16 @@ namespace SETTINGS_SCREEN {
         constexpr int16_t HEADER_SETTING_W = 354;
         constexpr int16_t HEADER_VALUE_X = 368;
         constexpr int16_t HEADER_VALUE_W = 248;
-        constexpr int16_t FIRST_ROW_Y = 56;
-        constexpr int16_t ROW_HEIGHT = 30;
         constexpr int ROWS_PER_PAGE = 10;
         constexpr int16_t ROW_TEXT_Y_OFFSET = 8;
         // Colony-list scrollbar, like COLSUM's: a 5-wide vertical
         // bar in its own strip at the right edge of the list panel.
         // The colony's bar is at x=621, 5 wide, in a 271-tall
-        // track; here the track spans the list panel's rows.
-        // Row fields stop short of the strip, like the colony
+        // track; here the track spans the list's rows, from the
+        // layout. Row fields stop short of the strip, like the colony
         // list's row fields stop short of its scrollbar.
         constexpr int16_t SCROLL_X = 621;
         constexpr int16_t SCROLL_W = 5;
-        constexpr int16_t SCROLL_TRACK_Y = FIRST_ROW_Y;
-        constexpr int16_t SCROLL_TRACK_H = ROWS_PER_PAGE * ROW_HEIGHT;
         constexpr int16_t ROW_FIELD_X_END = SCROLL_X - 2;
 
         // Selector column: every row's selector (toggle square,
@@ -160,21 +161,24 @@ namespace SETTINGS_SCREEN {
         // row's description lives here, with a "Requires restart."
         // line for the settings it applies to and the status line
         // below it. No permanent restart legend anywhere else.
+        // Its top comes from the kit layout (4 px below the last
+        // row, the colony's list-to-info gap) and its bottom sits
+        // the theme's info-to-bar gap above the bottom bar, so the
+        // box fills the space between the list and the bar. The
+        // text keeps a 6 px top pad inside the box.
         constexpr int16_t HELP_PANEL_X = 2;
-        constexpr int16_t HELP_PANEL_Y = 360;
         constexpr int16_t HELP_PANEL_W = 636;
-        constexpr int16_t HELP_PANEL_H = 78;
-        constexpr int16_t HELP_Y = 366;
+        constexpr int16_t HELP_PAD_TOP = 6;
         constexpr int16_t HELP_LINE_HEIGHT = 15;
-        constexpr int16_t RESTART_Y = 396;
-        constexpr int16_t STATUS_Y = 411;
         // Bottom bar: the category selectors on the left, Show more
         // and RETURN side by side on the right, all on one line —
-        // Show more and RETURN never wrap to a second line.
+        // Show more and RETURN never wrap to a second line. The bar
+        // sits at y 446 like the colony's sort buttons (24 tall),
+        // leaving the colony's 9 px of window below it.
         constexpr int16_t CAT_Y = 446;
-        constexpr int16_t FOOTER_Y = 449;
-        constexpr int16_t NAV_Y = 444;
-        constexpr int16_t NAV_Y_END = 468;
+        constexpr int16_t FOOTER_Y = 451;
+        constexpr int16_t NAV_Y = 446;
+        constexpr int16_t NAV_Y_END = 470;
         // Show more and RETURN, side by side at the right end of the
         // bottom bar. The widths fit their labels with room to spare:
         // "Show more" measures ~102 px, "RETURN" ~64 px, so the
@@ -189,11 +193,10 @@ namespace SETTINGS_SCREEN {
         // Colony chrome, in menu-palette indices (MAINMENU.LBX
         // entries 1/2 palette: 230-249 is a blue-grey ramp).
         // 230 is the dark panel interior, 234 the mid-grey panel
-        // border, 229 the dark row separator. The window frame
-        // colours live in the theme (ui_kit::Colony_Theme).
+        // border. The window frame colours and the row separator
+        // live in the theme (ui_kit::Colony_Theme).
         constexpr uint8_t PANEL_INTERIOR = 230;
         constexpr uint8_t PANEL_BORDER = 234;
-        constexpr uint8_t PANEL_SEPARATOR = 229;
 
         // The standard UI text palette, as used by the council screen.
         s_colors g_normal_colors = {{150, 154, 155, 151, 152, 153, 154, 155}};
@@ -445,6 +448,18 @@ namespace SETTINGS_SCREEN {
             return bar;
         }
 
+        // The list layout for this screen: the panel rect, header
+        // rect, row rects and scroll track, derived from the
+        // theme's Spacing (game/ui_kit.h), so the fields, the draw
+        // and the scrolling all share one geometry. Only call once
+        // g_theme is built (Settings_Screen builds it before any
+        // field rebuild or draw).
+        ui_kit::List_Layout Make_List_Layout() {
+            return ui_kit::List_Layout(LIST_PANEL_X, LIST_PANEL_Y,
+                LIST_PANEL_W, ROW_FIELD_X_END, HEADER_Y, HEADER_HEIGHT,
+                ROWS_PER_PAGE, g_theme->Spacing());
+        }
+
         // RETURN button geometry follows the derived frame when it
         // loaded (85x26, bottom-aligned with the bar), else the
         // engine-drawn button's 76x24.
@@ -537,21 +552,24 @@ namespace SETTINGS_SCREEN {
         // edge and a dark bottom/right edge, in the metal-button
         // colors. The thumb spans the fraction of the list that is
         // visible, at least 8 px tall so it stays grabbable. Only
-        // drawn when the list is longer than the window.
-        void Draw_Scroll_Bar() {
+        // drawn when the list is longer than the window. The track
+        // is the layout's: first row top to last row bottom.
+        void Draw_Scroll_Bar(const ui_kit::List_Layout& layout) {
             const int total = Visible_Count();
             if (total <= ROWS_PER_PAGE) {
                 return;
             }
+            const int16_t track_y = layout.scroll_track_y();
+            const int16_t track_h = layout.scroll_track_h();
             const int top = Scroll_Top();
-            int16_t y1 = (int16_t)(SCROLL_TRACK_Y +
-                (SCROLL_TRACK_H * top) / total);
-            int16_t y2 = (int16_t)(SCROLL_TRACK_Y +
-                (SCROLL_TRACK_H * (top + ROWS_PER_PAGE)) / total);
+            int16_t y1 = (int16_t)(track_y +
+                (track_h * top) / total);
+            int16_t y2 = (int16_t)(track_y +
+                (track_h * (top + ROWS_PER_PAGE)) / total);
             if (y2 - y1 < 8) {
                 y2 = (int16_t)(y1 + 8);
-                if (y2 > SCROLL_TRACK_Y + SCROLL_TRACK_H) {
-                    y2 = (int16_t)(SCROLL_TRACK_Y + SCROLL_TRACK_H);
+                if (y2 > track_y + track_h) {
+                    y2 = (int16_t)(track_y + track_h);
                     y1 = (int16_t)(y2 - 8);
                 }
             }
@@ -565,11 +583,11 @@ namespace SETTINGS_SCREEN {
             graphics::Fill(SCROLL_X + SCROLL_W - 1, y1,
                 SCROLL_X + SCROLL_W - 1, y2, METAL_SHADOW);
             // Corner dots marking the track ends, like the colony's.
-            graphics::Fill(SCROLL_X, SCROLL_TRACK_Y,
-                SCROLL_X + SCROLL_W - 1, SCROLL_TRACK_Y, PANEL_BORDER);
-            graphics::Fill(SCROLL_X, SCROLL_TRACK_Y + SCROLL_TRACK_H - 1,
+            graphics::Fill(SCROLL_X, track_y,
+                SCROLL_X + SCROLL_W - 1, track_y, PANEL_BORDER);
+            graphics::Fill(SCROLL_X, track_y + track_h - 1,
                 SCROLL_X + SCROLL_W - 1,
-                SCROLL_TRACK_Y + SCROLL_TRACK_H - 1, PANEL_BORDER);
+                track_y + track_h - 1, PANEL_BORDER);
         }
 
         // Rows index for a visible index in a settings category.
@@ -907,16 +925,17 @@ namespace SETTINGS_SCREEN {
                     tab.x, tab_bar.y(), tab.x + tab.width - 1,
                     tab_bar.y() + tab_bar.height() - 1, "", 0);
             }
+            const ui_kit::List_Layout layout = Make_List_Layout();
             Sync_Scroll();
             const int first = Scroll_Top();
             const int count = std::min(ROWS_PER_PAGE, Visible_Count() - first);
             for (int index = 0; index < count; ++index) {
-                const int16_t y = FIRST_ROW_Y + (int16_t)index * ROW_HEIGHT;
+                const int16_t y = layout.row_y(index);
                 // Row fields stop short of the scrollbar strip, like
                 // the colony list's row fields stop short of its
                 // scrollbar, so clicks on the bar reach the bar.
                 g_state.row_fields[index] = fields::Add_Hidden_Field(
-                    8, y, ROW_FIELD_X_END, y + ROW_HEIGHT - 1, "", 0);
+                    8, y, ROW_FIELD_X_END, y + layout.row_height() - 1, "", 0);
             }
             for (int index = count; index < ROWS_PER_PAGE; ++index) {
                 g_state.row_fields[index] = -1;
@@ -930,8 +949,9 @@ namespace SETTINGS_SCREEN {
             const int total = Visible_Count();
             if (total > ROWS_PER_PAGE) {
                 g_state.scroll_field = fields::Add_Scroll_Field(SCROLL_X,
-                    SCROLL_TRACK_Y, 0, (int16_t)total, 0,
-                    (int16_t)Max_Scroll(), SCROLL_W, SCROLL_TRACK_H,
+                    layout.scroll_track_y(), 0, (int16_t)total, 0,
+                    (int16_t)Max_Scroll(), SCROLL_W,
+                    layout.scroll_track_h(),
                     &g_state.slider_position[g_state.category], "", 0);
             } else {
                 g_state.scroll_field = -1;
@@ -1038,10 +1058,11 @@ namespace SETTINGS_SCREEN {
             }
             g_state.editing_row = visible;
             fonts::Set_Font_Style(4, &g_normal_colors);
-            const int16_t y = FIRST_ROW_Y +
-                (int16_t)(visible - Scroll_Top()) * ROW_HEIGHT;
+            const ui_kit::List_Layout layout = Make_List_Layout();
+            const int16_t y =
+                layout.row_y(visible - Scroll_Top());
             g_state.edit_field = fields::Add_Continuous_String_Input_Field(
-                VALUE_X, y, VALUE_WIDTH, ROW_HEIGHT - 2, g_state.edit_buffer,
+                VALUE_X, y, VALUE_WIDTH, layout.row_height() - 2, g_state.edit_buffer,
                 max_length, 0, 0, 0, 0);
             // The row's full-width hidden field always wins Scan_Field
             // over the edit field added after it, so a click can never
@@ -1102,8 +1123,8 @@ namespace SETTINGS_SCREEN {
                 fonts::Get_Font_Vertical_Spacing());
             const int16_t list_height =
                 (int16_t)((type->value_count + 1) * (size_t)y_step);
-            int16_t y = FIRST_ROW_Y +
-                (int16_t)(visible - Scroll_Top()) * ROW_HEIGHT;
+            const ui_kit::List_Layout layout = Make_List_Layout();
+            int16_t y = layout.row_y(visible - Scroll_Top());
             if (y + list_height > 470) {
                 y = 470 - list_height;
             }
@@ -1188,8 +1209,8 @@ namespace SETTINGS_SCREEN {
             if (x + popup_w > 632) {
                 x = 632 - popup_w;
             }
-            int16_t y = FIRST_ROW_Y +
-                (int16_t)(visible - Scroll_Top()) * ROW_HEIGHT;
+            const ui_kit::List_Layout layout = Make_List_Layout();
+            int16_t y = layout.row_y(visible - Scroll_Top());
             if (y + popup_h > 470) {
                 y = 470 - popup_h;
             }
@@ -1518,19 +1539,12 @@ namespace SETTINGS_SCREEN {
             ui_kit::Draw_Window_Frame(*g_theme, 0, 0, 640, 480, "Settings");
             fonts::Set_Font_Style(4, &g_normal_colors);
 
-            // List panel, like the colony list: dark interior, thin
-            // grey border, framed row slots even when empty.
-            graphics::Fill(LIST_PANEL_X, LIST_PANEL_Y,
-                LIST_PANEL_X + LIST_PANEL_W - 1, LIST_PANEL_Y + LIST_PANEL_H - 1,
-                PANEL_INTERIOR);
-            graphics::Box(LIST_PANEL_X, LIST_PANEL_Y, LIST_PANEL_W, LIST_PANEL_H, 1,
-                PANEL_BORDER);
-            for (int slot = 0; slot < ROWS_PER_PAGE - 1; ++slot) {
-                const int16_t sep_y = (int16_t)(FIRST_ROW_Y + slot * ROW_HEIGHT +
-                    ROW_HEIGHT - 1);
-                graphics::Fill(LIST_PANEL_X + 1, sep_y,
-                    LIST_PANEL_X + LIST_PANEL_W - 2, sep_y, PANEL_SEPARATOR);
-            }
+            // List panel, like the colony list: the kit draws the
+            // dark interior, the thin grey border and the framed
+            // row slots -- empty rows still read as framed cells,
+            // with 1 px of empty background between them.
+            const ui_kit::List_Layout layout = Make_List_Layout();
+            ui_kit::Draw_List_Background(*g_theme, layout);
 
             // Header plates, like the colony list's header boxes
             // (NAME, FARMERS, WORKERS, ...): bordered boxes over
@@ -1555,7 +1569,7 @@ namespace SETTINGS_SCREEN {
             const int count = std::min(ROWS_PER_PAGE, Visible_Count() - first);
             for (int index = 0; index < count; ++index) {
                 const int visible = first + index;
-                const int16_t y = FIRST_ROW_Y + (int16_t)index * ROW_HEIGHT;
+                const int16_t y = layout.row_y(index);
                 const int16_t text_y = (int16_t)(y + ROW_TEXT_Y_OFFSET);
                 const bool selected = visible == g_state.selected;
                 // Colony-list row: name in the colony color, selected
@@ -1576,7 +1590,7 @@ namespace SETTINGS_SCREEN {
                     // when off, bare when the mod is broken and
                     // cannot be enabled.
                     const int16_t toggle_x = SELECTOR_RIGHT_X - SQUARE_SIZE + 1;
-                    const int16_t toggle_y = (int16_t)(y + (ROW_HEIGHT - SQUARE_SIZE) / 2);
+                    const int16_t toggle_y = (int16_t)(y + (layout.row_height() - SQUARE_SIZE) / 2);
                     if (entry.broken) {
                         Draw_Square_Toggle(toggle_x, toggle_y, TOGGLE_DISABLED);
                         fonts::Set_Font_Style(4, &g_colony_dim_colors);
@@ -1608,7 +1622,7 @@ namespace SETTINGS_SCREEN {
                         && value.bool_value;
                     const int16_t toggle_x = SELECTOR_RIGHT_X - SQUARE_SIZE + 1;
                     const int16_t toggle_y =
-                        (int16_t)(y + (ROW_HEIGHT - SQUARE_SIZE) / 2);
+                        (int16_t)(y + (layout.row_height() - SQUARE_SIZE) / 2);
                     Draw_Square_Toggle(toggle_x, toggle_y,
                         on ? TOGGLE_ON : TOGGLE_OFF);
                 } else if (row.widget == config::SETTINGS_WIDGET_DROPDOWN) {
@@ -1663,7 +1677,7 @@ namespace SETTINGS_SCREEN {
                 }
             }
 
-            Draw_Scroll_Bar();
+            Draw_Scroll_Bar(layout);
 
             // Description box, spanning the whole width of the
             // window like the colony screen's bottom info area
@@ -1671,11 +1685,19 @@ namespace SETTINGS_SCREEN {
             // description, a "Requires restart." line for the
             // settings it applies to, and the status line below.
             // There is no permanent restart legend: the restart
-            // note lives here, only for the selected setting.
-            graphics::Fill(HELP_PANEL_X, HELP_PANEL_Y,
-                HELP_PANEL_X + HELP_PANEL_W - 1, HELP_PANEL_Y + HELP_PANEL_H - 1,
+            // note lives here, only for the selected setting. The
+            // box top comes from the layout (4 px below the last
+            // row) and its bottom sits the theme's info-to-bar gap
+            // above the bottom bar.
+            const ui_kit::Spacing spacing = g_theme->Spacing();
+            const int16_t desc_y = layout.info_y();
+            const int16_t desc_bottom =
+                (int16_t)(NAV_Y - 1 - spacing.info_to_bar);
+            const int16_t desc_h = (int16_t)(desc_bottom - desc_y + 1);
+            graphics::Fill(HELP_PANEL_X, desc_y,
+                HELP_PANEL_X + HELP_PANEL_W - 1, desc_y + desc_h - 1,
                 PANEL_INTERIOR);
-            graphics::Box(HELP_PANEL_X, HELP_PANEL_Y, HELP_PANEL_W, HELP_PANEL_H, 1,
+            graphics::Box(HELP_PANEL_X, desc_y, HELP_PANEL_W, desc_h, 1,
                 PANEL_BORDER);
             std::string help_text;
             bool restart_required = false;
@@ -1692,17 +1714,19 @@ namespace SETTINGS_SCREEN {
             std::string help_line2;
             Wrap_Text(help_text, TEXT_WIDTH, &help_line1, &help_line2);
             fonts::Set_Font_Style(4, &g_colony_dim_colors);
-            fonts::Print(TITLE_X, HELP_Y, help_line1.c_str());
+            const int16_t help_y = (int16_t)(desc_y + HELP_PAD_TOP);
+            fonts::Print(TITLE_X, help_y, help_line1.c_str());
             if (!help_line2.empty()) {
-                fonts::Print(TITLE_X, HELP_Y + HELP_LINE_HEIGHT, help_line2.c_str());
+                fonts::Print(TITLE_X, help_y + HELP_LINE_HEIGHT, help_line2.c_str());
             }
             // The status sits directly under the restart note when
             // one is shown, so no blank line opens up otherwise.
-            int16_t status_y = RESTART_Y;
+            int16_t status_y = (int16_t)(help_y + 2 * HELP_LINE_HEIGHT);
             if (restart_required) {
                 fonts::Set_Font_Style(4, &g_colony_highlight_colors);
-                fonts::Print(TITLE_X, RESTART_Y, "Requires restart.");
-                status_y = STATUS_Y;
+                fonts::Print(TITLE_X, help_y + 2 * HELP_LINE_HEIGHT,
+                    "Requires restart.");
+                status_y = (int16_t)(help_y + 3 * HELP_LINE_HEIGHT);
             }
             fonts::Set_Font_Style(4, &g_colony_dim_colors);
             fonts::Print(TITLE_X, status_y,

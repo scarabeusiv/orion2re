@@ -50,6 +50,26 @@ namespace ui_kit {
         constexpr uint8_t kTab_Fallback_Fill_Normal = 50;
         constexpr uint8_t kTab_Fallback_Fill_Active = 138;
         constexpr uint8_t kTab_Fallback_Border = 234;
+
+        // List spacing, measured from the colony summary screen
+        // (colsum.cpp: rows are 30 px cells, y_row_end advancing
+        // 31 px per row; the baked header plates end at y 32 and
+        // the first row starts at y 35; the last row ends at y 343
+        // and the bottom info area starts at y 350; the info area
+        // ends at y 438 and the sort bar starts at y 446).
+        constexpr int16_t kList_Row_Height = 30;
+        constexpr int16_t kList_Row_Gap = 1;
+        constexpr int16_t kList_Header_To_First_Row = 3;
+        constexpr int16_t kList_To_Info = 4;
+        constexpr int16_t kInfo_To_Bar = 7;
+
+        // List background colours, in menu-palette indices: the
+        // colony list's dark panel interior, mid-grey border and
+        // dark row separator -- the same indices the settings
+        // screen's own panels use.
+        constexpr uint8_t kList_Interior = 230;
+        constexpr uint8_t kList_Border = 234;
+        constexpr uint8_t kList_Separator = 229;
     } // namespace
 
     Engine_Font::Engine_Font(int16_t style, const s_colors& normal_colors,
@@ -128,6 +148,24 @@ namespace ui_kit {
         style.frame_inner = kWindow_Frame_Inner;
         style.title_font = &title_font_;
         style.title_y = kWindow_Title_Y;
+        return style;
+    }
+
+    ui_kit::Spacing Colony_Theme::Spacing() const {
+        ui_kit::Spacing spacing;
+        spacing.row_height = kList_Row_Height;
+        spacing.row_gap = kList_Row_Gap;
+        spacing.header_to_first_row = kList_Header_To_First_Row;
+        spacing.list_to_info = kList_To_Info;
+        spacing.info_to_bar = kInfo_To_Bar;
+        return spacing;
+    }
+
+    ui_kit::List_Style Colony_Theme::List_Style() const {
+        ui_kit::List_Style style;
+        style.interior = kList_Interior;
+        style.border = kList_Border;
+        style.separator = kList_Separator;
         return style;
     }
 
@@ -230,6 +268,46 @@ namespace ui_kit {
                 (w - style.title_font->Width(title)) / 2);
             style.title_font->Print(label_x,
                 (int16_t)(y + style.title_y), title, false);
+        }
+    }
+
+    List_Layout::List_Layout(int16_t panel_x, int16_t panel_y,
+        int16_t panel_w, int16_t content_right, int16_t header_y,
+        int16_t header_h, int rows, const Spacing& spacing)
+        : panel_x_(panel_x), panel_y_(panel_y), panel_w_(panel_w),
+          content_right_(content_right), header_y_(header_y),
+          header_h_(header_h), rows_(rows), spacing_(spacing) {
+        first_row_y_ = (int16_t)(header_y + header_h +
+            spacing.header_to_first_row);
+        // The panel ends at the last row's bottom edge: first row
+        // top plus all pitches, minus the trailing gap (there is
+        // no gap after the last row).
+        panel_h_ = (int16_t)(first_row_y_ + rows * spacing.Row_Pitch() -
+            spacing.row_gap - panel_y);
+        scroll_track_h_ = (int16_t)(rows * spacing.Row_Pitch() -
+            spacing.row_gap);
+        info_y_ = (int16_t)(panel_y + panel_h_ + spacing.list_to_info);
+    }
+
+    void Draw_List_Background(const Theme& theme,
+        const List_Layout& layout) {
+        const List_Style style = theme.List_Style();
+        const int16_t x = layout.panel_x();
+        const int16_t y = layout.panel_y();
+        graphics::Fill(x, y, (int16_t)(x + layout.panel_w() - 1),
+            (int16_t)(y + layout.panel_h() - 1), style.interior);
+        graphics::Box(x, y, layout.panel_w(), layout.panel_h(), 1,
+            style.border);
+        for (int index = 0; index < layout.rows(); ++index) {
+            const int16_t row_y = layout.row_y(index);
+            graphics::Fill((int16_t)(x + 1), row_y,
+                layout.content_right(), row_y, style.separator);
+            if (index + 1 < layout.rows()) {
+                const int16_t bottom =
+                    (int16_t)(row_y + layout.row_height() - 1);
+                graphics::Fill((int16_t)(x + 1), bottom,
+                    layout.content_right(), bottom, style.separator);
+            }
         }
     }
 } // namespace ui_kit
