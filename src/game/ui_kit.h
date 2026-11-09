@@ -89,6 +89,13 @@ namespace ui_kit {
         Frame() = default;
         explicit Frame(const s_animation_header* frame) : frame_(frame) {}
         [[nodiscard]] bool Is_Null() const { return frame_ == nullptr; }
+        // Native size of the frame (0 when null): the screen sizes
+        // an image button from its frame, like the colony sizes its
+        // RETURN field from anims[1] (85x26).
+        [[nodiscard]] int16_t Width() const;
+        [[nodiscard]] int16_t Height() const;
+        // Draws the frame at its native size at (x, y).
+        void Draw(int16_t x, int16_t y) const;
         void Draw_Stretched(int16_t x, int16_t y, int16_t width,
             int16_t left_slice, int16_t right_slice) const;
         void Draw_Stretched_Resampled(int16_t x, int16_t y, int16_t width,
@@ -212,6 +219,98 @@ namespace ui_kit {
         uint8_t plate_face = 0;
     };
 
+    // One button's state, in the colony's own terms. The colony's
+    // buttons are two-frame sprites (fields.cpp Draw_Visible_Fields
+    // and Draw_Field: a held button draws frame 1, a selected
+    // multi-button draws frame 1): rest is frame 0, active and
+    // pressed are both frame 1 -- active is the latched selection
+    // (the sort column, the blue selector), pressed the momentary
+    // hold (the RETURN's orange text). A button the colony never
+    // disables has no disabled frame: it renders as rest, and a
+    // disabled metal button is the flat engine-drawn form below.
+    enum class Button_State {
+        Rest,
+        Pressed,
+        Active,
+        Disabled,
+    };
+
+    // What a button is, visually. The colony has two button
+    // families, and the settings screen's value cells are a third
+    // use of the same click-a-cell idea:
+    // - Selector: a derived COLSUM sort-button frame (Tab_Frames),
+    //   stretched to the button width, label rendered at runtime.
+    // - Metal: the engine-drawn raised button -- the colony build
+    //   screen's REFIT / DESIGN / CANCEL / OK are baked sprites,
+    //   so there is no separable metal frame; the bevel is the
+    //   colony scrollbar thumb's (colsum.cpp Draw_Bar_Indicator:
+    //   body 229, light 230 top/left, dark 228 bottom/right),
+    //   engine-drawn in the theme's colours.
+    // - Image: a derived sprite drawn at native size, rest and
+    //   pressed frames (the colony RETURN, entry 1: grey bevel and
+    //   dark text at rest, orange text pressed), falling back to
+    //   Metal with the same label when the frames are missing.
+    // - Toggle: a colony-list square value cell, bright when on,
+    //   grey when off, bare when disabled (the colony's no-button
+    //   state: a colony that cannot buy gets no live button, only
+    //   the dim disc baked into its background).
+    // - Cell: a rectangular value cell with a down chevron, the
+    //   dropdown trigger; active while its popup is open (blue,
+    //   like the active selector), chevronless when disabled.
+    enum class Button_Kind {
+        Metal,
+        Selector,
+        Image,
+        Toggle,
+        Cell,
+    };
+
+    // Button colours and label fonts, in the theme's palette. The
+    // metal face/highlight/shadow are the scrollbar thumb's bevel
+    // remapped to the menu palette (238/243/232 -- the derived
+    // RETURN's modal face grey, its brightest grey, its dark
+    // edge); the primary (blue) face is the active selector's blue
+    // (138, highlight 154), the same blue the colony's "No Enemy
+    // Presence" selector and the settings' Show more already use.
+    // The toggle fills are the settings squares' own colours (on:
+    // 154 base, 247 centre; off: 236 base, 246 centre), and the
+    // cell is the list panel's own border/interior (234/230).
+    struct Button_Style {
+        uint8_t face = 0;
+        uint8_t highlight = 0;
+        uint8_t shadow = 0;
+        uint8_t primary_face = 0;
+        uint8_t primary_highlight = 0;
+        uint8_t disabled_face = 0;
+        uint8_t cell_interior = 0;
+        uint8_t cell_border = 0;
+        uint8_t toggle_on_base = 0;
+        uint8_t toggle_on_bright = 0;
+        uint8_t toggle_off_base = 0;
+        uint8_t toggle_off_bright = 0;
+        // Metal labels: dark text on the metal face, light text on
+        // the blue face. Value-cell labels: the colony cyan row
+        // text at rest, light text on the blue active fill. Both
+        // are style 4 (the screen's own text style); the tab font
+        // stays style 2. Non-owning; null = no label.
+        const Font* label_font = nullptr;
+        // Pressed metal label: the orange the real RETURN lights
+        // up with when held (menu palette 221, the pressed
+        // frame's own orange). A pressed metal button prints its
+        // label in this font; null falls back to label_font.
+        const Font* label_pressed_font = nullptr;
+        const Font* cell_font = nullptr;
+    };
+
+    // The RETURN button's derived frames: rest and pressed (orange
+    // text). Both null falls back to the engine-drawn metal
+    // button; a missing pressed frame falls back to the rest
+    // frame, like the sprite's own single-frame case.
+    struct Image_Button_Frames {
+        Frame normal;
+        Frame pressed;
+    };
+
     // A theme is everything about a window's look that varies with
     // the art set: fonts, tab frames, window chrome, tab metrics.
     // Screens take a const Theme&; a hi-res asset set is a second
@@ -241,6 +340,11 @@ namespace ui_kit {
         // colours (see Spacing / List_Style above).
         virtual ui_kit::Spacing Spacing() const = 0;
         virtual ui_kit::List_Style List_Style() const = 0;
+        // The button colours and label fonts (see Button_Style).
+        virtual ui_kit::Button_Style Button_Style() const = 0;
+        // The RETURN button's derived frames (see
+        // Image_Button_Frames).
+        virtual ui_kit::Image_Button_Frames Return_Frames() const = 0;
     };
 
     // The colony look: derived COLSUM sort-button frames, font
@@ -253,12 +357,15 @@ namespace ui_kit {
     class Colony_Theme : public Theme {
       public:
         Colony_Theme(Frame tab_normal, Frame tab_active,
+            Frame return_normal, Frame return_pressed,
             const s_colors& title_colors);
         const Font& Tab_Font() const override;
         ui_kit::Tab_Frames Tab_Frames() const override;
         ui_kit::Frame_Style Frame_Style() const override;
         ui_kit::Spacing Spacing() const override;
         ui_kit::List_Style List_Style() const override;
+        ui_kit::Button_Style Button_Style() const override;
+        ui_kit::Image_Button_Frames Return_Frames() const override;
         int16_t Tab_Padding() const override;
         int16_t Tab_Gap() const override;
         int16_t Tab_Height() const override;
@@ -267,22 +374,80 @@ namespace ui_kit {
       private:
         Engine_Font tab_font_;
         Engine_Font title_font_;
+        Engine_Font button_font_;
+        Engine_Font button_pressed_font_;
+        Engine_Font cell_font_;
         Frame tab_normal_;
         Frame tab_active_;
+        Frame return_normal_;
+        Frame return_pressed_;
     };
 
     // Loads the colony theme's frames (the derived selector-frame
-    // sprite, both states) from the screen's allocation base and
-    // returns the theme. The screen never names a sprite id and
-    // never sees a frame pointer: the theme owns its assets, so a
-    // hi-res asset set plugs in here, not in the screens. A frame
-    // that fails to load stays null, and the tab bar falls back to
-    // the engine-drawn button.
+    // sprite, both states, and the derived RETURN sprite, rest and
+    // pressed) from the screen's allocation base and returns the
+    // theme. The screen never names a sprite id and never sees a
+    // frame pointer: the theme owns its assets, so a hi-res asset
+    // set plugs in here, not in the screens. A frame that fails to
+    // load stays null, and the tab bar falls back to the
+    // engine-drawn button.
     std::unique_ptr<Colony_Theme> Load_Colony_Theme(
         void* allocation_base, const s_colors& title_colors);
 
+    // One button: a rect, a kind, a state, an optional label, drawn
+    // by the theme. The screen builds one per clickable button and
+    // draws it; the field rects come from the same geometry, so the
+    // click fields and the drawing can never drift apart. A label
+    // must outlive the button: Set_Label keeps the caller's
+    // pointer, it does not copy the text. Metal labels are centred
+    // vertically by the field system's own rule (fields.cpp
+    // Draw_Visible_Fields: cy = y + (y_end - y)/2 -
+    // (font_height-1)/2); selector labels use the theme's
+    // Tab_Label_Y_Offset, like the colony's baked labels (ink rows
+    // 8-16 of the 24 px frame). A cell's label sits on the row's
+    // text baseline instead: the colony settings screen prints a
+    // row's value text on the same line as its title, so the
+    // screen sets the label's offset from the cell top with
+    // Set_Label_Y_Offset (trigger_y+4 here: the row text is y+9,
+    // the cell starts at y+5); without it the cell centres like a
+    // metal button. Primary is the blue face: a primary action, or
+    // a latched active button. Pressed inverts the metal bevel;
+    // active is the latched selection.
+    class Button {
+      public:
+        Button(int16_t x, int16_t y, int16_t w, int16_t h,
+            Button_Kind kind, const Theme& theme);
+        void Set_Label(const char* label);
+        void Set_Label_Y_Offset(int16_t dy);
+        void Set_State(Button_State state);
+        void Set_Primary(bool primary);
+        void Draw() const;
+
+      private:
+        void Draw_Metal() const;
+        void Draw_Selector() const;
+        void Draw_Image() const;
+        void Draw_Toggle() const;
+        void Draw_Cell() const;
+        void Print_Centred_Label(const Font& font, bool active) const;
+
+        int16_t x_;
+        int16_t y_;
+        int16_t width_;
+        int16_t height_;
+        Button_Kind kind_;
+        const Theme& theme_;
+        const char* label_ = nullptr;
+        int16_t label_y_offset_ = 0;
+        bool label_y_offset_set_ = false;
+        Button_State state_ = Button_State::Rest;
+        bool primary_ = false;
+    };
+
     // A row of tabs: layout (widths from label + padding, gap
-    // between tabs) and drawing (frame + centred label). Owns the
+    // between tabs) and drawing, one Selector Button per tab, so
+    // the tabs are kit buttons with the same frame, text and
+    // pressed/active states as every other button. Owns the
     // geometry, so the click fields and the drawing can never drift
     // apart: the screen builds its fields from Tab_Bar::tabs().
     // A tab's label must outlive the bar: Add_Tab keeps the
@@ -292,12 +457,14 @@ namespace ui_kit {
         struct Tab {
             const char* label = nullptr;
             bool active = false;
+            bool pressed = false;
             int16_t x = 0;
             int16_t width = 0;
         };
 
         Tab_Bar(int16_t x, int16_t y, const Theme& theme);
-        void Add_Tab(const char* label, bool active);
+        void Add_Tab(const char* label, bool active,
+            bool pressed = false);
         const std::vector<Tab>& tabs() const;
         int16_t y() const;
         int16_t height() const;

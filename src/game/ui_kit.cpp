@@ -104,6 +104,57 @@ namespace ui_kit {
         constexpr uint8_t kList_Divider_Mid = 235;
         constexpr uint8_t kList_Divider_Right = 232;
         constexpr uint8_t kList_Plate_Face = 233;
+
+        // Button colours, in menu-palette indices (see
+        // Button_Style in ui_kit.h for the measurements): the
+        // metal face/highlight/shadow are the colony scrollbar
+        // thumb's bevel (colsum.cpp Draw_Bar_Indicator: body 229,
+        // light 230 top/left, dark 228 bottom/right), remapped to
+        // the menu palette the settings screen already uses for
+        // its metal buttons -- but at the colony buttons' own
+        // lightness, not the old too-light values: the face is
+        // the derived RETURN's modal face grey (238, the most
+        // common interior grey of the remapped RETURN sprite),
+        // the highlight its brightest grey (243), the shadow the
+        // dark edge (232, already matching the RETURN's dark
+        // edge). The old face/highlight (242/247) sat above the
+        // RETURN's whole face range (brightest 243) and above
+        // the colony build buttons' dithered faces (52-112).
+        // The blue face is the active selector's blue (138,
+        // highlight 154); the disabled face is the panel border
+        // mid-grey (234); the toggle fills are the settings
+        // squares' own (on 154/247, off 236/246); the cell is
+        // the list panel's own border/interior (234/230).
+        constexpr uint8_t kMetal_Face = 238;
+        constexpr uint8_t kMetal_Highlight = 243;
+        constexpr uint8_t kMetal_Shadow = 232;
+        constexpr uint8_t kPrimary_Face = 138;
+        constexpr uint8_t kPrimary_Highlight = 154;
+        constexpr uint8_t kButton_Disabled_Face = 234;
+        constexpr uint8_t kCell_Interior = 230;
+        constexpr uint8_t kCell_Border = 234;
+        constexpr uint8_t kToggle_On_Base = 154;
+        constexpr uint8_t kToggle_On_Bright = 247;
+        constexpr uint8_t kToggle_Off_Base = 236;
+        constexpr uint8_t kToggle_Off_Bright = 246;
+
+        // Metal-button label ramps, in menu-palette indices: flat
+        // dark text on the metal face, flat light text on the blue
+        // face (the settings screen's own g_dark/g_light text
+        // colours, now owned by the theme).
+        const s_colors kButton_Label_Dark = {{230, 230, 230, 230, 230, 230, 230, 230}};
+        const s_colors kButton_Label_Light = {{247, 247, 247, 247, 247, 247, 247, 247}};
+        // Pressed metal label: the orange the real RETURN lights
+        // up with when held (menu palette 221, (176, 112, 44) —
+        // the pressed frame's own orange, the most common ink of
+        // the pixels that differ between the derived rest/pressed
+        // frames). A pressed metal button's label is this orange,
+        // like the sprite's pressed text.
+        const s_colors kButton_Label_Pressed = {{221, 221, 221, 221, 221, 221, 221, 221}};
+        // Value-cell label ramps: the colony cyan row text at
+        // rest, light text on the blue active fill.
+        const s_colors kCell_Label_Normal = {{150, 154, 155, 151, 152, 153, 154, 155}};
+        const s_colors kCell_Label_Active = {{247, 247, 247, 247, 247, 247, 247, 247}};
     } // namespace
 
     Engine_Font::Engine_Font(int16_t style, const s_colors& normal_colors,
@@ -128,6 +179,21 @@ namespace ui_kit {
         fonts::Print(x, y, text);
     }
 
+    int16_t Frame::Width() const {
+        return frame_ == nullptr ? 0 : frame_->width;
+    }
+
+    int16_t Frame::Height() const {
+        return frame_ == nullptr ? 0 : frame_->height;
+    }
+
+    void Frame::Draw(int16_t x, int16_t y) const {
+        if (frame_ == nullptr) {
+            return;
+        }
+        sprite_art::Draw_Sprite_Frame(frame_, x, y);
+    }
+
     void Frame::Draw_Stretched(int16_t x, int16_t y, int16_t width,
         int16_t left_slice, int16_t right_slice) const {
         if (frame_ == nullptr) {
@@ -147,13 +213,21 @@ namespace ui_kit {
     }
 
     Colony_Theme::Colony_Theme(Frame tab_normal, Frame tab_active,
+        Frame return_normal, Frame return_pressed,
         const s_colors& title_colors)
         // Tab labels are engine font style 2: the baked colony
         // labels measure as style 2 (widths within 1-2 px per
-        // label, ink 8-9 rows tall). The title keeps style 4.
+        // label, ink 8-9 rows tall). The title, button labels and
+        // cell labels keep style 4.
         : tab_font_(2, kTab_Label_Normal, kTab_Label_Active),
           title_font_(4, title_colors, title_colors),
-          tab_normal_(tab_normal), tab_active_(tab_active) {}
+          button_font_(4, kButton_Label_Dark, kButton_Label_Light),
+          button_pressed_font_(4, kButton_Label_Pressed,
+              kButton_Label_Pressed),
+          cell_font_(4, kCell_Label_Normal, kCell_Label_Active),
+          tab_normal_(tab_normal), tab_active_(tab_active),
+          return_normal_(return_normal),
+          return_pressed_(return_pressed) {}
 
     const Font& Colony_Theme::Tab_Font() const {
         return tab_font_;
@@ -219,6 +293,33 @@ namespace ui_kit {
         return style;
     }
 
+    ui_kit::Button_Style Colony_Theme::Button_Style() const {
+        ui_kit::Button_Style style;
+        style.face = kMetal_Face;
+        style.highlight = kMetal_Highlight;
+        style.shadow = kMetal_Shadow;
+        style.primary_face = kPrimary_Face;
+        style.primary_highlight = kPrimary_Highlight;
+        style.disabled_face = kButton_Disabled_Face;
+        style.cell_interior = kCell_Interior;
+        style.cell_border = kCell_Border;
+        style.toggle_on_base = kToggle_On_Base;
+        style.toggle_on_bright = kToggle_On_Bright;
+        style.toggle_off_base = kToggle_Off_Base;
+        style.toggle_off_bright = kToggle_Off_Bright;
+        style.label_font = &button_font_;
+        style.label_pressed_font = &button_pressed_font_;
+        style.cell_font = &cell_font_;
+        return style;
+    }
+
+    ui_kit::Image_Button_Frames Colony_Theme::Return_Frames() const {
+        ui_kit::Image_Button_Frames frames;
+        frames.normal = return_normal_;
+        frames.pressed = return_pressed_;
+        return frames;
+    }
+
     int16_t Colony_Theme::Tab_Padding() const {
         return kTab_Padding;
     }
@@ -242,16 +343,229 @@ namespace ui_kit {
                 allocation_base)),
             Frame(sprite_art::Load_Sprite_Frame("selector-frame", "active",
                 allocation_base)),
+            Frame(sprite_art::Load_Sprite_Frame("return", "normal",
+                allocation_base)),
+            Frame(sprite_art::Load_Sprite_Frame("return", "pressed",
+                allocation_base)),
             title_colors);
+    }
+
+    Button::Button(int16_t x, int16_t y, int16_t w, int16_t h,
+        Button_Kind kind, const Theme& theme)
+        : x_(x), y_(y), width_(w), height_(h), kind_(kind),
+          theme_(theme) {}
+
+    void Button::Set_Label(const char* label) {
+        label_ = label;
+    }
+
+    void Button::Set_Label_Y_Offset(int16_t dy) {
+        label_y_offset_ = dy;
+        label_y_offset_set_ = true;
+    }
+
+    void Button::Set_State(Button_State state) {
+        state_ = state;
+    }
+
+    void Button::Set_Primary(bool primary) {
+        primary_ = primary;
+    }
+
+    void Button::Draw() const {
+        switch (kind_) {
+            case Button_Kind::Metal:
+                Draw_Metal();
+                break;
+            case Button_Kind::Selector:
+                Draw_Selector();
+                break;
+            case Button_Kind::Image:
+                Draw_Image();
+                break;
+            case Button_Kind::Toggle:
+                Draw_Toggle();
+                break;
+            case Button_Kind::Cell:
+                Draw_Cell();
+                break;
+        }
+    }
+
+    void Button::Print_Centred_Label(const Font& font, bool active) const {
+        if (label_ == nullptr) {
+            return;
+        }
+        const int16_t label_x = (int16_t)(x_ +
+            (width_ - font.Width(label_)) / 2);
+        // The field system's own centring (fields.cpp
+        // Draw_Visible_Fields): half the button height, less half
+        // the font height rounded down. Not (h - fh)/2: that sits
+        // 1 px high (measured: the Show more label inked at y+4,
+        // the pre-kit code and the engine both put it at y+5).
+        const int16_t label_y = (int16_t)(y_ + height_ / 2 -
+            (font.Height() - 1) / 2);
+        font.Print(label_x, label_y, label_, active);
+    }
+
+    void Button::Draw_Metal() const {
+        const Button_Style style = theme_.Button_Style();
+        // Blue face for a primary action or a latched-active
+        // button; the flat mid-grey face when disabled.
+        const bool blue = primary_ || state_ == Button_State::Active;
+        const uint8_t face = state_ == Button_State::Disabled
+            ? style.disabled_face
+            : (blue ? style.primary_face : style.face);
+        graphics::Fill(x_, y_, (int16_t)(x_ + width_ - 1),
+            (int16_t)(y_ + height_ - 1), face);
+        if (state_ == Button_State::Disabled) {
+            // Flat, bordered, no bevel: the colony never disables
+            // a button, so there is no disabled bevel to copy.
+            graphics::Box(x_, y_, width_, height_, 1, style.shadow);
+        } else {
+            // Raised bevel: light top/left, dark bottom/right.
+            // Pressed inverts it (dark top/left, light
+            // bottom/right); a primary button's light edge is its
+            // own highlight, not the metal one.
+            const uint8_t light = blue ? style.primary_highlight
+                                       : style.highlight;
+            const uint8_t top =
+                state_ == Button_State::Pressed ? style.shadow : light;
+            const uint8_t bottom =
+                state_ == Button_State::Pressed ? light : style.shadow;
+            graphics::Fill(x_, y_, (int16_t)(x_ + width_ - 1), y_, top);
+            graphics::Fill(x_, y_, x_, (int16_t)(y_ + height_ - 1), top);
+            graphics::Fill(x_, (int16_t)(y_ + height_ - 1),
+                (int16_t)(x_ + width_ - 1), (int16_t)(y_ + height_ - 1),
+                bottom);
+            graphics::Fill((int16_t)(x_ + width_ - 1), y_,
+                (int16_t)(x_ + width_ - 1), (int16_t)(y_ + height_ - 1),
+                bottom);
+        }
+        // A pressed metal button's label lights up orange, like
+        // the real RETURN's pressed text; every other state keeps
+        // the dark/light label. A null pressed font falls back to
+        // the plain label font.
+        const Font* label_font = style.label_font;
+        if (state_ == Button_State::Pressed
+            && style.label_pressed_font != nullptr) {
+            label_font = style.label_pressed_font;
+        }
+        if (label_font != nullptr) {
+            Print_Centred_Label(*label_font,
+                blue && state_ != Button_State::Disabled);
+        }
+    }
+
+    void Button::Draw_Selector() const {
+        const Tab_Frames frames = theme_.Tab_Frames();
+        // Active and pressed are both the colony's frame 1 (the
+        // selected sort column's blue gradient); a disabled
+        // selector has no frame of its own and renders as rest.
+        const bool selected = state_ == Button_State::Active ||
+            state_ == Button_State::Pressed;
+        const Tab_Frame& frame = selected ? frames.active : frames.normal;
+        if (!frame.frame.Is_Null()) {
+            if (frame.resample_middle) {
+                frame.frame.Draw_Stretched_Resampled(x_, y_, width_,
+                    frames.left_slice, frames.right_slice);
+            } else {
+                frame.frame.Draw_Stretched(x_, y_, width_,
+                    frames.left_slice, frames.right_slice);
+            }
+        } else {
+            graphics::Fill(x_, y_, (int16_t)(x_ + width_ - 1),
+                (int16_t)(y_ + height_ - 1),
+                selected ? frames.fallback_fill_active
+                         : frames.fallback_fill_normal);
+            graphics::Box(x_, y_, width_, height_, 1,
+                frames.fallback_border);
+        }
+        if (label_ != nullptr) {
+            const Font& font = theme_.Tab_Font();
+            const int16_t label_x = (int16_t)(x_ +
+                (width_ - font.Width(label_)) / 2);
+            font.Print(label_x,
+                (int16_t)(y_ + theme_.Tab_Label_Y_Offset()), label_,
+                selected);
+        }
+    }
+
+    void Button::Draw_Image() const {
+        const Image_Button_Frames frames = theme_.Return_Frames();
+        const Frame& frame = state_ == Button_State::Pressed &&
+                !frames.pressed.Is_Null()
+            ? frames.pressed
+            : frames.normal;
+        if (!frame.Is_Null()) {
+            frame.Draw(x_, y_);
+            return;
+        }
+        // No derived frames (stale base.zip): the engine-drawn
+        // metal button with the same label.
+        Draw_Metal();
+    }
+
+    void Button::Draw_Toggle() const {
+        const Button_Style style = theme_.Button_Style();
+        graphics::Fill(x_, y_, (int16_t)(x_ + width_ - 1),
+            (int16_t)(y_ + height_ - 1), style.cell_interior);
+        graphics::Box(x_, y_, width_, height_, 1, style.cell_border);
+        if (state_ == Button_State::Disabled) {
+            // Bare cell, no fill: the colony's no-button state.
+            return;
+        }
+        // Pressed renders as rest: the colony's toggle has no
+        // pressed frame (its two-frame buy button's frame 1 means
+        // "bought", not "held").
+        const bool on = state_ == Button_State::Active;
+        const uint8_t base =
+            on ? style.toggle_on_base : style.toggle_off_base;
+        const uint8_t bright =
+            on ? style.toggle_on_bright : style.toggle_off_bright;
+        // Filled centre, inset two pixels from the border, with a
+        // small pale centre.
+        graphics::Fill((int16_t)(x_ + 2), (int16_t)(y_ + 2),
+            (int16_t)(x_ + width_ - 3), (int16_t)(y_ + height_ - 3),
+            base);
+        graphics::Fill((int16_t)(x_ + width_ / 2 - 2),
+            (int16_t)(y_ + height_ / 2 - 2),
+            (int16_t)(x_ + width_ / 2 + 1),
+            (int16_t)(y_ + height_ / 2 + 1), bright);
+    }
+
+    void Button::Draw_Cell() const {
+        const Button_Style style = theme_.Button_Style();
+        const bool active = state_ == Button_State::Active;
+        graphics::Fill(x_, y_, (int16_t)(x_ + width_ - 1),
+            (int16_t)(y_ + height_ - 1),
+            active ? style.primary_face : style.cell_interior);
+        graphics::Box(x_, y_, width_, height_, 1, style.cell_border);
+        if (label_ != nullptr && style.cell_font != nullptr) {
+            const Font& font = *style.cell_font;
+            // The value text sits on the row's text baseline when
+            // the screen sets a label offset (trigger_y+4 here);
+            // otherwise it centres like a metal button.
+            const int16_t label_y = label_y_offset_set_
+                ? (int16_t)(y_ + label_y_offset_)
+                : (int16_t)(y_ + height_ / 2 -
+                    (font.Height() - 1) / 2);
+            font.Print((int16_t)(x_ + 4), label_y, label_, active);
+            if (state_ != Button_State::Disabled) {
+                font.Print((int16_t)(x_ + width_ - 12), label_y, "v",
+                    active);
+            }
+        }
     }
 
     Tab_Bar::Tab_Bar(int16_t x, int16_t y, const Theme& theme)
         : x_(x), y_(y), theme_(theme) {}
 
-    void Tab_Bar::Add_Tab(const char* label, bool active) {
+    void Tab_Bar::Add_Tab(const char* label, bool active, bool pressed) {
         Tab tab;
         tab.label = label;
         tab.active = active;
+        tab.pressed = pressed;
         tab.width = (int16_t)(theme_.Tab_Font().Width(label) +
             2 * theme_.Tab_Padding());
         tab.x = tabs_.empty() ? x_ : (int16_t)(End_X() + theme_.Tab_Gap());
@@ -279,31 +593,14 @@ namespace ui_kit {
     }
 
     void Tab_Bar::Draw() const {
-        const Tab_Frames frames = theme_.Tab_Frames();
-        const Font& font = theme_.Tab_Font();
         for (const Tab& tab : tabs_) {
-            const Tab_Frame& frame = tab.active ? frames.active : frames.normal;
-            if (!frame.frame.Is_Null()) {
-                if (frame.resample_middle) {
-                    frame.frame.Draw_Stretched_Resampled(tab.x, y_,
-                        tab.width, frames.left_slice, frames.right_slice);
-                } else {
-                    frame.frame.Draw_Stretched(tab.x, y_, tab.width,
-                        frames.left_slice, frames.right_slice);
-                }
-            } else {
-                graphics::Fill(tab.x, y_, (int16_t)(tab.x + tab.width - 1),
-                    (int16_t)(y_ + theme_.Tab_Height() - 1),
-                    tab.active ? frames.fallback_fill_active
-                               : frames.fallback_fill_normal);
-                graphics::Box(tab.x, y_, tab.width, theme_.Tab_Height(), 1,
-                    frames.fallback_border);
-            }
-            const int16_t label_x = (int16_t)(tab.x +
-                (tab.width - font.Width(tab.label)) / 2);
-            font.Print(label_x,
-                (int16_t)(y_ + theme_.Tab_Label_Y_Offset()), tab.label,
-                tab.active);
+            Button button(tab.x, y_, tab.width, theme_.Tab_Height(),
+                Button_Kind::Selector, theme_);
+            button.Set_Label(tab.label);
+            button.Set_State(tab.pressed ? Button_State::Pressed
+                : (tab.active ? Button_State::Active
+                              : Button_State::Rest));
+            button.Draw();
         }
     }
 

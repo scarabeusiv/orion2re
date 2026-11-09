@@ -18,14 +18,12 @@
 #include "game/fields.h"
 #include "game/fonts.h"
 #include "game/graphics.h"
-#include "game/metal_button.h"
 #include "game/mox2.h"
 #include "game/mouse.h"
 #include "game/palette.h"
 #include "game/platform.h"
 #include "game/russ.h"
 #include "game/settings_screen.h"
-#include "game/sprite_art.h"
 #include "game/timer.h"
 #include "game/ui_kit.h"
 #include "game/user_paths.h"
@@ -40,7 +38,7 @@ namespace SETTINGS_SCREEN {
         // (COLBLDG.LBX entry 0, colbldg.cpp; COLSUM.LBX, colsum.cpp):
         // the screen fills the whole 640x480 window. The category
         // selector bar sits at the bottom, like the colony summary's
-        // sort buttons (Name / Population / Food ...), with Show more
+        // sort buttons (Name / Population / Food ...), with MORE
         // and RETURN beside it on the same line. The list fills the
         // main panel above it, with SETTING / VALUE header plates
         // like the colony list's header boxes, and the description
@@ -62,9 +60,13 @@ namespace SETTINGS_SCREEN {
         // menu-palette indices, the same technique the game itself
         // uses for its chrome:
         // - Border, list panel, header plates, description box,
-        //   toggle squares, scrollbar track/thumb: baked into the
-        //   640x480 background (anims[0]); colsum.cpp draws no boxes
+        //   scrollbar track/thumb: baked into the 640x480
+        //   background (anims[0]); colsum.cpp draws no boxes
         //   itself, so there is no separable sprite for any of them.
+        //   The toggle squares and dropdown cells are kit buttons
+        //   instead (game/ui_kit.h: Button, Toggle/Cell kinds):
+        //   the colony list's value cell, engine-drawn in the
+        //   panel's own border/interior colours.
         // - Category selectors: COLSUM anims[4..10] are real sprites,
         //   but their labels are baked in (Name, Population, Food,
         //   ...) and do not match Game Internals / Gameplay / Mods;
@@ -105,13 +107,14 @@ namespace SETTINGS_SCREEN {
         //   sprite remapped to the menu palette's grey family (see
         //   tools/sprites/README.md for why the menu palette is
         //   MAINMENU.LBX entry 2's embedded palette, not FONTS.LBX
-        //   entry 1). The engine-drawn metallic RETURN below is the
-        //   fallback when the derived frame is missing. Loading
-        //   palette 1 for the whole screen is not an alternative: it
-        //   turns the settings text pink/red and the panels
-        //   blue/green/red. The sprite's pressed frame (orange text)
-        //   is derived too, and wired in Return_Frame below: while
-        //   the mouse is held on RETURN, the field system holds
+        //   entry 1). Loading palette 1 for the whole screen is
+        //   not an alternative: it turns the settings text
+        //   pink/red and the panels blue/green/red. The engine-
+        //   drawn metallic RETURN is the fallback when the derived
+        //   frames are missing. The sprite's pressed frame (orange
+        //   text) is derived too, and the button is a kit Image
+        //   button (game/ui_kit.h: Button): while the mouse is held
+        //   on RETURN, the field system holds
         //   fields::down_mouse_button on the RETURN field and the
         //   auto function redraws the screen on every hold tick, so
         //   the draw picks the pressed frame until release.
@@ -180,16 +183,18 @@ namespace SETTINGS_SCREEN {
         // is the frame's bottom bar (24 tall, like the colony's sort
         // buttons), so its y and end come from the frame
         // (Bottom_Bar_Y/Bottom_Bar_End), never from constants here.
-        // RETURN at the right end of the bottom bar, and the MORE
-        // toggle to its left, right-aligned against it with an 8 px
-        // gap. The MORE button's width is computed from its labels
-        // (More_Button_Width), so it never clips and never wastes
-        // space: "MORE"/"LESS" are short on purpose, to keep space
-        // on the line. RETURN is 76 px wide (the old 68 px clipped
-        // its label); the derived sprite frame is 85 px.
+        // MORE and RETURN, side by side at the right end of the
+        // bottom bar. MORE is the short label (the game keeps one
+        // button for the inverse activity: the label stays MORE and
+        // the lit state says it is on), 69 px wide at x 471 —
+        // right-aligned against RETURN with an 8 px gap, the width
+        // the verified metal-button version measured for its labels
+        // plus padding. "RETURN" measures ~64 px, so the button is
+        // 76 px wide (the old 88/68 px widths clipped both labels).
+        constexpr int16_t SHOW_MORE_X = 471;
+        constexpr int16_t SHOW_MORE_W = 69;
         constexpr int16_t RETURN_X = 548;
         constexpr int16_t RETURN_W = 76;
-        constexpr int16_t MORE_GAP = 8;
         constexpr int16_t TEXT_WIDTH = 608;
 
         // Colony chrome, in menu-palette indices (MAINMENU.LBX
@@ -225,19 +230,12 @@ namespace SETTINGS_SCREEN {
         s_colors g_colony_highlight_colors = {{150, 155, 155, 152, 153, 155, 155, 155}};
         s_colors g_colony_dim_colors = {{244, 249, 248, 249, 248, 249, 248, 249}};
 
-        // Flat text colours for the metallic buttons: dark text on
-        // the domed metal face, light text on the blue primary
-        // face. A font style maps glyph shade to a palette index,
-        // so a flat array renders a single-colour label.
-        s_colors g_dark_text_colors = {{230, 230, 230, 230, 230, 230, 230, 230}};
+        // Flat light text colour for the blue selection bar in the
+        // Resolution dropdown popup. A font style maps glyph shade
+        // to a palette index, so a flat array renders a
+        // single-colour label. (The metal buttons' dark/light label
+        // colours live in the theme now, ui_kit::Button_Style.)
         s_colors g_light_text_colors = {{247, 247, 247, 247, 247, 247, 247, 247}};
-        // Pressed button label: the orange the real RETURN lights
-        // up with when held (palette 221, the pressed frame's own
-        // orange), so a latched toggle reads as lit.
-        s_colors g_button_pressed_text_colors = {{221, 221, 221, 221, 221, 221, 221, 221}};
-        // Disabled button label: dimmer than the dark text, so a
-        // disabled button reads as inactive on the flat face.
-        s_colors g_button_disabled_text_colors = {{234, 234, 234, 234, 234, 234, 234, 234}};
 
         // The colony listing's squares are the grid cells of the
         // colony summary list (colsum.cpp / COLSUM.LBX): each data
@@ -261,64 +259,17 @@ namespace SETTINGS_SCREEN {
         // a buy, so it takes the square — the colony list's value
         // cell — and the diamond is retired.
         //
-        // The squares below are engine-drawn in the list panel's
-        // own border/interior colours (the colony's cells are baked
-        // art and cannot be drawn here). A toggle is a square cell:
-        // on fills it bright (the most saturated menu blue, 138,
-        // with a pale cyan-blue body, 154, and a near-white centre,
-        // 247); off fills it in the menu grey ramp (232 rim, 236
-        // body, 246 centre); disabled is the bare cell with no
-        // fill, like the colony's no-button state. Dropdowns and
-        // editable values take a rectangular cell of the same
+        // The squares are engine-drawn in the list panel's own
+        // border/interior colours (the colony's cells are baked
+        // art and cannot be drawn here), by the kit now
+        // (game/ui_kit.h: Button, Toggle/Cell kinds): a toggle is
+        // a square cell -- on fills it bright (pale cyan-blue body
+        // 154, near-white centre 247), off fills it in the menu
+        // grey ramp (236 body, 246 centre), disabled is the bare
+        // cell with no fill, like the colony's no-button state.
+        // Dropdowns take a rectangular cell of the same
         // border/interior, sized to their text, and all selectors
         // end at SELECTOR_RIGHT_X.
-        constexpr uint8_t SQUARE_ON_BASE = 154;
-        constexpr uint8_t SQUARE_ON_BRIGHT = 247;
-        constexpr uint8_t SQUARE_OFF_BASE = 236;
-        constexpr uint8_t SQUARE_OFF_BRIGHT = 246;
-
-        enum e_toggle_state {
-            TOGGLE_OFF,
-            TOGGLE_ON,
-            TOGGLE_DISABLED,
-        };
-
-        // Draw a colony-list square cell at (x, y), w by h: thin
-        // border, dark interior, in the list panel's own colours.
-        void Draw_Square_Cell(int16_t x, int16_t y, int16_t w, int16_t h) {
-            graphics::Fill(x, y, x + w - 1, y + h - 1, PANEL_INTERIOR);
-            graphics::Box(x, y, w, h, 1, PANEL_BORDER);
-        }
-
-        // Draw a square toggle at (x, y): a SQUARE_SIZE cell, filled
-        // bright when on, grey when off, bare (border only) when
-        // disabled.
-        void Draw_Square_Toggle(int16_t x, int16_t y, e_toggle_state state) {
-            Draw_Square_Cell(x, y, SQUARE_SIZE, SQUARE_SIZE);
-            if (state == TOGGLE_DISABLED) {
-                return;
-            }
-            const uint8_t base =
-                state == TOGGLE_ON ? SQUARE_ON_BASE : SQUARE_OFF_BASE;
-            const uint8_t bright =
-                state == TOGGLE_ON ? SQUARE_ON_BRIGHT : SQUARE_OFF_BRIGHT;
-            // Filled centre, inset two pixels from the border.
-            graphics::Fill(x + 2, y + 2, x + SQUARE_SIZE - 3,
-                y + SQUARE_SIZE - 3, base);
-            // Small pale centre.
-            graphics::Fill(x + SQUARE_SIZE / 2 - 2, y + SQUARE_SIZE / 2 - 2,
-                x + SQUARE_SIZE / 2 + 1, y + SQUARE_SIZE / 2 + 1, bright);
-        }
-
-        // Raised metallic button, like the colony build screen's
-        // REFIT / DESIGN / CANCEL / OK: light face, bright top and
-        // left edges, dark bottom and right edges, dark label.
-        // A primary (blue) button takes the Auto Build blue face
-        // with a light label instead.
-        constexpr uint8_t METAL_FACE = 242;
-        constexpr uint8_t METAL_HIGHLIGHT = 247;
-        constexpr uint8_t METAL_SHADOW = 232;
-        constexpr uint8_t PRIMARY_FACE = 138;
 
         enum e_apply_result {
             APPLY_LIVE,
@@ -328,7 +279,7 @@ namespace SETTINGS_SCREEN {
 
         // Categories, in selector order. A category button is the
         // cleanest fit for the existing field system: the screen is
-        // already a scrolling list with RETURN/Show more fields, so a
+        // already a scrolling list with RETURN/MORE fields, so a
         // category is one more row of hidden fields, now in the
         // bottom selector bar like the colony summary's sort buttons,
         // and each category keeps its own scroll position and
@@ -393,7 +344,7 @@ namespace SETTINGS_SCREEN {
             int16_t scroll_field = -1;
             int16_t done_field = -1;
             int16_t show_all_field = -1;
-            // Show more is global for the screen, not per category: the user
+            // MORE is global for the screen, not per category: the user
             // is either browsing the most-used settings or everything.
             // It resets when the screen reopens (fresh state).
             bool show_all = false;
@@ -416,21 +367,17 @@ namespace SETTINGS_SCREEN {
 
         s_settings_screen_state g_state;
 
-        // Derived sprite frames (tools/extract_sprite.py), loaded on
-        // every entry to the screen from MOX::screen_seg, like the
-        // menu's button frames. Null when the frames are missing
-        // (a base.zip predating them): every use below falls back to
-        // the engine-drawn equivalent.
-        s_animation_header* g_return_frame = nullptr;
-        // Pressed RETURN frame (orange text), same 85x26 size, so
-        // the RETURN geometry follows g_return_frame either way.
-        s_animation_header* g_return_frame_pressed = nullptr;
-        // The colony theme for this screen's tab bar and window
-        // frame (game/ui_kit.h): the tab font, frames, metrics and
-        // window frame of the colony screens, so a hi-res asset set
-        // can replace the theme without touching the screen. Built
-        // in Settings_Screen() by Load_Colony_Theme, which loads
-        // the theme's frames; the screen never names a sprite id.
+        // The colony theme for this screen's tab bar, buttons and
+        // window frame (game/ui_kit.h): the tab font, frames,
+        // metrics and window frame of the colony screens, so a
+        // hi-res asset set can replace the theme without touching
+        // the screen. Built in Settings_Screen() by
+        // Load_Colony_Theme, which loads the theme's frames --
+        // including the derived RETURN frames (tools/
+        // extract_sprite.py) -- from MOX::screen_seg on every
+        // entry; the screen never names a sprite id or sees a
+        // frame pointer. A frame that fails to load stays null and
+        // its button falls back to the engine-drawn equivalent.
         std::unique_ptr<ui_kit::Colony_Theme> g_theme;
 
         // The window frame for this screen: the whole 640x480
@@ -455,34 +402,22 @@ namespace SETTINGS_SCREEN {
             return (int16_t)(Bottom_Bar_Y() + g_theme->Tab_Height());
         }
 
-        // The metal button component for the MORE toggle and for
-        // RETURN's fallback when its derived sprite is missing
-        // (game/metal_button.h): the generated metal-button frames
-        // with the label interposed at runtime. The label font is
-        // style 4 with the dark text colours; the pressed font is
-        // the same style in the orange the real RETURN lights up
-        // with when held; the disabled font is the same style with
-        // a dim grey. Built in Settings_Screen() alongside the
-        // RETURN frames.
-        metal_button::Frames g_metal_frames;
-        ui_kit::Engine_Font g_button_font(4, g_dark_text_colors,
-            g_dark_text_colors);
-        ui_kit::Engine_Font g_button_pressed_font(4,
-            g_button_pressed_text_colors, g_button_pressed_text_colors);
-        ui_kit::Engine_Font g_button_disabled_font(4,
-            g_button_disabled_text_colors, g_button_disabled_text_colors);
-        std::unique_ptr<metal_button::Button> g_metal_button;
-
         // The tab bar for the current category set: the rects come
         // from the bar, so the click fields and the draw cannot drift
-        // apart. The bar sits in the frame's bottom bar, starting
-        // at the content's left edge.
-        ui_kit::Tab_Bar Make_Tab_Bar() {
+        // apart. With pressed states, a tab draws its pressed frame
+        // while the field system holds its field down (a mouse hold
+        // or a keyboard press); the field build passes false, so a
+        // rebuild never flashes a stale hold.
+        ui_kit::Tab_Bar Make_Tab_Bar(bool with_pressed = false) {
             ui_kit::Tab_Bar bar(Make_Window_Frame().content_x(),
                 Bottom_Bar_Y(), *g_theme);
             for (int category = 0; category < CATEGORY_COUNT; ++category) {
                 bar.Add_Tab(CATEGORY_LABELS[category],
-                    category == g_state.category);
+                    category == g_state.category,
+                    with_pressed &&
+                        g_state.tab_fields[category] >= 0 &&
+                        fields::down_mouse_button ==
+                            g_state.tab_fields[category]);
             }
             return bar;
         }
@@ -516,48 +451,30 @@ namespace SETTINGS_SCREEN {
                 (int16_t)(layout.panel_y() + layout.panel_h() - 1));
         }
 
-        // RETURN button geometry follows the derived frame when it
-        // loaded (85x26, bottom-aligned with the bar), else the
-        // engine-drawn button's 76x24.
+        // RETURN button geometry follows the theme's derived frame
+        // when it loaded (85x26, bottom-aligned with the bar),
+        // else the engine-drawn button's 76x24.
         int16_t Return_Button_Y() {
-            return g_return_frame != nullptr
-                ? (int16_t)(Bottom_Bar_End() - g_return_frame->height + 1)
+            const ui_kit::Frame frame =
+                g_theme->Return_Frames().normal;
+            return !frame.Is_Null()
+                ? (int16_t)(Bottom_Bar_End() - frame.Height() + 1)
                 : Bottom_Bar_Y();
         }
 
         int16_t Return_Button_W() {
-            return g_return_frame != nullptr ? g_return_frame->width
-                                             : RETURN_W;
+            const ui_kit::Frame frame =
+                g_theme->Return_Frames().normal;
+            return !frame.Is_Null() ? frame.Width() : RETURN_W;
         }
 
-        // The MORE toggle's width is computed from its labels, so it
-        // never clips and never wastes space: the wider of "MORE"
-        // and "LESS", plus the button's padding. The button is
-        // right-aligned against RETURN with an 8 px gap.
-        int16_t More_Button_Width() {
-            return std::max(g_metal_button->Width_For_Label("MORE"),
-                g_metal_button->Width_For_Label("LESS"));
-        }
-
-        int16_t More_Button_X() {
-            return (int16_t)(RETURN_X - More_Button_Width() - MORE_GAP);
-        }
-
-        // The RETURN frame for this draw: the pressed frame while
-        // the field system holds the RETURN field down (a mouse
+        // True while the field system holds a field down (a mouse
         // hold, or a keyboard press -- Push_Field_Down sets
         // fields::down_mouse_button and the auto function redraws
-        // on every hold tick), else the rest frame. A missing
-        // pressed frame falls back to the rest frame; the caller
-        // falls back to the engine-drawn button when that is
-        // missing too.
-        const s_animation_header* Return_Frame() {
-            if (g_state.done_field >= 0
-                && fields::down_mouse_button == g_state.done_field
-                && g_return_frame_pressed != nullptr) {
-                return g_return_frame_pressed;
-            }
-            return g_return_frame;
+        // on every hold tick): the button draws its pressed state
+        // until release.
+        bool Field_Held(int16_t field) {
+            return field >= 0 && fields::down_mouse_button == field;
         }
 
         // Rows on the current tab. The Mods tab lists its settings
@@ -598,7 +515,7 @@ namespace SETTINGS_SCREEN {
         // slider is inverted, so the top row is the maximum minus
         // the slider. Clamps the slider into range (the field
         // system also clamps it, but the count can shrink under it
-        // when Show more toggles or the category changes).
+        // when MORE toggles or the category changes).
         void Sync_Scroll() {
             const int max_scroll = Max_Scroll();
             int16_t& slider = g_state.slider_position[g_state.category];
@@ -618,8 +535,10 @@ namespace SETTINGS_SCREEN {
 
         // Colony-list scrollbar thumb, mirroring colsum.cpp's
         // Draw_Bar_Indicator: a filled bar with a bright top/left
-        // edge and a dark bottom/right edge, in the metal-button
-        // colors. The thumb spans the fraction of the list that is
+        // edge and a dark bottom/right edge, in the theme's button
+        // colours (the scrollbar itself is element 5's; only its
+        // colours come from the theme, so the kit owns them once).
+        // The thumb spans the fraction of the list that is
         // visible, at least 8 px tall so it stays grabbable. Only
         // drawn when the list is longer than the window. The track
         // is the layout's: first row top to last row bottom.
@@ -642,15 +561,16 @@ namespace SETTINGS_SCREEN {
                     y1 = (int16_t)(y2 - 8);
                 }
             }
+            const ui_kit::Button_Style style = g_theme->Button_Style();
             graphics::Fill(SCROLL_X, y1, SCROLL_X + SCROLL_W - 1, y2,
-                METAL_FACE);
+                style.face);
             graphics::Fill(SCROLL_X, y1, SCROLL_X + SCROLL_W - 1, y1,
-                METAL_HIGHLIGHT);
-            graphics::Fill(SCROLL_X, y1, SCROLL_X, y2, METAL_HIGHLIGHT);
+                style.highlight);
+            graphics::Fill(SCROLL_X, y1, SCROLL_X, y2, style.highlight);
             graphics::Fill(SCROLL_X, y2, SCROLL_X + SCROLL_W - 1, y2,
-                METAL_SHADOW);
+                style.shadow);
             graphics::Fill(SCROLL_X + SCROLL_W - 1, y1,
-                SCROLL_X + SCROLL_W - 1, y2, METAL_SHADOW);
+                SCROLL_X + SCROLL_W - 1, y2, style.shadow);
             // Corner dots marking the track ends, like the colony's.
             graphics::Fill(SCROLL_X, track_y,
                 SCROLL_X + SCROLL_W - 1, track_y, PANEL_BORDER);
@@ -872,7 +792,7 @@ namespace SETTINGS_SCREEN {
                     wanted) {
                     continue;
                 }
-                // Secondary settings stay hidden until Show more. The
+                // Secondary settings stay hidden until MORE. The
                 // catalogue on the Mods tab is not a setting row, so
                 // it is never filtered.
                 if (!g_state.show_all &&
@@ -1027,12 +947,12 @@ namespace SETTINGS_SCREEN {
             }
             // MORE and RETURN sit side by side in the bottom
             // bar at the right end: the categories occupy the left
-            // end, so More_Button_X()..RETURN_X+RETURN_W is clear in
+            // end, so SHOW_MORE_X..RETURN_X+RETURN_W is clear in
             // every category. They share the bar's single line and
             // never wrap.
             g_state.show_all_field = fields::Add_Hidden_Field(
-                More_Button_X(), Return_Button_Y(),
-                More_Button_X() + More_Button_Width() - 1, Bottom_Bar_End(), "", 0);
+                SHOW_MORE_X, Bottom_Bar_Y(), SHOW_MORE_X + SHOW_MORE_W - 1,
+                Bottom_Bar_End(), "", 0);
             g_state.done_field = fields::Add_Hidden_Field(
                 RETURN_X, Return_Button_Y(),
                 RETURN_X + Return_Button_W() - 1, Bottom_Bar_End(), "", 0);
@@ -1048,7 +968,7 @@ namespace SETTINGS_SCREEN {
             g_state.scroll_top[g_state.category] = 0;
             g_state.status = g_state.show_all
                 ? "Showing all settings, including advanced and ordering options."
-                : "Showing the most-used settings. Use Show more for the rest.";
+                : "Showing the most-used settings. Use MORE for the rest.";
             Rebuild_Fields();
         }
 
@@ -1585,9 +1505,10 @@ namespace SETTINGS_SCREEN {
                     g_state.resolution_popup_row_step - 1);
                 if ((int)index == g_state.resolution_popup_selected) {
                     // Blue bar around the selected value, the same blue
-                    // as the active category and the RETURN button.
+                    // as the active category and the RETURN button: the
+                    // theme's primary face.
                     graphics::Fill(x + 1, row_y, (int16_t)(x + w - 2), row_end,
-                        PRIMARY_FACE);
+                        g_theme->Button_Style().primary_face);
                     fonts::Set_Font_Style(4, &g_light_text_colors);
                 } else {
                     fonts::Set_Font_Style(4, &g_colony_colors);
@@ -1670,20 +1591,24 @@ namespace SETTINGS_SCREEN {
                     }
                     fonts::Print(TITLE_X, text_y,
                         Truncate_To_Width(title_text, TITLE_WIDTH).c_str());
-                    // Colony-list square toggle, right-aligned
-                    // to the selector column: bright when on, grey
-                    // when off, bare when the mod is broken and
-                    // cannot be enabled.
+                    // Kit toggle button, right-aligned to the
+                    // selector column: bright when on, grey when
+                    // off, bare when the mod is broken and cannot
+                    // be enabled.
                     const int16_t toggle_x = SELECTOR_RIGHT_X - SQUARE_SIZE + 1;
                     const int16_t toggle_y = (int16_t)(y + (layout.row_height() - SQUARE_SIZE) / 2);
+                    ui_kit::Button toggle(toggle_x, toggle_y,
+                        SQUARE_SIZE, SQUARE_SIZE,
+                        ui_kit::Button_Kind::Toggle, *g_theme);
+                    toggle.Set_State(entry.broken
+                        ? ui_kit::Button_State::Disabled
+                        : (entry.enabled ? ui_kit::Button_State::Active
+                                         : ui_kit::Button_State::Rest));
+                    toggle.Draw();
                     if (entry.broken) {
-                        Draw_Square_Toggle(toggle_x, toggle_y, TOGGLE_DISABLED);
                         fonts::Set_Font_Style(4, &g_colony_dim_colors);
                         const int16_t broken_w = fonts::Get_String_Width("Broken");
                         fonts::Print(toggle_x - 6 - broken_w, text_y, "Broken");
-                    } else {
-                        Draw_Square_Toggle(toggle_x, toggle_y,
-                            entry.enabled ? TOGGLE_ON : TOGGLE_OFF);
                     }
                     continue;
                 }
@@ -1699,21 +1624,26 @@ namespace SETTINGS_SCREEN {
                     continue;
                 }
                 if (row.widget == config::SETTINGS_WIDGET_TOGGLE) {
-                    // Colony-list square toggle, right-aligned to
-                    // the selector column: bright when on, grey
-                    // when off.
+                    // Kit toggle button, right-aligned to the
+                    // selector column: bright when on, grey when off.
                     config::s_typed_value value;
                     const bool on = config::Get_Settings_Row_Value(row, &value)
                         && value.bool_value;
                     const int16_t toggle_x = SELECTOR_RIGHT_X - SQUARE_SIZE + 1;
                     const int16_t toggle_y =
                         (int16_t)(y + (layout.row_height() - SQUARE_SIZE) / 2);
-                    Draw_Square_Toggle(toggle_x, toggle_y,
-                        on ? TOGGLE_ON : TOGGLE_OFF);
+                    ui_kit::Button toggle(toggle_x, toggle_y,
+                        SQUARE_SIZE, SQUARE_SIZE,
+                        ui_kit::Button_Kind::Toggle, *g_theme);
+                    toggle.Set_State(on ? ui_kit::Button_State::Active
+                                        : ui_kit::Button_State::Rest);
+                    toggle.Draw();
                 } else if (row.widget == config::SETTINGS_WIDGET_DROPDOWN) {
-                    // Dropdown: the value in a colony-list square
-                    // cell with a down-arrow, right-aligned to the
-                    // selector column. The list itself is the shared
+                    // Dropdown: the value in a kit Cell button with
+                    // a down chevron, right-aligned to the selector
+                    // column; blue while its popup is open (the
+                    // Resolution popup), like the active selector.
+                    // The list itself is the shared
                     // fields::Get_List_Field picker; its frame is
                     // that picker's, not the settings screen's.
                     std::string value_text;
@@ -1737,10 +1667,19 @@ namespace SETTINGS_SCREEN {
                     }
                     const int16_t trigger_x = (int16_t)(SELECTOR_RIGHT_X - box_w + 1);
                     const int16_t trigger_y = (int16_t)(y + 5);
-                    Draw_Square_Cell(trigger_x, trigger_y, box_w, 20);
-                    fonts::Set_Font_Style(4, &g_colony_colors);
-                    fonts::Print(trigger_x + 4, trigger_y + 4, value_text.c_str());
-                    fonts::Print(trigger_x + box_w - 12, trigger_y + 4, "v");
+                    ui_kit::Button cell(trigger_x, trigger_y, box_w, 20,
+                        ui_kit::Button_Kind::Cell, *g_theme);
+                    cell.Set_Label(value_text.c_str());
+                    // The value text sits on the row's text line
+                    // (text_y), like the title and the plain values:
+                    // the cell starts 5 px into the row, the text
+                    // 9 px in, so the label offset is 4 px.
+                    cell.Set_Label_Y_Offset((int16_t)(text_y - trigger_y));
+                    cell.Set_State(Is_Resolution_Row(row) &&
+                            g_state.resolution_popup_open
+                        ? ui_kit::Button_State::Active
+                        : ui_kit::Button_State::Rest);
+                    cell.Draw();
                 } else {
                     // Info and edit values: text in the colony dim
                     // color, right-aligned to the selector column.
@@ -1819,35 +1758,47 @@ namespace SETTINGS_SCREEN {
 
             // Bottom bar: the category selectors on the left, like
             // the colony summary's sort buttons (Name / Population
-            // / Food ...); Show more and RETURN side by side on
-            // the right, on the same line, never wrapping. Both
-            // are raised metallic buttons, like the colony RETURN;
-            // Show more is a toggle that stays pressed while the
-            // secondary rows are shown.
-            Make_Tab_Bar().Draw();
-            // MORE is the metal-button toggle: the generated frame
-            // with a short label interposed, latched pressed while
+            // / Food ...); MORE and RETURN side by side on
+            // the right, on the same line, never wrapping. All of
+            // them are kit buttons: the tabs are Selector buttons
+            // (the bar builds them), MORE a Metal toggle and
+            // RETURN an Image button, like the colony RETURN. A
+            // button held down draws its pressed state until
+            // release.
+            Make_Tab_Bar(true).Draw();
+            const int16_t bar_y =
+                frame.bottom_bar_y(g_theme->Tab_Height());
+            const int16_t bar_h = g_theme->Tab_Height();
+            // MORE is a RETURN-style metal toggle: the metal face
+            // (not the blue primary face), latched pressed while
             // the secondary rows are shown, so it stays lit like
-            // RETURN before it closes. Clicking it again turns it
-            // off. RETURN keeps its derived sprite when present;
-            // the metal button is its fallback, with the same dark
-            // label the sprite carries -- and, like the sprite path,
-            // pressed while the field is held.
-            g_metal_button->Draw(More_Button_X(), Return_Button_Y(),
-                More_Button_Width(), g_state.show_all ? "LESS" : "MORE",
-                g_state.show_all ? metal_button::State::kPressed
-                    : metal_button::State::kNormal);
-            const s_animation_header* return_frame = Return_Frame();
-            if (return_frame != nullptr) {
-                sprite_art::Draw_Sprite_Frame(return_frame, RETURN_X,
-                    Return_Button_Y());
-            } else {
-                g_metal_button->Draw(RETURN_X, Return_Button_Y(),
-                    Return_Button_W(), "RETURN",
-                    fields::down_mouse_button == g_state.done_field
-                        ? metal_button::State::kPressed
-                        : metal_button::State::kNormal);
-            }
+            // RETURN before it closes — the label stays MORE in
+            // both states, the orange lit state is what says it
+            // is on (the game's own choice: one button for the
+            // inverse activity, no second button). Clicking it
+            // again turns it off. Held down it draws pressed too,
+            // like any held button.
+            ui_kit::Button show_more(SHOW_MORE_X, bar_y, SHOW_MORE_W,
+                bar_h, ui_kit::Button_Kind::Metal, *g_theme);
+            show_more.Set_Label("MORE");
+            show_more.Set_State(Field_Held(g_state.show_all_field) ||
+                    g_state.show_all
+                ? ui_kit::Button_State::Pressed
+                : ui_kit::Button_State::Rest);
+            show_more.Draw();
+            const int16_t return_y = Return_Button_Y();
+            const ui_kit::Frame return_frame =
+                g_theme->Return_Frames().normal;
+            const int16_t return_h = !return_frame.Is_Null()
+                ? return_frame.Height()
+                : bar_h;
+            ui_kit::Button ret(RETURN_X, return_y, Return_Button_W(),
+                return_h, ui_kit::Button_Kind::Image, *g_theme);
+            ret.Set_Label("RETURN");
+            ret.Set_State(Field_Held(g_state.done_field)
+                ? ui_kit::Button_State::Pressed
+                : ui_kit::Button_State::Rest);
+            ret.Draw();
 
             Draw_Resolution_Popup();
 
@@ -1875,27 +1826,12 @@ namespace SETTINGS_SCREEN {
         RUSS::Mox_Update();
         fonts::Set_Font_Style(4, &g_normal_colors);
         fonts::Set_Font_LF(4);
-        // Derived sprites for this screen (MOX::screen_seg is
-        // released between screens, so they load on every entry).
-        // A missing frame leaves the pointer null and the Draw falls
-        // back to the engine-drawn button. RETURN still loads its
-        // frames here directly: it is drawn by this screen, not by
-        // the kit -- the metal button component is the button
-        // abstraction for this screen, not part of the tab/window
-        // kit.
-        g_return_frame = sprite_art::Load_Sprite_Frame("return", "normal",
-            MOX::screen_seg);
-        g_return_frame_pressed = sprite_art::Load_Sprite_Frame("return",
-            "pressed", MOX::screen_seg);
-        // The metal button frames (tools/generate_metal_buttons.py):
-        // original work, not derived from game art. A missing frame
-        // leaves that state null and the button falls back to the
-        // engine-drawn button in the same colours.
-        g_metal_frames = metal_button::Load_Frames(MOX::screen_seg);
-        g_metal_button = std::make_unique<metal_button::Button>(g_metal_frames,
-            g_button_font, g_button_pressed_font, g_button_disabled_font);
-        // The theme loads its own frames; the screen never names a
-        // sprite id or sees a frame pointer.
+        // The theme loads its own frames (MOX::screen_seg is
+        // released between screens, so they load on every entry):
+        // the selector frames and the RETURN frames. The screen
+        // never names a sprite id or sees a frame pointer. A frame
+        // that fails to load stays null and its button falls back
+        // to the engine-drawn equivalent.
         g_theme = ui_kit::Load_Colony_Theme(MOX::screen_seg,
             g_title_colors);
         Rebuild_Fields();

@@ -97,6 +97,8 @@ namespace test_ui_kit_detail {
         ui_kit::Frame_Style frame;
         ui_kit::Spacing spacing;
         ui_kit::List_Style list;
+        ui_kit::Button_Style buttons;
+        ui_kit::Image_Button_Frames return_frames;
 
         Fake_Theme() {
             frame.thickness_left = 3;
@@ -125,6 +127,21 @@ namespace test_ui_kit_detail {
             list.divider_mid = 235;
             list.divider_right = 232;
             list.plate_face = 233;
+            // The colony's button colours (see ui_kit.h).
+            buttons.face = 238;
+            buttons.highlight = 243;
+            buttons.shadow = 232;
+            buttons.primary_face = 138;
+            buttons.primary_highlight = 154;
+            buttons.disabled_face = 234;
+            buttons.cell_interior = 230;
+            buttons.cell_border = 234;
+            buttons.toggle_on_base = 154;
+            buttons.toggle_on_bright = 247;
+            buttons.toggle_off_base = 236;
+            buttons.toggle_off_bright = 246;
+            buttons.label_font = &font;
+            buttons.cell_font = &font;
         }
 
         const ui_kit::Font& Tab_Font() const override {
@@ -145,6 +162,14 @@ namespace test_ui_kit_detail {
 
         ui_kit::List_Style List_Style() const override {
             return list;
+        }
+
+        ui_kit::Button_Style Button_Style() const override {
+            return buttons;
+        }
+
+        ui_kit::Image_Button_Frames Return_Frames() const override {
+            return return_frames;
         }
 
         int16_t Tab_Padding() const override {
@@ -174,6 +199,8 @@ namespace test_ui_kit_detail {
         ui_kit::Frame_Style frame;
         ui_kit::Spacing spacing;
         ui_kit::List_Style list;
+        ui_kit::Button_Style buttons;
+        ui_kit::Image_Button_Frames return_frames;
 
         Alt_Theme() {
             frame.thickness_left = 4;
@@ -202,6 +229,23 @@ namespace test_ui_kit_detail {
             list.divider_mid = 24;
             list.divider_right = 25;
             list.plate_face = 26;
+            // A second asset set's button colours: every value
+            // differs from the colony's, so the button must follow
+            // the theme, not the colony's numbers.
+            buttons.face = 40;
+            buttons.highlight = 41;
+            buttons.shadow = 42;
+            buttons.primary_face = 43;
+            buttons.primary_highlight = 44;
+            buttons.disabled_face = 45;
+            buttons.cell_interior = 46;
+            buttons.cell_border = 47;
+            buttons.toggle_on_base = 48;
+            buttons.toggle_on_bright = 49;
+            buttons.toggle_off_base = 50;
+            buttons.toggle_off_bright = 51;
+            buttons.label_font = &font;
+            buttons.cell_font = &font;
         }
 
         const ui_kit::Font& Tab_Font() const override {
@@ -222,6 +266,14 @@ namespace test_ui_kit_detail {
 
         ui_kit::List_Style List_Style() const override {
             return list;
+        }
+
+        ui_kit::Button_Style Button_Style() const override {
+            return buttons;
+        }
+
+        ui_kit::Image_Button_Frames Return_Frames() const override {
+            return return_frames;
         }
 
         int16_t Tab_Padding() const override {
@@ -422,7 +474,8 @@ DOCTEST_TEST_SUITE("ui kit") {
     DOCTEST_TEST_CASE("colony theme falls back to a flat fill when its frames are missing") {
         using namespace test_ui_kit_detail;
         const s_colors title = {{234, 238, 240, 242, 243, 244, 246, 247}};
-        ui_kit::Colony_Theme theme(ui_kit::Frame(), ui_kit::Frame(), title);
+        ui_kit::Colony_Theme theme(ui_kit::Frame(), ui_kit::Frame(),
+            ui_kit::Frame(), ui_kit::Frame(), title);
 
         const ui_kit::Tab_Frames frames = theme.Tab_Frames();
         DOCTEST_CHECK(frames.normal.frame.Is_Null());
@@ -483,7 +536,8 @@ DOCTEST_TEST_SUITE("ui kit") {
         const s_colors title = {{234, 238, 240, 242, 243, 244, 246, 247}};
         ui_kit::Colony_Theme theme(
             ui_kit::Frame((const s_animation_header*)normal.data()),
-            ui_kit::Frame((const s_animation_header*)active.data()), title);
+            ui_kit::Frame((const s_animation_header*)active.data()),
+            ui_kit::Frame(), ui_kit::Frame(), title);
 
         // The tab font is engine font style 2 with the measured
         // colony label ramps: white face / dark edge at rest,
@@ -570,7 +624,8 @@ DOCTEST_TEST_SUITE("ui kit") {
     DOCTEST_TEST_CASE("colony spacing lays list rows out on a 31 px pitch with a 1 px gap") {
         using namespace test_ui_kit_detail;
         const s_colors title = {{234, 238, 240, 242, 243, 244, 246, 247}};
-        ui_kit::Colony_Theme theme(ui_kit::Frame(), ui_kit::Frame(), title);
+        ui_kit::Colony_Theme theme(ui_kit::Frame(), ui_kit::Frame(),
+            ui_kit::Frame(), ui_kit::Frame(), title);
 
         // Measured from the colony summary screen (colsum.cpp):
         // 30 px rows, y_row_end advancing 31 px per row.
@@ -851,7 +906,7 @@ DOCTEST_TEST_SUITE("ui kit") {
         // (166, 158) and its 24 px bottom bar starts at y 260.
         const s_colors title = {{234, 238, 240, 242, 243, 244, 246, 247}};
         ui_kit::Colony_Theme colony(ui_kit::Frame(), ui_kit::Frame(),
-            title);
+            ui_kit::Frame(), ui_kit::Frame(), title);
         ui_kit::Window_Frame dialog(155, 146, 240, 148, colony);
         DOCTEST_CHECK(dialog.content_x() == 166);
         DOCTEST_CHECK(dialog.content_y() == 158);
@@ -915,5 +970,470 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(theme.font.prints[0].x == 35);
         DOCTEST_CHECK(theme.font.prints[0].y == 8);
         DOCTEST_CHECK(theme.font.prints[0].text == "Alt");
+    }
+
+    DOCTEST_TEST_CASE("metal button draws the colony bevel and centres a dark label") {
+        using namespace test_ui_kit_detail;
+        Fake_Theme theme;
+        test::fakes::Reset_All_();
+        ui_kit::Button button(10, 20, 100, 24, ui_kit::Button_Kind::Metal,
+            theme);
+        button.Set_Label("Show");
+        button.Draw();
+
+        // Face, then the raised bevel: light top/left, dark
+        // bottom/right -- the colony scrollbar thumb's shape
+        // (colsum.cpp Draw_Bar_Indicator).
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 5);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 238);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 10);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 20);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x2 == 109);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y2 == 43);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 243);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].y1 == 20);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].y2 == 20);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 243);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].x1 == 10);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].x2 == 10);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].color == 232);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].y1 == 43);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[4].color == 232);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[4].x1 == 109);
+        DOCTEST_CHECK(test::fakes::g_box_calls.empty());
+        // The label is centred on the fake font (10 px per char,
+        // 12 px tall) by the field system's rule -- half the button
+        // height less half the font height rounded down -- and dark
+        // on the metal face.
+        DOCTEST_REQUIRE(theme.font.prints.size() == 1);
+        DOCTEST_CHECK(theme.font.prints[0].text == "Show");
+        DOCTEST_CHECK(theme.font.prints[0].x == 10 + (100 - 40) / 2);
+        DOCTEST_CHECK(theme.font.prints[0].y == 20 + 24 / 2 - (12 - 1) / 2);
+        DOCTEST_CHECK_FALSE(theme.font.prints[0].active);
+    }
+
+    DOCTEST_TEST_CASE("metal button inverts its bevel while pressed and turns blue when active") {
+        using namespace test_ui_kit_detail;
+        Fake_Theme theme;
+
+        // Pressed: dark top/left, light bottom/right.
+        test::fakes::Reset_All_();
+        ui_kit::Button held(10, 20, 100, 24, ui_kit::Button_Kind::Metal,
+            theme);
+        held.Set_Label("Show");
+        held.Set_State(ui_kit::Button_State::Pressed);
+        held.Draw();
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 5);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 238);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 232);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 232);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].color == 243);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[4].color == 243);
+        DOCTEST_REQUIRE(theme.font.prints.size() == 1);
+        DOCTEST_CHECK_FALSE(theme.font.prints[0].active);
+
+        // Active (latched): the blue face with its own light edge
+        // and a light label.
+        test::fakes::Reset_All_();
+        ui_kit::Button latched(10, 20, 100, 24,
+            ui_kit::Button_Kind::Metal, theme);
+        latched.Set_Label("Show");
+        latched.Set_Primary(true);
+        latched.Set_State(ui_kit::Button_State::Active);
+        latched.Draw();
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 5);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 138);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 154);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 154);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].color == 232);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[4].color == 232);
+        DOCTEST_REQUIRE(theme.font.prints.size() == 2);
+        DOCTEST_CHECK(theme.font.prints[1].active);
+
+        // Disabled: the flat mid-grey face with a border, no
+        // bevel, dark label -- the colony never disables a
+        // button, so there is no disabled bevel to copy.
+        test::fakes::Reset_All_();
+        ui_kit::Button off(10, 20, 100, 24, ui_kit::Button_Kind::Metal,
+            theme);
+        off.Set_Label("Show");
+        off.Set_State(ui_kit::Button_State::Disabled);
+        off.Draw();
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 1);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 234);
+        DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 1);
+        DOCTEST_CHECK(test::fakes::g_box_calls[0].color == 232);
+        DOCTEST_REQUIRE(theme.font.prints.size() == 3);
+        DOCTEST_CHECK_FALSE(theme.font.prints[2].active);
+    }
+
+    DOCTEST_TEST_CASE("metal button prints its label in the pressed font while pressed") {
+        using namespace test_ui_kit_detail;
+        Fake_Theme theme;
+        Fake_Font pressed_font;
+        theme.buttons.label_pressed_font = &pressed_font;
+
+        // Pressed: the inverted bevel, and the label through the
+        // pressed font (the orange the real RETURN lights up with
+        // when held) instead of the dark label font.
+        test::fakes::Reset_All_();
+        ui_kit::Button held(10, 20, 100, 24, ui_kit::Button_Kind::Metal,
+            theme);
+        held.Set_Label("MORE");
+        held.Set_State(ui_kit::Button_State::Pressed);
+        held.Draw();
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 5);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 232);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].color == 243);
+        DOCTEST_REQUIRE(pressed_font.prints.size() == 1);
+        DOCTEST_CHECK(pressed_font.prints[0].text == "MORE");
+        DOCTEST_CHECK(theme.font.prints.empty());
+
+        // At rest the same button prints through the plain label
+        // font, not the pressed one.
+        test::fakes::Reset_All_();
+        ui_kit::Button rest(10, 20, 100, 24, ui_kit::Button_Kind::Metal,
+            theme);
+        rest.Set_Label("MORE");
+        rest.Draw();
+        DOCTEST_REQUIRE(theme.font.prints.size() == 1);
+        DOCTEST_CHECK(theme.font.prints[0].text == "MORE");
+        DOCTEST_CHECK(pressed_font.prints.size() == 1);
+    }
+
+    DOCTEST_TEST_CASE("metal button follows a second theme's colours without component changes") {
+        using namespace test_ui_kit_detail;
+        Alt_Theme theme;
+        test::fakes::Reset_All_();
+        ui_kit::Button button(10, 20, 100, 24, ui_kit::Button_Kind::Metal,
+            theme);
+        button.Set_Label("Show");
+        button.Draw();
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 5);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 40);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 41);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].color == 42);
+        ui_kit::Button primary(10, 20, 100, 24,
+            ui_kit::Button_Kind::Metal, theme);
+        primary.Set_Label("Show");
+        primary.Set_Primary(true);
+        primary.Draw();
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 10);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[5].color == 43);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[6].color == 44);
+    }
+
+    DOCTEST_TEST_CASE("selector button draws the active frame when active or pressed") {
+        using namespace test_ui_kit_detail;
+        const std::string normal = Make_Frame_Pixels(10, 1, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+        const std::string active = Make_Frame_Pixels(10, 1, {11, 12, 13, 14, 15, 16, 17, 18, 19, 20});
+        Fake_Theme theme;
+        theme.frames.normal.frame =
+            ui_kit::Frame((const s_animation_header*)normal.data());
+        theme.frames.active.frame =
+            ui_kit::Frame((const s_animation_header*)active.data());
+        theme.frames.left_slice = 2;
+        theme.frames.right_slice = 2;
+
+        // Rest draws the normal frame; active and pressed both
+        // draw frame 1, the colony's selected/held frame.
+        Scoped_Video_Page page;
+        ui_kit::Button rest(0, 0, 26, 24, ui_kit::Button_Kind::Selector,
+            theme);
+        rest.Set_Label("A");
+        rest.Draw();
+        DOCTEST_CHECK(page.At(0, 0) == 1);
+        ui_kit::Button selected(0, 0, 26, 24,
+            ui_kit::Button_Kind::Selector, theme);
+        selected.Set_Label("A");
+        selected.Set_State(ui_kit::Button_State::Active);
+        selected.Draw();
+        DOCTEST_CHECK(page.At(0, 0) == 11);
+        ui_kit::Button held(0, 0, 26, 24, ui_kit::Button_Kind::Selector,
+            theme);
+        held.Set_Label("A");
+        held.Set_State(ui_kit::Button_State::Pressed);
+        held.Draw();
+        DOCTEST_CHECK(page.At(0, 0) == 11);
+        // Disabled has no frame of its own and renders as rest.
+        ui_kit::Button disabled(0, 0, 26, 24,
+            ui_kit::Button_Kind::Selector, theme);
+        disabled.Set_Label("A");
+        disabled.Set_State(ui_kit::Button_State::Disabled);
+        disabled.Draw();
+        DOCTEST_CHECK(page.At(0, 0) == 1);
+        // The labels print at the theme's offset, active exactly
+        // when the frame is the active one.
+        DOCTEST_REQUIRE(theme.font.prints.size() == 4);
+        DOCTEST_CHECK(theme.font.prints[0].y == 8);
+        DOCTEST_CHECK_FALSE(theme.font.prints[0].active);
+        DOCTEST_CHECK(theme.font.prints[1].active);
+        DOCTEST_CHECK(theme.font.prints[2].active);
+        DOCTEST_CHECK_FALSE(theme.font.prints[3].active);
+    }
+
+    DOCTEST_TEST_CASE("tab bar draws a held tab with the active frame") {
+        using namespace test_ui_kit_detail;
+        const std::string normal = Make_Frame_Pixels(10, 1, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+        const std::string active = Make_Frame_Pixels(10, 1, {11, 12, 13, 14, 15, 16, 17, 18, 19, 20});
+        Fake_Theme theme;
+        theme.frames.normal.frame =
+            ui_kit::Frame((const s_animation_header*)normal.data());
+        theme.frames.active.frame =
+            ui_kit::Frame((const s_animation_header*)active.data());
+        theme.frames.left_slice = 2;
+        theme.frames.right_slice = 2;
+
+        Scoped_Video_Page page;
+        ui_kit::Tab_Bar bar(0, 0, theme);
+        bar.Add_Tab("A", false, true); // held, not active
+        bar.Add_Tab("BB", false);
+        bar.Draw();
+        DOCTEST_CHECK(page.At(0, 0) == 11);
+        DOCTEST_CHECK(page.At(27, 0) == 1);
+        DOCTEST_REQUIRE(theme.font.prints.size() == 2);
+        DOCTEST_CHECK(theme.font.prints[0].active);
+        DOCTEST_CHECK_FALSE(theme.font.prints[1].active);
+    }
+
+    DOCTEST_TEST_CASE("image button draws the pressed frame while pressed and falls back to metal") {
+        using namespace test_ui_kit_detail;
+        const std::string normal = Make_Frame(10, 1, 60);
+        const std::string pressed = Make_Frame(10, 1, 70);
+        Fake_Theme theme;
+        theme.return_frames.normal =
+            ui_kit::Frame((const s_animation_header*)normal.data());
+        theme.return_frames.pressed =
+            ui_kit::Frame((const s_animation_header*)pressed.data());
+
+        Scoped_Video_Page page;
+        ui_kit::Button rest(5, 7, 10, 1, ui_kit::Button_Kind::Image,
+            theme);
+        rest.Set_Label("RETURN");
+        rest.Draw();
+        DOCTEST_CHECK(page.At(5, 7) == 60);
+        ui_kit::Button held(5, 7, 10, 1, ui_kit::Button_Kind::Image,
+            theme);
+        held.Set_Label("RETURN");
+        held.Set_State(ui_kit::Button_State::Pressed);
+        held.Draw();
+        DOCTEST_CHECK(page.At(5, 7) == 70);
+        // A missing pressed frame falls back to the rest frame.
+        theme.return_frames.pressed = ui_kit::Frame();
+        ui_kit::Button held2(5, 7, 10, 1, ui_kit::Button_Kind::Image,
+            theme);
+        held2.Set_Label("RETURN");
+        held2.Set_State(ui_kit::Button_State::Pressed);
+        held2.Draw();
+        DOCTEST_CHECK(page.At(5, 7) == 60);
+
+        // No derived frames at all (stale base.zip): the
+        // engine-drawn metal button with the same label.
+        theme.return_frames.normal = ui_kit::Frame();
+        test::fakes::Reset_All_();
+        ui_kit::Button fallback(10, 20, 76, 24,
+            ui_kit::Button_Kind::Image, theme);
+        fallback.Set_Label("RETURN");
+        fallback.Draw();
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 5);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 238);
+        DOCTEST_REQUIRE(theme.font.prints.size() == 1);
+        DOCTEST_CHECK(theme.font.prints[0].text == "RETURN");
+        DOCTEST_CHECK(theme.font.prints[0].x == 10 + (76 - 60) / 2);
+        DOCTEST_CHECK_FALSE(theme.font.prints[0].active);
+    }
+
+    DOCTEST_TEST_CASE("toggle button fills bright when on, grey when off, bare when disabled") {
+        using namespace test_ui_kit_detail;
+        Fake_Theme theme;
+
+        // On: bright cyan-blue fill with a near-white centre.
+        test::fakes::Reset_All_();
+        ui_kit::Button on(10, 20, 20, 20, ui_kit::Button_Kind::Toggle,
+            theme);
+        on.Set_State(ui_kit::Button_State::Active);
+        on.Draw();
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 3);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 230);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 154);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].x1 == 12);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].y1 == 22);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].x2 == 27);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].y2 == 37);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 247);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].x1 == 18);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].y1 == 28);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].x2 == 21);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].y2 == 31);
+        DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 1);
+        DOCTEST_CHECK(test::fakes::g_box_calls[0].color == 234);
+
+        // Off: the grey ramp instead.
+        test::fakes::Reset_All_();
+        ui_kit::Button off(10, 20, 20, 20, ui_kit::Button_Kind::Toggle,
+            theme);
+        off.Set_State(ui_kit::Button_State::Rest);
+        off.Draw();
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 3);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 236);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 246);
+
+        // Disabled: the bare cell, no fill -- the colony's
+        // no-button state.
+        test::fakes::Reset_All_();
+        ui_kit::Button broken(10, 20, 20, 20,
+            ui_kit::Button_Kind::Toggle, theme);
+        broken.Set_State(ui_kit::Button_State::Disabled);
+        broken.Draw();
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 1);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 230);
+        DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 1);
+        DOCTEST_CHECK(test::fakes::g_box_calls[0].color == 234);
+
+        // The toggle follows a second theme's fills.
+        test::fakes::Reset_All_();
+        Alt_Theme alt;
+        ui_kit::Button alt_on(10, 20, 20, 20,
+            ui_kit::Button_Kind::Toggle, alt);
+        alt_on.Set_State(ui_kit::Button_State::Active);
+        alt_on.Draw();
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 3);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 46);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 48);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 49);
+    }
+
+    DOCTEST_TEST_CASE("cell button draws the value with a chevron, blue while active") {
+        using namespace test_ui_kit_detail;
+        Fake_Theme theme;
+        test::fakes::Reset_All_();
+        ui_kit::Button cell(10, 20, 100, 20, ui_kit::Button_Kind::Cell,
+            theme);
+        cell.Set_Label("pixelart");
+        cell.Draw();
+
+        // Dark interior, border, value at x+4 centred on the
+        // fake font by the field system's rule, chevron 12 px from
+        // the right edge.
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 1);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 230);
+        DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 1);
+        DOCTEST_CHECK(test::fakes::g_box_calls[0].color == 234);
+        DOCTEST_REQUIRE(theme.font.prints.size() == 2);
+        DOCTEST_CHECK(theme.font.prints[0].text == "pixelart");
+        DOCTEST_CHECK(theme.font.prints[0].x == 14);
+        DOCTEST_CHECK(theme.font.prints[0].y == 20 + 20 / 2 - (12 - 1) / 2);
+        DOCTEST_CHECK_FALSE(theme.font.prints[0].active);
+        DOCTEST_CHECK(theme.font.prints[1].text == "v");
+        DOCTEST_CHECK(theme.font.prints[1].x == 10 + 100 - 12);
+        DOCTEST_CHECK(theme.font.prints[1].y == 20 + 20 / 2 - (12 - 1) / 2);
+        DOCTEST_CHECK_FALSE(theme.font.prints[1].active);
+
+        // A label offset pins the value to the caller's baseline
+        // (the settings row's text line): the value and the
+        // chevron both move to it.
+        ui_kit::Button row_cell(10, 20, 100, 20,
+            ui_kit::Button_Kind::Cell, theme);
+        row_cell.Set_Label("pixelart");
+        row_cell.Set_Label_Y_Offset(4);
+        row_cell.Draw();
+        DOCTEST_REQUIRE(theme.font.prints.size() == 4);
+        DOCTEST_CHECK(theme.font.prints[2].text == "pixelart");
+        DOCTEST_CHECK(theme.font.prints[2].y == 24);
+        DOCTEST_CHECK(theme.font.prints[3].text == "v");
+        DOCTEST_CHECK(theme.font.prints[3].y == 24);
+
+        // Active (popup open): the blue face, light labels.
+        ui_kit::Button open(10, 20, 100, 20, ui_kit::Button_Kind::Cell,
+            theme);
+        open.Set_Label("pixelart");
+        open.Set_State(ui_kit::Button_State::Active);
+        open.Draw();
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 3);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 138);
+        DOCTEST_REQUIRE(theme.font.prints.size() == 6);
+        DOCTEST_CHECK(theme.font.prints[4].active);
+        DOCTEST_CHECK(theme.font.prints[5].text == "v");
+        DOCTEST_CHECK(theme.font.prints[5].active);
+
+        // Disabled: no chevron.
+        ui_kit::Button disabled(10, 20, 100, 20,
+            ui_kit::Button_Kind::Cell, theme);
+        disabled.Set_Label("pixelart");
+        disabled.Set_State(ui_kit::Button_State::Disabled);
+        disabled.Draw();
+        DOCTEST_REQUIRE(theme.font.prints.size() == 7);
+        DOCTEST_CHECK(theme.font.prints[6].text == "pixelart");
+        DOCTEST_CHECK_FALSE(theme.font.prints[6].active);
+    }
+
+    DOCTEST_TEST_CASE("colony theme hands out the button style and return frames") {
+        using namespace test_ui_kit_detail;
+        const std::string normal = Make_Frame(85, 26, 60);
+        const std::string pressed = Make_Frame(85, 26, 70);
+        const s_colors title = {{234, 238, 240, 242, 243, 244, 246, 247}};
+        ui_kit::Colony_Theme theme(
+            ui_kit::Frame(), ui_kit::Frame(),
+            ui_kit::Frame((const s_animation_header*)normal.data()),
+            ui_kit::Frame((const s_animation_header*)pressed.data()),
+            title);
+
+        // The metal bevel is the scrollbar thumb's, the blue the
+        // active selector's, the toggle fills the squares' own.
+        const ui_kit::Button_Style style = theme.Button_Style();
+        DOCTEST_CHECK(style.face == 238);
+        DOCTEST_CHECK(style.highlight == 243);
+        DOCTEST_CHECK(style.shadow == 232);
+        DOCTEST_CHECK(style.primary_face == 138);
+        DOCTEST_CHECK(style.primary_highlight == 154);
+        DOCTEST_CHECK(style.disabled_face == 234);
+        DOCTEST_CHECK(style.cell_interior == 230);
+        DOCTEST_CHECK(style.cell_border == 234);
+        DOCTEST_CHECK(style.toggle_on_base == 154);
+        DOCTEST_CHECK(style.toggle_on_bright == 247);
+        DOCTEST_CHECK(style.toggle_off_base == 236);
+        DOCTEST_CHECK(style.toggle_off_bright == 246);
+        // The label fonts are engine font style 4: dark text on
+        // the metal face, light on the blue face; the cell font
+        // is the colony cyan at rest, light on the blue fill.
+        DOCTEST_REQUIRE(style.label_font != nullptr);
+        DOCTEST_REQUIRE(style.cell_font != nullptr);
+        test::fakes::Reset_All_();
+        style.label_font->Print(0, 0, "Show", false);
+        DOCTEST_CHECK(test::fakes::g_font_style == 4);
+        DOCTEST_CHECK(test::fakes::g_font_color.colors[0] == 230);
+        style.label_font->Print(0, 0, "Show", true);
+        DOCTEST_CHECK(test::fakes::g_font_color.colors[0] == 247);
+        // The pressed label font is the orange the real RETURN
+        // lights up with when held (menu palette 221), the same
+        // orange whether the print is active or not.
+        DOCTEST_REQUIRE(style.label_pressed_font != nullptr);
+        style.label_pressed_font->Print(0, 0, "MORE", false);
+        DOCTEST_CHECK(test::fakes::g_font_style == 4);
+        DOCTEST_CHECK(test::fakes::g_font_color.colors[0] == 221);
+        style.label_pressed_font->Print(0, 0, "MORE", true);
+        DOCTEST_CHECK(test::fakes::g_font_color.colors[0] == 221);
+        style.cell_font->Print(0, 0, "pixelart", false);
+        DOCTEST_CHECK(test::fakes::g_font_color.colors[0] == 150);
+        style.cell_font->Print(0, 0, "pixelart", true);
+        DOCTEST_CHECK(test::fakes::g_font_color.colors[0] == 247);
+
+        // The RETURN frames are the derived sprite, 85x26, rest
+        // and pressed.
+        const ui_kit::Image_Button_Frames frames = theme.Return_Frames();
+        DOCTEST_CHECK_FALSE(frames.normal.Is_Null());
+        DOCTEST_CHECK_FALSE(frames.pressed.Is_Null());
+        DOCTEST_CHECK(frames.normal.Width() == 85);
+        DOCTEST_CHECK(frames.normal.Height() == 26);
+        DOCTEST_CHECK(frames.pressed.Width() == 85);
+        DOCTEST_CHECK(frames.pressed.Height() == 26);
+
+        // Null frames stay null, for a stale base.zip.
+        ui_kit::Colony_Theme bare(ui_kit::Frame(), ui_kit::Frame(),
+            ui_kit::Frame(), ui_kit::Frame(), title);
+        DOCTEST_CHECK(bare.Return_Frames().normal.Is_Null());
+        DOCTEST_CHECK(bare.Return_Frames().pressed.Is_Null());
+        DOCTEST_CHECK(bare.Return_Frames().normal.Width() == 0);
+        DOCTEST_CHECK(bare.Return_Frames().normal.Height() == 0);
     }
 } // DOCTEST_TEST_SUITE("ui kit")
