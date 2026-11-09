@@ -100,6 +100,15 @@ namespace ui_kit {
             int16_t left_slice, int16_t right_slice) const;
         void Draw_Stretched_Resampled(int16_t x, int16_t y, int16_t width,
             int16_t left_slice, int16_t right_slice) const;
+        // Draws the frame as three slices: the left_slice columns
+        // as-is, a single middle_column tiled across the remaining
+        // width, the right_slice columns as-is. The middle column
+        // is a text-free column of the frame's face, so one frame
+        // serves any button width with the label rendered at
+        // runtime.
+        void Draw_Three_Slice(int16_t x, int16_t y, int16_t width,
+            int16_t left_slice, int16_t middle_column,
+            int16_t right_slice) const;
 
       private:
         const s_animation_header* frame_ = nullptr;
@@ -240,12 +249,18 @@ namespace ui_kit {
     // use of the same click-a-cell idea:
     // - Selector: a derived COLSUM sort-button frame (Tab_Frames),
     //   stretched to the button width, label rendered at runtime.
-    // - Metal: the engine-drawn raised button -- the colony build
-    //   screen's REFIT / DESIGN / CANCEL / OK are baked sprites,
-    //   so there is no separable metal frame; the bevel is the
-    //   colony scrollbar thumb's (colsum.cpp Draw_Bar_Indicator:
-    //   body 229, light 230 top/left, dark 228 bottom/right),
-    //   engine-drawn in the theme's colours.
+    // - Metal: a RETURN cut into three slices -- the derived
+    //   frame's domes as-is, one text-free face column tiled
+    //   across the middle, the label rendered at runtime -- so
+    //   one frame serves any metal button at any width, and the
+    //   button's chrome is pixel-identical to the RETURN's. Blue,
+    //   disabled and missing-frame buttons keep the engine-drawn
+    //   form (the colony scrollbar thumb's bevel, colsum.cpp
+    //   Draw_Bar_Indicator: body 229, light 230 top/left, dark
+    //   228 bottom/right, in the theme's colours): there is no
+    //   blue or disabled RETURN frame to cut. A metal button is
+    //   sized from its frame's native height, like an Image
+    //   button; the label centres on the frame, not the rect.
     // - Image: a derived sprite drawn at native size, rest and
     //   pressed frames (the colony RETURN, entry 1: grey bevel and
     //   dark text at rest, orange text pressed), falling back to
@@ -429,7 +444,11 @@ namespace ui_kit {
         void Draw_Image() const;
         void Draw_Toggle() const;
         void Draw_Cell() const;
-        void Print_Centred_Label(const Font& font, bool active) const;
+        // Centres the label on height (the frame's height for a
+        // frame-drawn button, the rect height for an engine-drawn
+        // one), by the field system's own rule.
+        void Print_Centred_Label(const Font& font, bool active,
+            int16_t height) const;
 
         int16_t x_;
         int16_t y_;

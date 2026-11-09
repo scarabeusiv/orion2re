@@ -227,4 +227,55 @@ namespace sprite_art {
             }
         }
     }
+
+    void Draw_Sprite_Frame_Three_Slice(const s_animation_header* frame,
+        int16_t x, int16_t y, int16_t width, int16_t left_slice,
+        int16_t middle_column, int16_t right_slice) {
+        if (frame == nullptr || frame->width <= 0 || frame->height <= 0 ||
+            width <= 0 || left_slice < 0 || right_slice < 0 ||
+            middle_column < 0 || middle_column >= frame->width ||
+            left_slice + right_slice >= frame->width) {
+            return;
+        }
+
+        // The caller selects the page first (Set_Page_Off /
+        // Set_Page_Back); the blit writes to current_video_page.
+        const uint8_t* pixels = Frame_Pixels(frame);
+        for (int16_t row = 0; row < frame->height; ++row) {
+            const int16_t dst_y = (int16_t)(y + row);
+            int16_t cursor = x;
+            // Left slice, as-is.
+            const int16_t left_width =
+                left_slice < width ? left_slice : width;
+            Blit_Row(pixels, frame->width, 0, row, left_width, cursor,
+                dst_y);
+            cursor = (int16_t)(cursor + left_width);
+            // Middle, one column tiled across the remaining width:
+            // the column is a text-free slice of the frame's face,
+            // so tiling it reproduces the face at any width. A width
+            // narrower than the two caps leaves no middle: the
+            // target clamps to zero, or the cursor would run
+            // backwards and the right slice would overwrite the
+            // left one.
+            const int16_t middle_target =
+                (int16_t)(width - left_width - right_slice);
+            const int16_t middle_width =
+                middle_target > 0 ? middle_target : 0;
+            for (int16_t dst = 0; dst < middle_width; ++dst) {
+                Blit_Row(pixels, frame->width, middle_column, row, 1,
+                    (int16_t)(cursor + dst), dst_y);
+            }
+            cursor = (int16_t)(cursor + middle_width);
+            // Right slice, as-is (cropped when the width runs out).
+            const int16_t right_target = (int16_t)(width - (cursor - x));
+            if (right_target > 0) {
+                const int16_t right_width = right_target < right_slice
+                    ? right_target
+                    : right_slice;
+                Blit_Row(pixels, frame->width,
+                    (int16_t)(frame->width - right_slice), row, right_width,
+                    cursor, dst_y);
+            }
+        }
+    }
 } // namespace sprite_art
