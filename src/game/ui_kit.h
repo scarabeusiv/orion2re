@@ -13,7 +13,11 @@
 // The Theme is the abstraction a hi-res asset set drops into: the
 // same screens, the same components, different frames and fonts.
 // A hi-res theme is a second Theme implementation (its own derived
-// frames at 2x, its own Font styles); no screen code changes.
+// frames at 2x, its own Font styles); no screen code changes. The
+// theme owns its assets: the screen asks for a theme by kind
+// (Load_Colony_Theme) and never names a sprite id or a font style
+// number. Colours come from the theme, except a title ramp the
+// screen shares with its other chrome, which it passes in.
 //
 // Fonts are part of the abstraction for the same reason. The colony
 // sort labels are baked glyphs, and they measure as engine font
@@ -27,6 +31,7 @@
 // edge/face pair, with the remaining entries filled with the face.
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 struct s_animation_header;
@@ -38,6 +43,9 @@ namespace ui_kit {
     // per state; callers never name a style number. Width/Height/
     // Print set the engine font style first: the engine keeps one
     // global font state, and the widths belong to the style.
+    // Height is part of the contract for components that centre
+    // text vertically; Tab_Bar uses the theme's label offset
+    // instead, so nothing in the kit calls it yet.
     class Font {
       public:
         virtual ~Font() = default;
@@ -67,13 +75,36 @@ namespace ui_kit {
         s_colors active_colors_;
     };
 
+    // One frame as the kit sees it: an opaque handle over a derived
+    // sprite frame. No interface in the kit exposes the frame's
+    // representation: the LBX frame type appears only in this
+    // adapter's constructor and private storage, which wrap a frame
+    // loaded by sprite_art::Load_Sprite_Frame. A hi-res asset set
+    // is frames of the same shape at 2x, loaded the same way --
+    // the kit draws whatever handle it is given, and the screens
+    // never see the type at all. A null frame draws nothing; the
+    // caller selects the page first, as for the sprite_art draws.
+    class Frame {
+      public:
+        Frame() = default;
+        explicit Frame(const s_animation_header* frame) : frame_(frame) {}
+        [[nodiscard]] bool Is_Null() const { return frame_ == nullptr; }
+        void Draw_Stretched(int16_t x, int16_t y, int16_t width,
+            int16_t left_slice, int16_t right_slice) const;
+        void Draw_Stretched_Resampled(int16_t x, int16_t y, int16_t width,
+            int16_t left_slice, int16_t right_slice) const;
+
+      private:
+        const s_animation_header* frame_ = nullptr;
+    };
+
     // One tab frame: the derived sprite plus how its middle is
     // treated when the tab is wider than the frame. A flat middle
     // (the rest frame) tiles invisibly; a gradient middle (the
     // selected frame's blue field) must be resampled, or the
     // gradient repeats like stripes.
     struct Tab_Frame {
-        const s_animation_header* frame = nullptr;
+        Frame frame;
         bool resample_middle = false;
     };
 
@@ -135,8 +166,7 @@ namespace ui_kit {
     // dark-grey edge, active a blue-white face with a mid-blue edge.
     class Colony_Theme : public Theme {
       public:
-        Colony_Theme(const s_animation_header* tab_normal,
-            const s_animation_header* tab_active,
+        Colony_Theme(Frame tab_normal, Frame tab_active,
             const s_colors& title_colors);
         const Font& Tab_Font() const override;
         ui_kit::Tab_Frames Tab_Frames() const override;
@@ -149,14 +179,26 @@ namespace ui_kit {
       private:
         Engine_Font tab_font_;
         Engine_Font title_font_;
-        const s_animation_header* tab_normal_;
-        const s_animation_header* tab_active_;
+        Frame tab_normal_;
+        Frame tab_active_;
     };
+
+    // Loads the colony theme's frames (the derived selector-frame
+    // sprite, both states) from the screen's allocation base and
+    // returns the theme. The screen never names a sprite id and
+    // never sees a frame pointer: the theme owns its assets, so a
+    // hi-res asset set plugs in here, not in the screens. A frame
+    // that fails to load stays null, and the tab bar falls back to
+    // the engine-drawn button.
+    std::unique_ptr<Colony_Theme> Load_Colony_Theme(
+        void* allocation_base, const s_colors& title_colors);
 
     // A row of tabs: layout (widths from label + padding, gap
     // between tabs) and drawing (frame + centred label). Owns the
     // geometry, so the click fields and the drawing can never drift
     // apart: the screen builds its fields from Tab_Bar::tabs().
+    // A tab's label must outlive the bar: Add_Tab keeps the
+    // caller's pointer, it does not copy the text.
     class Tab_Bar {
       public:
         struct Tab {

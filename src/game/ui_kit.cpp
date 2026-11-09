@@ -74,8 +74,26 @@ namespace ui_kit {
         fonts::Print(x, y, text);
     }
 
-    Colony_Theme::Colony_Theme(const s_animation_header* tab_normal,
-        const s_animation_header* tab_active, const s_colors& title_colors)
+    void Frame::Draw_Stretched(int16_t x, int16_t y, int16_t width,
+        int16_t left_slice, int16_t right_slice) const {
+        if (frame_ == nullptr) {
+            return;
+        }
+        sprite_art::Draw_Sprite_Frame_Stretched(frame_, x, y, width,
+            left_slice, right_slice);
+    }
+
+    void Frame::Draw_Stretched_Resampled(int16_t x, int16_t y,
+        int16_t width, int16_t left_slice, int16_t right_slice) const {
+        if (frame_ == nullptr) {
+            return;
+        }
+        sprite_art::Draw_Sprite_Frame_Stretched_Resampled(frame_, x, y,
+            width, left_slice, right_slice);
+    }
+
+    Colony_Theme::Colony_Theme(Frame tab_normal, Frame tab_active,
+        const s_colors& title_colors)
         // Tab labels are engine font style 2: the baked colony
         // labels measure as style 2 (widths within 1-2 px per
         // label, ink 8-9 rows tall). The title keeps style 4.
@@ -129,6 +147,16 @@ namespace ui_kit {
         return kTab_Label_Y_Offset;
     }
 
+    std::unique_ptr<Colony_Theme> Load_Colony_Theme(
+        void* allocation_base, const s_colors& title_colors) {
+        return std::make_unique<Colony_Theme>(
+            Frame(sprite_art::Load_Sprite_Frame("selector-frame", "normal",
+                allocation_base)),
+            Frame(sprite_art::Load_Sprite_Frame("selector-frame", "active",
+                allocation_base)),
+            title_colors);
+    }
+
     Tab_Bar::Tab_Bar(int16_t x, int16_t y, const Theme& theme)
         : x_(x), y_(y), theme_(theme) {}
 
@@ -167,15 +195,13 @@ namespace ui_kit {
         const Font& font = theme_.Tab_Font();
         for (const Tab& tab : tabs_) {
             const Tab_Frame& frame = tab.active ? frames.active : frames.normal;
-            if (frame.frame != nullptr) {
+            if (!frame.frame.Is_Null()) {
                 if (frame.resample_middle) {
-                    sprite_art::Draw_Sprite_Frame_Stretched_Resampled(
-                        frame.frame, tab.x, y_, tab.width,
-                        frames.left_slice, frames.right_slice);
+                    frame.frame.Draw_Stretched_Resampled(tab.x, y_,
+                        tab.width, frames.left_slice, frames.right_slice);
                 } else {
-                    sprite_art::Draw_Sprite_Frame_Stretched(frame.frame,
-                        tab.x, y_, tab.width, frames.left_slice,
-                        frames.right_slice);
+                    frame.frame.Draw_Stretched(tab.x, y_, tab.width,
+                        frames.left_slice, frames.right_slice);
                 }
             } else {
                 graphics::Fill(tab.x, y_, (int16_t)(tab.x + tab.width - 1),
