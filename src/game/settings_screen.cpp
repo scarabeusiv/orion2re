@@ -23,6 +23,7 @@
 #include "game/platform.h"
 #include "game/russ.h"
 #include "game/settings_screen.h"
+#include "game/sprite_art.h"
 #include "game/timer.h"
 #include "game/user_paths.h"
 #include "game/vfs.h"
@@ -47,12 +48,15 @@ namespace SETTINGS_SCREEN {
         // thin light-grey outer line with a dark inner line, thin
         // grey panel borders, and framed row slots.
         //
-        // Asset sourcing: no LBX sprite is drawn directly here, and
-        // no new graphics file was created — every visual is an
-        // engine-drawn Fill/Box in menu-palette indices, the same
-        // technique the game itself uses for its chrome. The colony
-        // sprites were audited against COLSUM.LBX (rendered and
-        // measured, 2026-11-09):
+        // Asset sourcing: the colony sprites were audited against
+        // COLSUM.LBX (rendered and measured, 2026-11-09), and the
+        // separable ones are derived into orion2re-owned frames by
+        // tools/extract_sprite.py (see tools/sprites/README.md): a
+        // palette remap from the colony palette to the menu palette,
+        // with the baked label blanked where a new label is needed.
+        // Everything else stays engine-drawn Fill/Box in
+        // menu-palette indices, the same technique the game itself
+        // uses for its chrome:
         // - Border, list panel, header plates, description box,
         //   toggle squares, scrollbar track/thumb: baked into the
         //   640x480 background (anims[0]); colsum.cpp draws no boxes
@@ -60,7 +64,12 @@ namespace SETTINGS_SCREEN {
         // - Category selectors: COLSUM anims[4..10] are real sprites,
         //   but their labels are baked in (Name, Population, Food,
         //   ...) and do not match Game Internals / Gameplay / Mods;
-        //   the frame without text is not a separate sprite.
+        //   the frame without text is not a separate sprite. The
+        //   derived selector-frame asset is anims[4] with its label
+        //   blanked, stretched to the tab width (its flat middle
+        //   tiles invisibly) with the label rendered at runtime;
+        //   the active tab takes the same frame with its interior
+        //   overridden to the menu blue.
         // - Star buy buttons (anims[11..20]) are purchase actions,
         //   not on/off toggles, so they cannot stand in for the
         //   toggle squares (the diamond is a buy button, not a value).
@@ -70,16 +79,21 @@ namespace SETTINGS_SCREEN {
         // - Dropdown popup: no popup-window sprite exists; the game's
         //   own modal lists are engine-drawn.
         // - RETURN (COLSUM anims[1], 85x26, "RETURN" baked in) is the
-        //   one sprite that matches, but it is authored for palette 1
+        //   one sprite that matches. It is authored for palette 1
         //   (indices 80-98 are a grey ramp there) while this screen
-        //   uses the menu palette (those indices are browns/greens/
-        //   blues/oranges there), so drawing it directly renders a
-        //   multicoloured button. Using it needs a palette remap
-        //   (translate its indices to menu-palette greys); the
-        //   engine-drawn metallic RETURN below is the equivalent
-        //   until that remap exists. Loading palette 1 for the whole
-        //   screen is not an alternative: it turns the settings text
-        //   pink/red and the panels blue/green/red.
+        //   uses the menu palette, so drawing it directly renders a
+        //   multicoloured button; the derived return asset is the
+        //   sprite remapped to the menu palette's grey family (see
+        //   tools/sprites/README.md for why the menu palette is
+        //   MAINMENU.LBX entry 2's embedded palette, not FONTS.LBX
+        //   entry 1). The engine-drawn metallic RETURN below is the
+        //   fallback when the derived frame is missing. Loading
+        //   palette 1 for the whole screen is not an alternative: it
+        //   turns the settings text pink/red and the panels
+        //   blue/green/red. The sprite's pressed frame (orange text)
+        //   is derived too, but not wired: the screen draws its
+        //   buttons statically, and a press flash would need
+        //   field-state plumbing.
         constexpr int16_t TITLE_X = 16;
         constexpr int16_t TITLE_Y = 8;
         constexpr int16_t TITLE_WIDTH = 348;
@@ -140,6 +154,10 @@ namespace SETTINGS_SCREEN {
         // Show more and RETURN never wrap to a second line.
         constexpr int16_t CAT_Y = 444;
         constexpr int16_t CAT_HEIGHT = 24;
+        // Left slice of the derived selector frame: the sort button's
+        // bevel is 4 px wide (grey ramp plus the teal line). Its
+        // right edge is flat black as authored, so no right slice.
+        constexpr int16_t SELECTOR_LEFT_SLICE = 4;
         constexpr int16_t FOOTER_Y = 449;
         constexpr int16_t NAV_Y = 444;
         constexpr int16_t NAV_Y_END = 468;
@@ -385,6 +403,29 @@ namespace SETTINGS_SCREEN {
         };
 
         s_settings_screen_state g_state;
+
+        // Derived sprite frames (tools/extract_sprite.py), loaded on
+        // every entry to the screen from MOX::screen_seg, like the
+        // menu's button frames. Null when the frames are missing
+        // (a base.zip predating them): every use below falls back to
+        // the engine-drawn equivalent.
+        s_animation_header* g_return_frame = nullptr;
+        s_animation_header* g_selector_frame = nullptr;
+        s_animation_header* g_selector_frame_active = nullptr;
+
+        // RETURN button geometry follows the derived frame when it
+        // loaded (85x26, bottom-aligned with the bar), else the
+        // engine-drawn button's 76x24.
+        int16_t Return_Button_Y() {
+            return g_return_frame != nullptr
+                ? (int16_t)(NAV_Y_END - g_return_frame->height + 1)
+                : NAV_Y;
+        }
+
+        int16_t Return_Button_W() {
+            return g_return_frame != nullptr ? g_return_frame->width
+                                             : RETURN_W;
+        }
 
         // Rows on the current tab. The Mods tab lists its settings
         // rows first (the two mod-adjacent settings) and then the
@@ -852,7 +893,8 @@ namespace SETTINGS_SCREEN {
             g_state.show_all_field = fields::Add_Hidden_Field(
                 SHOW_MORE_X, NAV_Y, SHOW_MORE_X + SHOW_MORE_W - 1, NAV_Y_END, "", 0);
             g_state.done_field = fields::Add_Hidden_Field(
-                RETURN_X, NAV_Y, RETURN_X + RETURN_W - 1, NAV_Y_END, "", 0);
+                RETURN_X, Return_Button_Y(),
+                RETURN_X + Return_Button_W() - 1, NAV_Y_END, "", 0);
         }
 
         void Toggle_Show_All() {
@@ -1633,9 +1675,19 @@ namespace SETTINGS_SCREEN {
                 const int16_t width = (int16_t)(
                     fonts::Get_String_Width(CATEGORY_LABELS[category]) + 16);
                 const bool active = category == g_state.category;
-                graphics::Fill(cat_x, CAT_Y, cat_x + width - 1,
-                    CAT_Y + CAT_HEIGHT - 1, active ? PRIMARY_FACE : 232);
-                graphics::Box(cat_x, CAT_Y, width, CAT_HEIGHT, 1, PANEL_BORDER);
+                const s_animation_header* tab_frame = active
+                    ? g_selector_frame_active
+                    : g_selector_frame;
+                if (tab_frame != nullptr) {
+                    sprite_art::Draw_Sprite_Frame_Stretched(tab_frame,
+                        cat_x, CAT_Y, width, SELECTOR_LEFT_SLICE, 0);
+                } else {
+                    graphics::Fill(cat_x, CAT_Y, cat_x + width - 1,
+                        CAT_Y + CAT_HEIGHT - 1,
+                        active ? PRIMARY_FACE : 232);
+                    graphics::Box(cat_x, CAT_Y, width, CAT_HEIGHT, 1,
+                        PANEL_BORDER);
+                }
                 fonts::Set_Font_Style(4,
                     active ? &g_title_colors : &g_colony_dim_colors);
                 const int16_t label_x = (int16_t)(cat_x +
@@ -1654,7 +1706,12 @@ namespace SETTINGS_SCREEN {
             };
             draw_action_button(SHOW_MORE_X, SHOW_MORE_W,
                 g_state.show_all ? "Show less" : "Show more", true);
-            draw_action_button(RETURN_X, RETURN_W, "RETURN", false);
+            if (g_return_frame != nullptr) {
+                sprite_art::Draw_Sprite_Frame(g_return_frame, RETURN_X,
+                    Return_Button_Y());
+            } else {
+                draw_action_button(RETURN_X, RETURN_W, "RETURN", false);
+            }
 
             Draw_Resolution_Popup();
 
@@ -1682,6 +1739,16 @@ namespace SETTINGS_SCREEN {
         RUSS::Mox_Update();
         fonts::Set_Font_Style(4, &g_normal_colors);
         fonts::Set_Font_LF(4);
+        // Derived sprites for this screen (MOX::screen_seg is
+        // released between screens, so they load on every entry).
+        // A missing frame leaves the pointer null and the Draw falls
+        // back to the engine-drawn button.
+        g_return_frame = sprite_art::Load_Sprite_Frame("return", "normal",
+            MOX::screen_seg);
+        g_selector_frame = sprite_art::Load_Sprite_Frame("selector-frame",
+            "normal", MOX::screen_seg);
+        g_selector_frame_active = sprite_art::Load_Sprite_Frame(
+            "selector-frame", "active", MOX::screen_seg);
         Rebuild_Fields();
         fields::Assign_Auto_Function(Draw_Settings_Screen, 2);
 
