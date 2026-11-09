@@ -6,6 +6,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -25,6 +26,7 @@
 #include "game/settings_screen.h"
 #include "game/sprite_art.h"
 #include "game/timer.h"
+#include "game/ui_kit.h"
 #include "game/user_paths.h"
 #include "game/vfs.h"
 #include "game/video.h"
@@ -66,10 +68,24 @@ namespace SETTINGS_SCREEN {
         //   ...) and do not match Game Internals / Gameplay / Mods;
         //   the frame without text is not a separate sprite. The
         //   derived selector-frame asset is anims[4] with its label
-        //   blanked, stretched to the tab width (its flat middle
-        //   tiles invisibly) with the label rendered at runtime;
-        //   the active tab takes the same frame with its interior
-        //   overridden to the menu blue.
+        //   blanked, stretched to the tab width with the label
+        //   rendered at runtime (game/ui_kit.h: Tab_Bar over the
+        //   colony theme). The two states are different frames, not
+        //   a recolour: frame 0 rests on a flat dark-navy field with
+        //   a grey bevel; frame 1 is the selected tab, a blue
+        //   gradient field (bright at both edges, dark navy in the
+        //   centre) with a blue bevel and a blue-white label -- so
+        //   its middle is resampled to the tab width, not tiled, or
+        //   the gradient would repeat like stripes. The labels are
+        //   font style 2 (the colony tabs' baked labels measure as
+        //   style 2, not the style 4 the rest of this screen uses),
+        //   white at rest and blue-white when active, and the tabs
+        //   sit 1 px apart at y=446, like the colony's sort buttons.
+        //   Both frames are remapped from the colony screen's own
+        //   palette -- the palette embedded in COLSUM.LBX entry 0,
+        //   which animate::Draw_Palette installs before the colony
+        //   sprites draw -- to the menu palette; see
+        //   tools/sprites/README.md.
         // - Star buy buttons (anims[11..20]) are purchase actions,
         //   not on/off toggles, so they cannot stand in for the
         //   toggle squares (the diamond is a buy button, not a value).
@@ -79,8 +95,9 @@ namespace SETTINGS_SCREEN {
         // - Dropdown popup: no popup-window sprite exists; the game's
         //   own modal lists are engine-drawn.
         // - RETURN (COLSUM anims[1], 85x26, "RETURN" baked in) is the
-        //   one sprite that matches. It is authored for palette 1
-        //   (indices 80-98 are a grey ramp there) while this screen
+        //   one sprite that matches. It is authored for the colony
+        //   palette (the embedded palette in COLSUM.LBX entry 0;
+        //   indices 80-98 are a grey ramp there) while this screen
         //   uses the menu palette, so drawing it directly renders a
         //   multicoloured button; the derived return asset is the
         //   sprite remapped to the menu palette's grey family (see
@@ -154,12 +171,7 @@ namespace SETTINGS_SCREEN {
         // Bottom bar: the category selectors on the left, Show more
         // and RETURN side by side on the right, all on one line —
         // Show more and RETURN never wrap to a second line.
-        constexpr int16_t CAT_Y = 444;
-        constexpr int16_t CAT_HEIGHT = 24;
-        // Left slice of the derived selector frame: the sort button's
-        // bevel is 4 px wide (grey ramp plus the teal line). Its
-        // right edge is flat black as authored, so no right slice.
-        constexpr int16_t SELECTOR_LEFT_SLICE = 4;
+        constexpr int16_t CAT_Y = 446;
         constexpr int16_t FOOTER_Y = 449;
         constexpr int16_t NAV_Y = 444;
         constexpr int16_t NAV_Y_END = 468;
@@ -176,14 +188,12 @@ namespace SETTINGS_SCREEN {
 
         // Colony chrome, in menu-palette indices (MAINMENU.LBX
         // entries 1/2 palette: 230-249 is a blue-grey ramp).
-        // 244 is the light outer frame, 230 the dark panel
-        // interior, 234 the mid-grey panel border, 229 the dark
-        // row separator.
+        // 230 is the dark panel interior, 234 the mid-grey panel
+        // border, 229 the dark row separator. The window frame
+        // colours live in the theme (ui_kit::Colony_Theme).
         constexpr uint8_t PANEL_INTERIOR = 230;
         constexpr uint8_t PANEL_BORDER = 234;
         constexpr uint8_t PANEL_SEPARATOR = 229;
-        constexpr uint8_t FRAME_OUTER = 244;
-        constexpr uint8_t FRAME_INNER = 230;
 
         // The standard UI text palette, as used by the council screen.
         s_colors g_normal_colors = {{150, 154, 155, 151, 152, 153, 154, 155}};
@@ -417,6 +427,25 @@ namespace SETTINGS_SCREEN {
         s_animation_header* g_return_frame_pressed = nullptr;
         s_animation_header* g_selector_frame = nullptr;
         s_animation_header* g_selector_frame_active = nullptr;
+
+        // The colony theme for this screen's tab bar and window
+        // frame (game/ui_kit.h): the tab font, frames, metrics and
+        // window frame of the colony screens, so a hi-res asset set
+        // can replace the theme without touching the screen. Built
+        // in Settings_Screen(), once the selector frames load.
+        std::unique_ptr<ui_kit::Colony_Theme> g_theme;
+
+        // The tab bar for the current category set: the rects come
+        // from the bar, so the click fields and the draw cannot drift
+        // apart.
+        ui_kit::Tab_Bar Make_Tab_Bar() {
+            ui_kit::Tab_Bar bar(TITLE_X, CAT_Y, *g_theme);
+            for (int category = 0; category < CATEGORY_COUNT; ++category) {
+                bar.Add_Tab(CATEGORY_LABELS[category],
+                    category == g_state.category);
+            }
+            return bar;
+        }
 
         // RETURN button geometry follows the derived frame when it
         // loaded (85x26, bottom-aligned with the bar), else the
@@ -870,13 +899,15 @@ namespace SETTINGS_SCREEN {
             // Category selectors in the bottom bar, like the colony
             // summary's sort buttons: one hidden field per category,
             // left to right, each keeping its own scroll position.
-            int16_t tab_x = TITLE_X;
+            // The rects come from the tab bar, so the fields match
+            // the drawn tabs exactly.
+            const ui_kit::Tab_Bar tab_bar = Make_Tab_Bar();
             for (int category = 0; category < CATEGORY_COUNT; ++category) {
-                const int16_t width = (int16_t)(
-                    fonts::Get_String_Width(CATEGORY_LABELS[category]) + 16);
+                const ui_kit::Tab_Bar::Tab& tab =
+                    tab_bar.tabs()[(size_t)category];
                 g_state.tab_fields[category] = fields::Add_Hidden_Field(
-                    tab_x, CAT_Y, tab_x + width - 1, CAT_Y + CAT_HEIGHT - 1, "", 0);
-                tab_x += width + 8;
+                    tab.x, tab_bar.y(), tab.x + tab.width - 1,
+                    tab_bar.y() + tab_bar.height() - 1, "", 0);
             }
             Sync_Scroll();
             const int first = Scroll_Top();
@@ -1481,17 +1512,12 @@ namespace SETTINGS_SCREEN {
             video::Set_Page_Off();
             graphics::Fill(0, 0, 639, 479, 0);
 
-            // Full-window colony chrome, uniform on all four
-            // edges: a thin light outer line at the very edge and
-            // a dark inner line directly adjacent to it, no gap
-            // and no corner rivets, like the frame baked into the
-            // colony screens' backgrounds.
-            graphics::Box(0, 0, 640, 480, 1, FRAME_OUTER);
-            graphics::Box(1, 1, 638, 478, 1, FRAME_INNER);
-
-            fonts::Set_Font_Style(4, &g_title_colors);
-            const char* title = "Settings";
-            fonts::Print((640 - fonts::Get_String_Width(title)) / 2, TITLE_Y, title);
+            // Full-window colony chrome (game/ui_kit.h): a thin
+            // light outer line at the very edge and a dark inner
+            // line directly adjacent to it, no gap and no corner
+            // rivets, like the frame baked into the colony
+            // screens' backgrounds, with the centred title.
+            ui_kit::Draw_Window_Frame(*g_theme, 0, 0, 640, 480, "Settings");
             fonts::Set_Font_Style(4, &g_normal_colors);
 
             // List panel, like the colony list: dark interior, thin
@@ -1686,37 +1712,12 @@ namespace SETTINGS_SCREEN {
 
             // Bottom bar: the category selectors on the left, like
             // the colony summary's sort buttons (Name / Population
-            // / Food ...), dark buttons with the active one in the
-            // Auto Build blue; Show more and RETURN side by side
-            // on the right, on the same line, never wrapping.
-            // Show more is a blue selector button, like the colony
+            // / Food ...); Show more and RETURN side by side on
+            // the right, on the same line, never wrapping. Show
+            // more is a blue selector button, like the colony
             // screen's "No Enemy Presence" selector; RETURN is a
             // raised metallic button, like the colony RETURN.
-            int16_t cat_x = TITLE_X;
-            for (int category = 0; category < CATEGORY_COUNT; ++category) {
-                const int16_t width = (int16_t)(
-                    fonts::Get_String_Width(CATEGORY_LABELS[category]) + 16);
-                const bool active = category == g_state.category;
-                const s_animation_header* tab_frame = active
-                    ? g_selector_frame_active
-                    : g_selector_frame;
-                if (tab_frame != nullptr) {
-                    sprite_art::Draw_Sprite_Frame_Stretched(tab_frame,
-                        cat_x, CAT_Y, width, SELECTOR_LEFT_SLICE, 0);
-                } else {
-                    graphics::Fill(cat_x, CAT_Y, cat_x + width - 1,
-                        CAT_Y + CAT_HEIGHT - 1,
-                        active ? PRIMARY_FACE : 232);
-                    graphics::Box(cat_x, CAT_Y, width, CAT_HEIGHT, 1,
-                        PANEL_BORDER);
-                }
-                fonts::Set_Font_Style(4,
-                    active ? &g_title_colors : &g_colony_dim_colors);
-                const int16_t label_x = (int16_t)(cat_x +
-                    (width - fonts::Get_String_Width(CATEGORY_LABELS[category])) / 2);
-                fonts::Print(label_x, CAT_Y + 5, CATEGORY_LABELS[category]);
-                cat_x += width + 8;
-            }
+            Make_Tab_Bar().Draw();
             const auto draw_action_button = [](int16_t x, int16_t w, const char* label,
                 bool primary) {
                 Draw_Metal_Button(x, NAV_Y, w, NAV_Y_END - NAV_Y, primary);
@@ -1774,6 +1775,11 @@ namespace SETTINGS_SCREEN {
             "normal", MOX::screen_seg);
         g_selector_frame_active = sprite_art::Load_Sprite_Frame(
             "selector-frame", "active", MOX::screen_seg);
+        // The theme owns the tab bar and window frame; it takes the
+        // loaded frames (null when a frame is missing, and the bar
+        // falls back to the engine-drawn button).
+        g_theme = std::make_unique<ui_kit::Colony_Theme>(
+            g_selector_frame, g_selector_frame_active, g_title_colors);
         Rebuild_Fields();
         fields::Assign_Auto_Function(Draw_Settings_Screen, 2);
 
