@@ -18,6 +18,7 @@
 #include "game/fonts.h"
 #include "game/graphics.h"
 #include "game/mox2.h"
+#include "game/mouse.h"
 #include "game/palette.h"
 #include "game/platform.h"
 #include "game/russ.h"
@@ -55,9 +56,32 @@ namespace SETTINGS_SCREEN {
         constexpr int16_t ROW_HEIGHT = 30;
         constexpr int ROWS_PER_PAGE = 11;
         constexpr int16_t ROW_TEXT_Y_OFFSET = 8;
-        constexpr int16_t HELP_PANEL_X = 8;
+        // Colony-list scrollbar, like COLSUM's: a 5-wide vertical
+        // bar in its own strip at the right edge of the list panel.
+        // The colony's bar is at x=621, 5 wide, in a 271-tall
+        // track; here the track spans the list panel's rows.
+        // Row fields stop short of the strip, like the colony
+        // list's row fields stop short of its scrollbar.
+        constexpr int16_t SCROLL_X = 621;
+        constexpr int16_t SCROLL_W = 5;
+        constexpr int16_t SCROLL_TRACK_Y = FIRST_ROW_Y;
+        constexpr int16_t SCROLL_TRACK_H = ROWS_PER_PAGE * ROW_HEIGHT;
+        constexpr int16_t ROW_FIELD_X_END = SCROLL_X - 2;
+
+        // Selector column: every row's selector (toggle square,
+        // dropdown cell, value) ends at this right edge, like the
+        // colony list's cells all end at their column's right edge.
+        // The name stays left at TITLE_X; the selector is right.
+        constexpr int16_t SELECTOR_RIGHT_X = 616;
+        // Square selector cell size: the colony list's grid cell,
+        // a bordered square holding one value.
+        constexpr int16_t SQUARE_SIZE = 20;
+        // Description box: spans the whole width of the window,
+        // like the colony screen's bottom info area — the selected
+        // row's description lives here.
+        constexpr int16_t HELP_PANEL_X = 2;
         constexpr int16_t HELP_PANEL_Y = 398;
-        constexpr int16_t HELP_PANEL_W = 624;
+        constexpr int16_t HELP_PANEL_W = 636;
         constexpr int16_t HELP_PANEL_H = 50;
         constexpr int16_t HELP_Y = 402;
         constexpr int16_t HELP_LINE_HEIGHT = 15;
@@ -77,7 +101,6 @@ namespace SETTINGS_SCREEN {
         constexpr uint8_t PANEL_SEPARATOR = 229;
         constexpr uint8_t FRAME_OUTER = 244;
         constexpr uint8_t FRAME_INNER = 230;
-        constexpr uint8_t FRAME_RIVET = 244;
 
         // The standard UI text palette, as used by the council screen.
         s_colors g_normal_colors = {{150, 154, 155, 151, 152, 153, 154, 155}};
@@ -110,60 +133,43 @@ namespace SETTINGS_SCREEN {
         s_colors g_dark_text_colors = {{230, 230, 230, 230, 230, 230, 230, 230}};
         s_colors g_light_text_colors = {{247, 247, 247, 247, 247, 247, 247, 247}};
 
-        // The colony buy button (COLSUM.LBX entries 11-20, colsum.cpp
-        // Add_Fields / fields::Add_Locked_Button_Field) is the
-        // diamond Tom means: a 19x28-30 two-frame sprite, a dark
-        // plaque with a grey ring around a four-point star.
-        // fields.cpp draws frame 0 while *selection == 0 and frame 1
-        // once it is set, and selection is the colony's
+        // The colony listing's squares are the grid cells of the
+        // colony summary list (colsum.cpp / COLSUM.LBX): each data
+        // item sits in its own bordered square/rectangular cell —
+        // a thin metallic border around a dark interior — baked
+        // into the COLSUM.LBX background art (colsum.cpp draws no
+        // cell boxes itself; the background carries the grid). The
+        // header labels (NAME, FARMERS, WORKERS, SCIENTISTS,
+        // BUILDING) sit in the same bordered tab boxes, and each
+        // row's far-right element is the round buy button.
+        //
+        // The diamond is that buy button, not a value container:
+        // COLSUM.LBX entries 11-20, a 19x28-30 two-frame sprite, a
+        // dark plaque with a grey ring around a four-point star.
+        // fields.cpp draws frame 0 while *selection == 0 and frame
+        // 1 once it is set, and selection is the colony's
         // bought_outright — so frame 0 (grey star) is "not bought",
         // frame 1 (blue star) is "bought". A colony that cannot buy
         // gets no live button at all, only the dim disc baked into
-        // the colony background. The three states map to the
-        // settings toggle as off / on / disabled.
+        // the colony background. A settings toggle is a value, not
+        // a buy, so it takes the square — the colony list's value
+        // cell — and the diamond is retired.
         //
-        // The star's exact shape, decoded from COLSUM.LBX entry 11
-        // frame 1 (blue indices 38-62 in the colony palette): a
-        // vertical diamond 11 wide x 14 tall, rows y 8-21 of the
-        // 19x29 sprite, widest (x 4-14) at rows 13-14 and 17, with
-        // a bright centre and a bright horizontal bar at row 13.
-        // The diamond below is that same shape, 1:1, as row spans.
-        //
-        // The literal sprite cannot be drawn here: the settings
-        // screen runs under the main-menu palette, where the
-        // colony palette's blue indices 38-62 are browns and
-        // olives (MAINMENU.LBX palette), so the sprite would render
-        // brown, not blue. The toggle is therefore an engine-drawn
-        // replica in the closest menu-palette equivalents, keeping
-        // the sprite's own structure: a darker rim, a brighter
-        // body, and a small pale centre. On is the most saturated
-        // menu blue, 138 (53,49,138), rimming a pale cyan-blue
-        // body, 154 (121,182,186), with a near-white centre, 247;
-        // off is the menu grey ramp, 232 rimming 236 with a 246
-        // centre; disabled is the bare plaque with no star, like
-        // the colony's no-button state. Plaque and ring keep the
-        // sprite's 19x28 size, so rows are 30 tall (the colony
-        // summary's rows are 31).
-        constexpr int16_t TOGGLE_W = 19;
-        constexpr int16_t TOGGLE_H = 28;
-        constexpr uint8_t TOGGLE_PLAQUE = 230;
-        constexpr uint8_t TOGGLE_BORDER = 234;
-        constexpr uint8_t TOGGLE_RING = 238;
-        constexpr uint8_t TOGGLE_RING_DIM = 231;
-        constexpr uint8_t TOGGLE_ON_RIM = 138;
-        constexpr uint8_t TOGGLE_ON_BASE = 154;
-        constexpr uint8_t TOGGLE_ON_BRIGHT = 247;
-        constexpr uint8_t TOGGLE_OFF_RIM = 232;
-        constexpr uint8_t TOGGLE_OFF_BASE = 236;
-        constexpr uint8_t TOGGLE_OFF_BRIGHT = 246;
-
-        // Diamond row spans (x1, x2), plaque-relative, rows y+7 to
-        // y+20 of the 19x28 plaque. Decoded from COLSUM.LBX entry
-        // 11 frame 1.
-        constexpr int8_t DIAMOND_SPANS[14][2] = {
-            {7, 11}, {6, 12}, {5, 13}, {5, 13}, {5, 14}, {4, 14}, {4, 14},
-            {5, 14}, {5, 14}, {4, 14}, {5, 13}, {6, 13}, {7, 12}, {10, 10},
-        };
+        // The squares below are engine-drawn in the list panel's
+        // own border/interior colours (the colony's cells are baked
+        // art and cannot be drawn here). A toggle is a square cell:
+        // on fills it bright (the most saturated menu blue, 138,
+        // with a pale cyan-blue body, 154, and a near-white centre,
+        // 247); off fills it in the menu grey ramp (232 rim, 236
+        // body, 246 centre); disabled is the bare cell with no
+        // fill, like the colony's no-button state. Dropdowns and
+        // editable values take a rectangular cell of the same
+        // border/interior, sized to their text, and all selectors
+        // end at SELECTOR_RIGHT_X.
+        constexpr uint8_t SQUARE_ON_BASE = 154;
+        constexpr uint8_t SQUARE_ON_BRIGHT = 247;
+        constexpr uint8_t SQUARE_OFF_BASE = 236;
+        constexpr uint8_t SQUARE_OFF_BRIGHT = 246;
 
         enum e_toggle_state {
             TOGGLE_OFF,
@@ -171,49 +177,31 @@ namespace SETTINGS_SCREEN {
             TOGGLE_DISABLED,
         };
 
-        // Draw the colony buy button's diamond toggle at (x, y):
-        // dark plaque, grey ring, four-point star in the on/off
-        // colours; disabled draws the bare plaque with no star.
-        void Draw_Diamond_Toggle(int16_t x, int16_t y, e_toggle_state state) {
-            graphics::Fill(x, y, x + TOGGLE_W - 1, y + TOGGLE_H - 1, TOGGLE_PLAQUE);
-            graphics::Box(x, y, TOGGLE_W, TOGGLE_H, 1,
-                state == TOGGLE_DISABLED ? TOGGLE_RING_DIM : TOGGLE_BORDER);
-            graphics::Fill(x + 1, y + 1, x + TOGGLE_W - 2, y + 1, TOGGLE_RING);
-            const uint8_t ring =
-                state == TOGGLE_DISABLED ? TOGGLE_RING_DIM : TOGGLE_RING;
-            // Ring: octagon outline around the star, as the sprite's
-            // grey oval ring.
-            line::Line(x + 7, y + 3, x + 11, y + 3, ring);
-            line::Line(x + 11, y + 3, x + 15, y + 7, ring);
-            line::Line(x + 15, y + 7, x + 15, y + 20, ring);
-            line::Line(x + 15, y + 20, x + 11, y + 24, ring);
-            line::Line(x + 11, y + 24, x + 7, y + 24, ring);
-            line::Line(x + 7, y + 24, x + 3, y + 20, ring);
-            line::Line(x + 3, y + 20, x + 3, y + 7, ring);
-            line::Line(x + 3, y + 7, x + 7, y + 3, ring);
+        // Draw a colony-list square cell at (x, y), w by h: thin
+        // border, dark interior, in the list panel's own colours.
+        void Draw_Square_Cell(int16_t x, int16_t y, int16_t w, int16_t h) {
+            graphics::Fill(x, y, x + w - 1, y + h - 1, PANEL_INTERIOR);
+            graphics::Box(x, y, w, h, 1, PANEL_BORDER);
+        }
+
+        // Draw a square toggle at (x, y): a SQUARE_SIZE cell, filled
+        // bright when on, grey when off, bare (border only) when
+        // disabled.
+        void Draw_Square_Toggle(int16_t x, int16_t y, e_toggle_state state) {
+            Draw_Square_Cell(x, y, SQUARE_SIZE, SQUARE_SIZE);
             if (state == TOGGLE_DISABLED) {
                 return;
             }
-            const uint8_t rim =
-                state == TOGGLE_ON ? TOGGLE_ON_RIM : TOGGLE_OFF_RIM;
             const uint8_t base =
-                state == TOGGLE_ON ? TOGGLE_ON_BASE : TOGGLE_OFF_BASE;
+                state == TOGGLE_ON ? SQUARE_ON_BASE : SQUARE_OFF_BASE;
             const uint8_t bright =
-                state == TOGGLE_ON ? TOGGLE_ON_BRIGHT : TOGGLE_OFF_BRIGHT;
-            for (int row = 0; row < 14; ++row) {
-                graphics::Fill(x + DIAMOND_SPANS[row][0], y + 7 + row,
-                    x + DIAMOND_SPANS[row][1], y + 7 + row, rim);
-            }
-            // Brighter body, inset one pixel from the rim on every
-            // side but the pointed ends.
-            for (int row = 1; row < 13; ++row) {
-                graphics::Fill(x + DIAMOND_SPANS[row][0] + 1, y + 7 + row,
-                    x + DIAMOND_SPANS[row][1] - 1, y + 7 + row, base);
-            }
-            // Small pale star centre: a 2-pixel vertical bar with
-            // the full-width horizontal bar at y+12.
-            graphics::Fill(x + 9, y + 10, x + 10, y + 13, bright);
-            graphics::Fill(x + 6, y + 12, x + 13, y + 12, bright);
+                state == TOGGLE_ON ? SQUARE_ON_BRIGHT : SQUARE_OFF_BRIGHT;
+            // Filled centre, inset two pixels from the border.
+            graphics::Fill(x + 2, y + 2, x + SQUARE_SIZE - 3,
+                y + SQUARE_SIZE - 3, base);
+            // Small pale centre.
+            graphics::Fill(x + SQUARE_SIZE / 2 - 2, y + SQUARE_SIZE / 2 - 2,
+                x + SQUARE_SIZE / 2 + 1, y + SQUARE_SIZE / 2 + 1, bright);
         }
 
         // Raised metallic button, like the colony build screen's
@@ -246,11 +234,12 @@ namespace SETTINGS_SCREEN {
         };
 
         // Categories, in tab order. A tab is the cleanest fit for the
-        // existing field system: the screen is already a paged list
-        // with Prev/Next/Done fields, so a tab is one more row of
+        // existing field system: the screen is already a scrolling
+        // list with Done/Show all fields, so a tab is one more row of
         // hidden fields above the list, and each tab keeps its own
-        // page and selection. Sections (one long list with headers)
-        // would break the paging and edit-field geometry instead.
+        // scroll position and selection. Sections (one long list with
+        // headers) would break the scrolling and edit-field geometry
+        // instead.
         constexpr int CATEGORY_INTERNALS = 0;
         constexpr int CATEGORY_GAMEPLAY = 1;
         constexpr int CATEGORY_MODS = 2;
@@ -286,7 +275,16 @@ namespace SETTINGS_SCREEN {
             // preview's resolved order (the order written to the file).
             std::vector<std::string> enabled_ids;
             int category = CATEGORY_INTERNALS;
-            int page = 0;
+            // Colony-list scroll, per tab: the scrollbar's bound
+            // value (colsum.cpp's slider_bar_position) and the
+            // first visible row (colsum.cpp's `first`). The slider
+            // is inverted against the top row, like the colony's:
+            // the slider at its maximum shows the first rows, the
+            // slider at 0 shows the last. Sync_Scroll derives the
+            // top row from the slider, mirroring
+            // COLSUM::Update_First.
+            int16_t slider_position[CATEGORY_COUNT] = {};
+            int scroll_top[CATEGORY_COUNT] = {};
             // Index within the current category's list (visible rows
             // for settings, catalogue entries for mods).
             int selected = 0;
@@ -298,8 +296,7 @@ namespace SETTINGS_SCREEN {
             int editing_row = -1;
             char edit_buffer[512] = {};
             int16_t edit_field = -1;
-            int16_t prev_field = -1;
-            int16_t next_field = -1;
+            int16_t scroll_field = -1;
             int16_t done_field = -1;
             int16_t show_all_field = -1;
             // Show all is global for the screen, not per tab: the user
@@ -347,12 +344,78 @@ namespace SETTINGS_SCREEN {
             return visible - (int)g_state.visible_rows.size();
         }
 
-        int Page_Count() {
+        // Maximum first-visible-row index on the current tab: 0
+        // when everything fits, otherwise the top row of the last
+        // window. Mirrors the colony's `num_colonies - 10` bound.
+        int Max_Scroll() {
             const int count = Visible_Count();
-            if (count == 0) {
-                return 1;
+            if (count <= ROWS_PER_PAGE) {
+                return 0;
             }
-            return (count + ROWS_PER_PAGE - 1) / ROWS_PER_PAGE;
+            return count - ROWS_PER_PAGE;
+        }
+
+        // Derive the current tab's first visible row from its
+        // slider position, mirroring COLSUM::Update_First: the
+        // slider is inverted, so the top row is the maximum minus
+        // the slider. Clamps the slider into range (the field
+        // system also clamps it, but the count can shrink under it
+        // when Show all toggles or the tab changes).
+        void Sync_Scroll() {
+            const int max_scroll = Max_Scroll();
+            int16_t& slider = g_state.slider_position[g_state.category];
+            if (slider < 0) {
+                slider = 0;
+            }
+            if (slider > max_scroll) {
+                slider = (int16_t)max_scroll;
+            }
+            g_state.scroll_top[g_state.category] = max_scroll - slider;
+        }
+
+        // First visible row on the current tab (after Sync_Scroll).
+        int Scroll_Top() {
+            return g_state.scroll_top[g_state.category];
+        }
+
+        // Colony-list scrollbar thumb, mirroring colsum.cpp's
+        // Draw_Bar_Indicator: a filled bar with a bright top/left
+        // edge and a dark bottom/right edge, in the metal-button
+        // colors. The thumb spans the fraction of the list that is
+        // visible, at least 8 px tall so it stays grabbable. Only
+        // drawn when the list is longer than the window.
+        void Draw_Scroll_Bar() {
+            const int total = Visible_Count();
+            if (total <= ROWS_PER_PAGE) {
+                return;
+            }
+            const int top = Scroll_Top();
+            int16_t y1 = (int16_t)(SCROLL_TRACK_Y +
+                (SCROLL_TRACK_H * top) / total);
+            int16_t y2 = (int16_t)(SCROLL_TRACK_Y +
+                (SCROLL_TRACK_H * (top + ROWS_PER_PAGE)) / total);
+            if (y2 - y1 < 8) {
+                y2 = (int16_t)(y1 + 8);
+                if (y2 > SCROLL_TRACK_Y + SCROLL_TRACK_H) {
+                    y2 = (int16_t)(SCROLL_TRACK_Y + SCROLL_TRACK_H);
+                    y1 = (int16_t)(y2 - 8);
+                }
+            }
+            graphics::Fill(SCROLL_X, y1, SCROLL_X + SCROLL_W - 1, y2,
+                METAL_FACE);
+            graphics::Fill(SCROLL_X, y1, SCROLL_X + SCROLL_W - 1, y1,
+                METAL_HIGHLIGHT);
+            graphics::Fill(SCROLL_X, y1, SCROLL_X, y2, METAL_HIGHLIGHT);
+            graphics::Fill(SCROLL_X, y2, SCROLL_X + SCROLL_W - 1, y2,
+                METAL_SHADOW);
+            graphics::Fill(SCROLL_X + SCROLL_W - 1, y1,
+                SCROLL_X + SCROLL_W - 1, y2, METAL_SHADOW);
+            // Corner dots marking the track ends, like the colony's.
+            graphics::Fill(SCROLL_X, SCROLL_TRACK_Y,
+                SCROLL_X + SCROLL_W - 1, SCROLL_TRACK_Y, PANEL_BORDER);
+            graphics::Fill(SCROLL_X, SCROLL_TRACK_Y + SCROLL_TRACK_H - 1,
+                SCROLL_X + SCROLL_W - 1,
+                SCROLL_TRACK_Y + SCROLL_TRACK_H - 1, PANEL_BORDER);
         }
 
         // Rows index for a visible index in a settings category.
@@ -684,22 +747,35 @@ namespace SETTINGS_SCREEN {
                     tab_x, TAB_Y, tab_x + width - 1, TAB_Y + TAB_HEIGHT - 1, "", 0);
                 tab_x += width + 8;
             }
-            const int first = g_state.page * ROWS_PER_PAGE;
+            Sync_Scroll();
+            const int first = Scroll_Top();
             const int count = std::min(ROWS_PER_PAGE, Visible_Count() - first);
             for (int index = 0; index < count; ++index) {
                 const int16_t y = FIRST_ROW_Y + (int16_t)index * ROW_HEIGHT;
+                // Row fields stop short of the scrollbar strip, like
+                // the colony list's row fields stop short of its
+                // scrollbar, so clicks on the bar reach the bar.
                 g_state.row_fields[index] = fields::Add_Hidden_Field(
-                    8, y, 632, y + ROW_HEIGHT - 1, "", 0);
+                    8, y, ROW_FIELD_X_END, y + ROW_HEIGHT - 1, "", 0);
             }
             for (int index = count; index < ROWS_PER_PAGE; ++index) {
                 g_state.row_fields[index] = -1;
             }
-            g_state.prev_field = g_state.page > 0
-                ? fields::Add_Hidden_Field(16, NAV_Y, 90, NAV_Y_END, "P", 0)
-                : -1;
-            g_state.next_field = g_state.page + 1 < Page_Count()
-                ? fields::Add_Hidden_Field(110, NAV_Y, 184, NAV_Y_END, "N", 0)
-                : -1;
+            // Colony-list scrollbar, in its own strip at the right
+            // edge of the list panel: a drag-operated Scroll_Field
+            // bound to this tab's slider position, like COLSUM's
+            // Add_Scroll_Field. Only when the list is longer than
+            // the window; the field system's lone-scrollbar rule
+            // makes the wheel scroll it from anywhere over the list.
+            const int total = Visible_Count();
+            if (total > ROWS_PER_PAGE) {
+                g_state.scroll_field = fields::Add_Scroll_Field(SCROLL_X,
+                    SCROLL_TRACK_Y, 0, (int16_t)total, 0,
+                    (int16_t)Max_Scroll(), SCROLL_W, SCROLL_TRACK_H,
+                    &g_state.slider_position[g_state.category], "", 0);
+            } else {
+                g_state.scroll_field = -1;
+            }
             // Show all sits in the footer between the centred note and
             // Done: the note ends near x=444 at most, Done starts at
             // 556, so 456-544 is clear on every tab.
@@ -708,21 +784,14 @@ namespace SETTINGS_SCREEN {
             g_state.done_field = fields::Add_Hidden_Field(556, NAV_Y, 624, NAV_Y_END, "", 0);
         }
 
-        void Change_Page(int delta) {
-            const int next = g_state.page + delta;
-            if (next < 0 || next >= Page_Count() || next == g_state.page) {
-                return;
-            }
-            g_state.page = next;
-            g_state.selected = next * ROWS_PER_PAGE;
-            Rebuild_Fields();
-        }
-
         void Toggle_Show_All() {
             g_state.show_all = !g_state.show_all;
-            g_state.page = 0;
             g_state.selected = 0;
             Rebuild_Visible_Rows();
+            // The row set changed, so the scroll resets to the top:
+            // the slider at its maximum shows the first rows.
+            g_state.slider_position[g_state.category] = (int16_t)Max_Scroll();
+            g_state.scroll_top[g_state.category] = 0;
             g_state.status = g_state.show_all
                 ? "Showing all settings, including advanced and ordering options."
                 : "Showing the most-used settings. Use Show all for the rest.";
@@ -738,9 +807,12 @@ namespace SETTINGS_SCREEN {
                 g_state.edit_field = -1;
             }
             g_state.category = category;
-            g_state.page = 0;
-            g_state.selected = 0;
             Rebuild_Visible_Rows();
+            Sync_Scroll();
+            // The tab keeps its own scroll position (per-tab slider
+            // and top row); the selection moves to the first visible
+            // row so the highlight stays on screen.
+            g_state.selected = g_state.scroll_top[category];
             if (category == CATEGORY_MODS) {
                 Read_Enabled_Set();
                 Refresh_Mods();
@@ -804,7 +876,7 @@ namespace SETTINGS_SCREEN {
             g_state.editing_row = visible;
             fonts::Set_Font_Style(4, &g_normal_colors);
             const int16_t y = FIRST_ROW_Y +
-                (int16_t)(visible - g_state.page * ROWS_PER_PAGE) * ROW_HEIGHT;
+                (int16_t)(visible - Scroll_Top()) * ROW_HEIGHT;
             g_state.edit_field = fields::Add_Continuous_String_Input_Field(
                 VALUE_X, y, VALUE_WIDTH, ROW_HEIGHT - 2, g_state.edit_buffer,
                 max_length, 0, 0, 0, 0);
@@ -868,7 +940,7 @@ namespace SETTINGS_SCREEN {
             const int16_t list_height =
                 (int16_t)((type->value_count + 1) * (size_t)y_step);
             int16_t y = FIRST_ROW_Y +
-                (int16_t)(visible - g_state.page * ROWS_PER_PAGE) * ROW_HEIGHT;
+                (int16_t)(visible - Scroll_Top()) * ROW_HEIGHT;
             if (y + list_height > 470) {
                 y = 470 - list_height;
             }
@@ -954,7 +1026,7 @@ namespace SETTINGS_SCREEN {
                 x = 632 - popup_w;
             }
             int16_t y = FIRST_ROW_Y +
-                (int16_t)(visible - g_state.page * ROWS_PER_PAGE) * ROW_HEIGHT;
+                (int16_t)(visible - Scroll_Top()) * ROW_HEIGHT;
             if (y + popup_h > 470) {
                 y = 470 - popup_h;
             }
@@ -985,7 +1057,9 @@ namespace SETTINGS_SCREEN {
             g_state.resolution_popup_open = true;
 
             // Modal loop, modelled on fields::Get_List_Field: hover
-            // moves the blue bar, a click chooses, Esc cancels.
+            // moves the blue bar, a click chooses, Esc cancels, and
+            // a click outside the popup dismisses it too.
+            bool popup_armed = false;
             int choice = -1;
             while (true) {
                 platform::Check_Exit();
@@ -1004,6 +1078,28 @@ namespace SETTINGS_SCREEN {
                         }
                     }
                     if (choice >= 0) {
+                        break;
+                    }
+                }
+                // A click outside the popup dismisses it, like Esc.
+                // Arm once the opening click is released, so the
+                // click that opened the popup does not dismiss it.
+                // (The loop samples the live button state every
+                // iteration, so a held press is seen while it is
+                // still down; Get_Input above has already consumed
+                // any click that landed on a popup field.)
+                if (!popup_armed) {
+                    if (mouse::Mouse_Button() == 0) {
+                        popup_armed = true;
+                    }
+                } else if (mouse::Mouse_Button() != 0) {
+                    const int16_t px = mouse::Pointer_X();
+                    const int16_t py = mouse::Pointer_Y();
+                    if (px < g_state.resolution_popup_x
+                        || px >= g_state.resolution_popup_x + g_state.resolution_popup_w
+                        || py < g_state.resolution_popup_y
+                        || py >= g_state.resolution_popup_y + g_state.resolution_popup_h) {
+                        choice = -1;
                         break;
                     }
                 }
@@ -1251,24 +1347,18 @@ namespace SETTINGS_SCREEN {
             video::Set_Page_Off();
             graphics::Fill(0, 0, 639, 479, 0);
 
-            // Full-window colony chrome: a thin light outer line, a
-            // dark inner line, and corner rivets, like the frame
-            // baked into the colony screens' backgrounds.
+            // Full-window colony chrome, uniform on all four
+            // edges: a thin light outer line at the very edge and
+            // a dark inner line directly adjacent to it, no gap
+            // and no corner rivets, like the frame baked into the
+            // colony screens' backgrounds.
             graphics::Box(0, 0, 640, 480, 1, FRAME_OUTER);
-            graphics::Box(2, 2, 636, 476, 1, FRAME_INNER);
-            graphics::Fill(4, 4, 6, 6, FRAME_RIVET);
-            graphics::Fill(633, 4, 635, 6, FRAME_RIVET);
-            graphics::Fill(4, 473, 6, 475, FRAME_RIVET);
-            graphics::Fill(633, 473, 635, 475, FRAME_RIVET);
+            graphics::Box(1, 1, 638, 478, 1, FRAME_INNER);
 
             fonts::Set_Font_Style(4, &g_title_colors);
             const char* title = "Settings";
             fonts::Print((640 - fonts::Get_String_Width(title)) / 2, TITLE_Y, title);
             fonts::Set_Font_Style(4, &g_normal_colors);
-            char page_text[32];
-            snprintf(page_text, sizeof(page_text), "Page %d of %d",
-                g_state.page + 1, Page_Count());
-            fonts::Print(640 - 16 - fonts::Get_String_Width(page_text), TITLE_Y, page_text);
 
             // Tabs, like the colony summary's sort buttons: dark
             // buttons, the active tab in the Auto Build blue.
@@ -1303,7 +1393,8 @@ namespace SETTINGS_SCREEN {
             }
 
             const bool mods_tab = g_state.category == CATEGORY_MODS;
-            const int first = g_state.page * ROWS_PER_PAGE;
+            Sync_Scroll();
+            const int first = Scroll_Top();
             const int count = std::min(ROWS_PER_PAGE, Visible_Count() - first);
             for (int index = 0; index < count; ++index) {
                 const int visible = first + index;
@@ -1323,16 +1414,19 @@ namespace SETTINGS_SCREEN {
                     }
                     fonts::Print(TITLE_X, text_y,
                         Truncate_To_Width(title_text, TITLE_WIDTH).c_str());
-                    // Colony buy-button diamond: blue when on, grey
-                    // when off, bare plaque when the mod is broken
-                    // and cannot be enabled.
-                    const int16_t toggle_y = (int16_t)(y + (ROW_HEIGHT - TOGGLE_H) / 2);
+                    // Colony-list square toggle, right-aligned
+                    // to the selector column: bright when on, grey
+                    // when off, bare when the mod is broken and
+                    // cannot be enabled.
+                    const int16_t toggle_x = SELECTOR_RIGHT_X - SQUARE_SIZE + 1;
+                    const int16_t toggle_y = (int16_t)(y + (ROW_HEIGHT - SQUARE_SIZE) / 2);
                     if (entry.broken) {
-                        Draw_Diamond_Toggle(VALUE_X, toggle_y, TOGGLE_DISABLED);
+                        Draw_Square_Toggle(toggle_x, toggle_y, TOGGLE_DISABLED);
                         fonts::Set_Font_Style(4, &g_colony_dim_colors);
-                        fonts::Print(VALUE_X + TOGGLE_W + 6, text_y, "Broken");
+                        const int16_t broken_w = fonts::Get_String_Width("Broken");
+                        fonts::Print(toggle_x - 6 - broken_w, text_y, "Broken");
                     } else {
-                        Draw_Diamond_Toggle(VALUE_X, toggle_y,
+                        Draw_Square_Toggle(toggle_x, toggle_y,
                             entry.enabled ? TOGGLE_ON : TOGGLE_OFF);
                     }
                     continue;
@@ -1354,20 +1448,21 @@ namespace SETTINGS_SCREEN {
                     continue;
                 }
                 if (row.widget == config::SETTINGS_WIDGET_TOGGLE) {
-                    // Colony buy-button diamond instead of the
-                    // "[x]"/"[ ]" text: blue when on, grey when off.
+                    // Colony-list square toggle, right-aligned to
+                    // the selector column: bright when on, grey
+                    // when off.
                     config::s_typed_value value;
                     const bool on = config::Get_Settings_Row_Value(row, &value)
                         && value.bool_value;
+                    const int16_t toggle_x = SELECTOR_RIGHT_X - SQUARE_SIZE + 1;
                     const int16_t toggle_y =
-                        (int16_t)(y + (ROW_HEIGHT - TOGGLE_H) / 2);
-                    Draw_Diamond_Toggle(VALUE_X, toggle_y,
+                        (int16_t)(y + (ROW_HEIGHT - SQUARE_SIZE) / 2);
+                    Draw_Square_Toggle(toggle_x, toggle_y,
                         on ? TOGGLE_ON : TOGGLE_OFF);
                 } else if (row.widget == config::SETTINGS_WIDGET_DROPDOWN) {
-                    // Dropdown: the value in a raised metallic button
-                    // with a down-arrow — the game's only missing
-                    // widget, restyled to the colony build screen's
-                    // buttons. The list itself is the shared
+                    // Dropdown: the value in a colony-list square
+                    // cell with a down-arrow, right-aligned to the
+                    // selector column. The list itself is the shared
                     // fields::Get_List_Field picker; its frame is
                     // that picker's, not the settings screen's.
                     std::string value_text;
@@ -1389,13 +1484,15 @@ namespace SETTINGS_SCREEN {
                     if (box_w > VALUE_WIDTH) {
                         box_w = VALUE_WIDTH;
                     }
+                    const int16_t trigger_x = (int16_t)(SELECTOR_RIGHT_X - box_w + 1);
                     const int16_t trigger_y = (int16_t)(y + 5);
-                    Draw_Metal_Button(VALUE_X, trigger_y, box_w, 20, false);
-                    fonts::Set_Font_Style(4, &g_dark_text_colors);
-                    fonts::Print(VALUE_X + 4, trigger_y + 4, value_text.c_str());
-                    fonts::Print(VALUE_X + box_w - 12, trigger_y + 4, "v");
+                    Draw_Square_Cell(trigger_x, trigger_y, box_w, 20);
+                    fonts::Set_Font_Style(4, &g_colony_colors);
+                    fonts::Print(trigger_x + 4, trigger_y + 4, value_text.c_str());
+                    fonts::Print(trigger_x + box_w - 12, trigger_y + 4, "v");
                 } else {
-                    // Info and edit values: text in the colony dim color.
+                    // Info and edit values: text in the colony dim
+                    // color, right-aligned to the selector column.
                     config::s_typed_value value;
                     std::string value_text;
                     if (row.widget == config::SETTINGS_WIDGET_INFO) {
@@ -1405,14 +1502,21 @@ namespace SETTINGS_SCREEN {
                             ? config::Format_Leaf_Value(row.variable_id, value)
                             : "?";
                     }
+                    value_text = Truncate_To_Width(value_text, VALUE_WIDTH);
+                    const int16_t value_w =
+                        fonts::Get_String_Width(value_text.c_str());
                     fonts::Set_Font_Style(4, &g_colony_dim_colors);
-                    fonts::Print(VALUE_X, text_y,
-                        Truncate_To_Width(value_text, VALUE_WIDTH).c_str());
+                    fonts::Print(SELECTOR_RIGHT_X - value_w + 1, text_y,
+                        value_text.c_str());
                 }
             }
 
-            // Help and status panel, like the colony screens' bottom
-            // info panels.
+            Draw_Scroll_Bar();
+
+            // Description box, spanning the whole width of the
+            // window like the colony screen's bottom info area:
+            // the selected row's description, with the status
+            // line below it.
             graphics::Fill(HELP_PANEL_X, HELP_PANEL_Y,
                 HELP_PANEL_X + HELP_PANEL_W - 1, HELP_PANEL_Y + HELP_PANEL_H - 1,
                 PANEL_INTERIOR);
@@ -1437,8 +1541,8 @@ namespace SETTINGS_SCREEN {
                 Truncate_To_Width(g_state.status, TEXT_WIDTH).c_str());
 
             // Footer buttons, like the colony build screen's raised
-            // buttons: metallic Prev / Next / Show all, blue Done.
-            // Each button rect matches its field; the label is centred.
+            // buttons: metallic Show all, blue Done. Each button rect
+            // matches its field; the label is centred.
             const auto draw_action_button = [](int16_t x, int16_t w, const char* label,
                 bool primary) {
                 Draw_Metal_Button(x, NAV_Y, w, NAV_Y_END - NAV_Y, primary);
@@ -1448,12 +1552,6 @@ namespace SETTINGS_SCREEN {
                     (w - fonts::Get_String_Width(label)) / 2);
                 fonts::Print(label_x, FOOTER_Y, label);
             };
-            if (g_state.prev_field != -1) {
-                draw_action_button(TITLE_X, 74, "Prev", false);
-            }
-            if (g_state.next_field != -1) {
-                draw_action_button(110, 74, "Next", false);
-            }
             draw_action_button(456, 88, g_state.show_all ? "Show less" : "Show all",
                 false);
             draw_action_button(556, 68, "Done", true);
@@ -1523,10 +1621,6 @@ namespace SETTINGS_SCREEN {
                     } else {
                         screen_exit = true;
                     }
-                } else if (input == g_state.prev_field) {
-                    Change_Page(-1);
-                } else if (input == g_state.next_field) {
-                    Change_Page(1);
                 } else if (input == g_state.show_all_field) {
                     Toggle_Show_All();
                 } else if (input == g_state.edit_field) {
@@ -1535,6 +1629,14 @@ namespace SETTINGS_SCREEN {
                     // field and keeps editing.
                     if (fields::input_field_active == 0) {
                         Commit_Edit();
+                    }
+                } else if (input == g_state.scroll_field) {
+                    // The wheel or a scrollbar drag moved the list:
+                    // like clicking another row, it cancels a pending
+                    // edit, whose field would no longer line up with
+                    // its row. The scroll itself already happened.
+                    if (g_state.editing_row >= 0) {
+                        Cancel_Edit();
                     }
                 } else {
                     bool handled = false;
@@ -1546,7 +1648,7 @@ namespace SETTINGS_SCREEN {
                         }
                     }
                     if (!handled) {
-                        const int first = g_state.page * ROWS_PER_PAGE;
+                        const int first = Scroll_Top();
                         const int count = std::min(ROWS_PER_PAGE,
                             Visible_Count() - first);
                         for (int index = 0; index < count; ++index) {
