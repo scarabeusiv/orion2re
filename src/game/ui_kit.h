@@ -122,14 +122,36 @@ namespace ui_kit {
         uint8_t fallback_border = 0;
     };
 
-    // Window chrome: outer/inner frame colours and the title font.
-    // The title is centred horizontally; title_y is its print y
-    // relative to the window top.
-    struct Window_Style {
-        uint8_t frame_outer = 0;
-        uint8_t frame_inner = 0;
+    // Window frame: the bevelled metal border that contains a
+    // colony-style window, measured across the game's full-window
+    // screens (colony summary COLSUM, colony build COLBLDG, race
+    // relations RACES, leaders OFFICER, score) and its floating
+    // dialogs. The band is 9-12 px of bevelled metal on every side;
+    // the content starts ~11 px inside the outer edge; the title
+    // (or tab bar) sits in the top band's zone; the bottom bar is
+    // 24 px tall ending ~10 px above the bottom edge. The starmap
+    // and main menu use a different, heavier pipe frame -- a second
+    // Theme supplies that family's style through this same struct;
+    // nothing here names a screen. The bevel profile is one palette
+    // index per pixel of band, outside -> inside: the outer edge,
+    // the bright ridge, the mid metal, the groove, the inner light
+    // lip, the inner edge. A side thicker than the profile repeats
+    // its last entry; a side thinner keeps the profile's outer run
+    // and its last entry (the inner edge), so the inner edge is
+    // never lost.
+    struct Frame_Style {
+        int16_t thickness_left = 0;
+        int16_t thickness_right = 0;
+        int16_t thickness_top = 0;
+        int16_t thickness_bottom = 0;
+        int16_t inset_left = 0; // outer edge -> content, per side
+        int16_t inset_right = 0;
+        int16_t inset_top = 0;
+        int16_t inset_bottom = 0;
+        std::vector<uint8_t> profile; // outside -> inside
         const Font* title_font = nullptr; // non-owning; null = no title
-        int16_t title_y = 0;
+        int16_t title_y = 0; // title print y relative to window top
+        int16_t bottom_bar_h = 0; // the bottom bar's height
     };
 
     // Spacing: the empty space between and around the bands of a
@@ -138,13 +160,15 @@ namespace ui_kit {
     // baked COLSUM background, 640x480 game pixels): rows are 30 px
     // cells on a 31 px pitch, so 1 px of empty background shows
     // between adjacent rows; the header plate's bottom edge sits
-    // 3 px above the first row; the description box starts 4 px
-    // below the last row and ends 7 px above the bottom bar.
+    // 3 px above the first row; the panel ends 4 px below the last
+    // row (a shade band and a bevel) and the description box starts
+    // 4 px below the panel and ends 7 px above the bottom bar.
     struct Spacing {
         int16_t row_height = 30;         // one list row's cell height
         int16_t row_gap = 1;             // empty background between rows
         int16_t header_to_first_row = 3; // header bottom -> first row top
-        int16_t list_to_info = 4;        // last row bottom -> info box top
+        int16_t list_footing = 4;        // panel below the last row: shade band + bevel
+        int16_t list_to_info = 4;        // panel bottom -> info box top
         int16_t info_to_bar = 7;         // info box bottom -> bottom bar top
         int16_t Row_Pitch() const {
             return (int16_t)(row_height + row_gap);
@@ -181,6 +205,11 @@ namespace ui_kit {
         uint8_t divider_left = 0;
         uint8_t divider_mid = 0;
         uint8_t divider_right = 0;
+        // Header plate face: the colony's plates are raised, their
+        // face lighter than the list interior (colony face ~48
+        // against its interior 20, the same delta remap as the
+        // dividers above).
+        uint8_t plate_face = 0;
     };
 
     // A theme is everything about a window's look that varies with
@@ -194,7 +223,9 @@ namespace ui_kit {
         // Qualified: the member function name would otherwise hide
         // the same-named struct in the return type.
         virtual ui_kit::Tab_Frames Tab_Frames() const = 0;
-        virtual ui_kit::Window_Style Window_Style() const = 0;
+        // Qualified: the member function name would otherwise hide
+        // the same-named struct in the return type.
+        virtual ui_kit::Frame_Style Frame_Style() const = 0;
         // Per side, label to frame edge. The colony sort buttons
         // carry 8-10 px per side (frame width minus baked label
         // width, halved).
@@ -225,7 +256,7 @@ namespace ui_kit {
             const s_colors& title_colors);
         const Font& Tab_Font() const override;
         ui_kit::Tab_Frames Tab_Frames() const override;
-        ui_kit::Window_Style Window_Style() const override;
+        ui_kit::Frame_Style Frame_Style() const override;
         ui_kit::Spacing Spacing() const override;
         ui_kit::List_Style List_Style() const override;
         int16_t Tab_Padding() const override;
@@ -280,14 +311,54 @@ namespace ui_kit {
         std::vector<Tab> tabs_;
     };
 
+    // A window's frame: the border that contains everything, drawn
+    // by the theme. The frame positions the contents: the grid, the
+    // panels and the bottom bar are derived from its content rect,
+    // never from hard-coded screen constants. A screen builds one
+    // for its window rect and asks it where things go; a dialog is
+    // the same component at a smaller rect. The bands are mitred:
+    // each band line stops one pixel further in per offset, so the
+    // corners meet on a 45-degree seam, like the baked frames'.
+    class Window_Frame {
+      public:
+        Window_Frame(int16_t x, int16_t y, int16_t w, int16_t h,
+            const Theme& theme);
+        int16_t x() const { return x_; }
+        int16_t y() const { return y_; }
+        int16_t w() const { return w_; }
+        int16_t h() const { return h_; }
+        int16_t content_x() const;
+        int16_t content_y() const;
+        int16_t content_w() const;
+        int16_t content_h() const;
+        // Exclusive right/bottom edges of the content rect.
+        int16_t content_right() const;
+        int16_t content_bottom() const;
+        // y for a bottom bar of height bar_h: its bottom sits on
+        // the content bottom, so the frame's bottom band shows
+        // below it.
+        int16_t bottom_bar_y(int16_t bar_h) const;
+        // Title print y, absolute.
+        int16_t title_y() const;
+        void Draw(const char* title) const;
+
+      private:
+        int16_t x_;
+        int16_t y_;
+        int16_t w_;
+        int16_t h_;
+        const Theme& theme_;
+    };
+
     // Geometry of a colony-style list: panel rect, header rect, row
     // rects, scroll track, description-box top. Derived from the
     // theme's Spacing plus the panel's position, so the screen's
     // fields, drawing and scrolling can never drift apart. Row i
     // occupies [first_row_y + i*pitch, +row_height); the row_gap
     // pixels between rows show the panel background -- the colony's
-    // empty space between cells. The panel ends at the last row's
-    // bottom edge; the description box starts list_to_info below it.
+    // empty space between cells. The panel ends list_footing below
+    // the last row's bottom edge; the description box starts
+    // list_to_info below the panel.
     class List_Layout {
       public:
         List_Layout(int16_t panel_x, int16_t panel_y, int16_t panel_w,
@@ -387,9 +458,4 @@ namespace ui_kit {
     void Draw_List_Columns(const Theme& theme,
         const Column_Layout& columns);
 
-    // Full-window frame: thin light outer line, dark inner line,
-    // centred title -- the frame baked into the colony screens'
-    // backgrounds, engine-drawn in theme colours.
-    void Draw_Window_Frame(const Theme& theme, int16_t x, int16_t y,
-        int16_t w, int16_t h, const char* title);
 } // namespace ui_kit

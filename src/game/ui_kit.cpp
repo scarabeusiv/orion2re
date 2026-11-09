@@ -37,12 +37,32 @@ namespace ui_kit {
         constexpr int16_t kTab_Height = 24;
         constexpr int16_t kTab_Label_Y_Offset = 8;
 
-        // Window frame colours, in menu-palette indices: the thin
-        // light-grey outer line and dark inner line baked into the
-        // colony screens' backgrounds.
-        constexpr uint8_t kWindow_Frame_Outer = 244;
-        constexpr uint8_t kWindow_Frame_Inner = 230;
-        constexpr int16_t kWindow_Title_Y = 8;
+        // Window frame, in menu-palette indices: the bevelled metal
+        // band baked into the colony screens' backgrounds, measured
+        // as the median left-band profile of the COLSUM background
+        // (640x480 game pixels, colony palette) and remapped into
+        // the menu palette by preserving each pixel's offset above
+        // the interior (see Frame_Style in ui_kit.h for why the
+        // remap is a delta, not a nearest-colour lookup): the outer
+        // edge, the bright ridge, the mid metal, the groove, the
+        // inner light lip, the inner edge. Thickness and inset are
+        // per side, in pixels: the left band is 11 px, the right
+        // and top bands 12 px, the bottom band 10 px; the content
+        // starts the same distance inside each edge. The title
+        // prints at y 8; the bottom bar is 24 px tall and its bottom
+        // sits on the content bottom (y 446..469).
+        constexpr uint8_t kFrame_Profile[] = {234, 235, 238, 239, 238,
+            234, 234, 231, 234, 236, 234};
+        constexpr int16_t kFrame_Thickness_Left = 11;
+        constexpr int16_t kFrame_Thickness_Right = 12;
+        constexpr int16_t kFrame_Thickness_Top = 12;
+        constexpr int16_t kFrame_Thickness_Bottom = 10;
+        constexpr int16_t kFrame_Inset_Left = 11;
+        constexpr int16_t kFrame_Inset_Right = 12;
+        constexpr int16_t kFrame_Inset_Top = 12;
+        constexpr int16_t kFrame_Inset_Bottom = 10;
+        constexpr int16_t kFrame_Title_Y = 8;
+        constexpr int16_t kFrame_Bottom_Bar_H = 24;
 
         // Fallback fills when a derived frame is missing (stale
         // base.zip): the derived frames' own interior colours, so
@@ -54,12 +74,14 @@ namespace ui_kit {
         // List spacing, measured from the colony summary screen
         // (colsum.cpp: rows are 30 px cells, y_row_end advancing
         // 31 px per row; the baked header plates end at y 32 and
-        // the first row starts at y 35; the last row ends at y 343
-        // and the bottom info area starts at y 350; the info area
-        // ends at y 438 and the sort bar starts at y 446).
+        // the first row starts at y 35; the last row ends at y 343,
+        // the panel's shade band and bevel run y 344..347 and the
+        // bottom info area starts at y 350; the info area ends at
+        // y 438 and the sort bar starts at y 446).
         constexpr int16_t kList_Row_Height = 30;
         constexpr int16_t kList_Row_Gap = 1;
         constexpr int16_t kList_Header_To_First_Row = 3;
+        constexpr int16_t kList_Footing = 4;
         constexpr int16_t kList_To_Info = 4;
         constexpr int16_t kInfo_To_Bar = 7;
 
@@ -81,6 +103,7 @@ namespace ui_kit {
         constexpr uint8_t kList_Divider_Left = 233;
         constexpr uint8_t kList_Divider_Mid = 235;
         constexpr uint8_t kList_Divider_Right = 232;
+        constexpr uint8_t kList_Plate_Face = 233;
     } // namespace
 
     Engine_Font::Engine_Font(int16_t style, const s_colors& normal_colors,
@@ -153,12 +176,22 @@ namespace ui_kit {
         return frames;
     }
 
-    ui_kit::Window_Style Colony_Theme::Window_Style() const {
-        ui_kit::Window_Style style;
-        style.frame_outer = kWindow_Frame_Outer;
-        style.frame_inner = kWindow_Frame_Inner;
+    ui_kit::Frame_Style Colony_Theme::Frame_Style() const {
+        ui_kit::Frame_Style style;
+        style.thickness_left = kFrame_Thickness_Left;
+        style.thickness_right = kFrame_Thickness_Right;
+        style.thickness_top = kFrame_Thickness_Top;
+        style.thickness_bottom = kFrame_Thickness_Bottom;
+        style.inset_left = kFrame_Inset_Left;
+        style.inset_right = kFrame_Inset_Right;
+        style.inset_top = kFrame_Inset_Top;
+        style.inset_bottom = kFrame_Inset_Bottom;
+        for (const uint8_t index : kFrame_Profile) {
+            style.profile.push_back(index);
+        }
         style.title_font = &title_font_;
-        style.title_y = kWindow_Title_Y;
+        style.title_y = kFrame_Title_Y;
+        style.bottom_bar_h = kFrame_Bottom_Bar_H;
         return style;
     }
 
@@ -167,6 +200,7 @@ namespace ui_kit {
         spacing.row_height = kList_Row_Height;
         spacing.row_gap = kList_Row_Gap;
         spacing.header_to_first_row = kList_Header_To_First_Row;
+        spacing.list_footing = kList_Footing;
         spacing.list_to_info = kList_To_Info;
         spacing.info_to_bar = kInfo_To_Bar;
         return spacing;
@@ -181,6 +215,7 @@ namespace ui_kit {
         style.divider_left = kList_Divider_Left;
         style.divider_mid = kList_Divider_Mid;
         style.divider_right = kList_Divider_Right;
+        style.plate_face = kList_Plate_Face;
         return style;
     }
 
@@ -272,17 +307,98 @@ namespace ui_kit {
         }
     }
 
-    void Draw_Window_Frame(const Theme& theme, int16_t x, int16_t y,
-        int16_t w, int16_t h, const char* title) {
-        const Window_Style style = theme.Window_Style();
-        graphics::Box(x, y, w, h, 1, style.frame_outer);
-        graphics::Box((int16_t)(x + 1), (int16_t)(y + 1),
-            (int16_t)(w - 2), (int16_t)(h - 2), 1, style.frame_inner);
+    Window_Frame::Window_Frame(int16_t x, int16_t y, int16_t w,
+        int16_t h, const Theme& theme)
+        : x_(x), y_(y), w_(w), h_(h), theme_(theme) {}
+
+    int16_t Window_Frame::content_x() const {
+        return (int16_t)(x_ + theme_.Frame_Style().inset_left);
+    }
+
+    int16_t Window_Frame::content_y() const {
+        return (int16_t)(y_ + theme_.Frame_Style().inset_top);
+    }
+
+    int16_t Window_Frame::content_w() const {
+        const Frame_Style style = theme_.Frame_Style();
+        return (int16_t)(w_ - style.inset_left - style.inset_right);
+    }
+
+    int16_t Window_Frame::content_h() const {
+        const Frame_Style style = theme_.Frame_Style();
+        return (int16_t)(h_ - style.inset_top - style.inset_bottom);
+    }
+
+    int16_t Window_Frame::content_right() const {
+        return (int16_t)(content_x() + content_w());
+    }
+
+    int16_t Window_Frame::content_bottom() const {
+        return (int16_t)(content_y() + content_h());
+    }
+
+    int16_t Window_Frame::bottom_bar_y(int16_t bar_h) const {
+        return (int16_t)(content_bottom() - bar_h);
+    }
+
+    int16_t Window_Frame::title_y() const {
+        return (int16_t)(y_ + theme_.Frame_Style().title_y);
+    }
+
+    void Window_Frame::Draw(const char* title) const {
+        const Frame_Style style = theme_.Frame_Style();
+        const size_t profile_len = style.profile.size();
+        if (profile_len > 0) {
+            // The profile entry for band offset i on a side of the
+            // given thickness: a side thicker than the profile
+            // repeats its last entry; a side thinner keeps the
+            // profile's outer run and its last entry (the inner
+            // edge), so the inner edge is never lost.
+            auto band = [&](int16_t offset, int16_t thickness) {
+                if ((size_t)offset + 1 < (size_t)thickness &&
+                    (size_t)offset < profile_len) {
+                    return style.profile[(size_t)offset];
+                }
+                return style.profile[profile_len - 1];
+            };
+            // Top and bottom bands, mitred: each line stops one
+            // pixel further in per offset, so the corners meet on a
+            // 45-degree seam.
+            for (int16_t offset = 0; offset < style.thickness_top;
+                ++offset) {
+                graphics::Fill((int16_t)(x_ + offset),
+                    (int16_t)(y_ + offset),
+                    (int16_t)(x_ + w_ - 1 - offset),
+                    (int16_t)(y_ + offset),
+                    band(offset, style.thickness_top));
+            }
+            for (int16_t offset = 0; offset < style.thickness_bottom;
+                ++offset) {
+                const int16_t yy = (int16_t)(y_ + h_ - 1 - offset);
+                graphics::Fill((int16_t)(x_ + offset), yy,
+                    (int16_t)(x_ + w_ - 1 - offset), yy,
+                    band(offset, style.thickness_bottom));
+            }
+            for (int16_t offset = 0; offset < style.thickness_left;
+                ++offset) {
+                graphics::Fill((int16_t)(x_ + offset),
+                    (int16_t)(y_ + offset),
+                    (int16_t)(x_ + offset),
+                    (int16_t)(y_ + h_ - 1 - offset),
+                    band(offset, style.thickness_left));
+            }
+            for (int16_t offset = 0; offset < style.thickness_right;
+                ++offset) {
+                const int16_t xx = (int16_t)(x_ + w_ - 1 - offset);
+                graphics::Fill(xx, (int16_t)(y_ + offset), xx,
+                    (int16_t)(y_ + h_ - 1 - offset),
+                    band(offset, style.thickness_right));
+            }
+        }
         if (style.title_font != nullptr && title != nullptr) {
-            const int16_t label_x = (int16_t)(x +
-                (w - style.title_font->Width(title)) / 2);
-            style.title_font->Print(label_x,
-                (int16_t)(y + style.title_y), title, false);
+            const int16_t label_x = (int16_t)(x_ +
+                (w_ - style.title_font->Width(title)) / 2);
+            style.title_font->Print(label_x, title_y(), title, false);
         }
     }
 
@@ -294,11 +410,12 @@ namespace ui_kit {
           header_h_(header_h), rows_(rows), spacing_(spacing) {
         first_row_y_ = (int16_t)(header_y + header_h +
             spacing.header_to_first_row);
-        // The panel ends at the last row's bottom edge: first row
-        // top plus all pitches, minus the trailing gap (there is
-        // no gap after the last row).
+        // The panel ends list_footing below the last row's bottom
+        // edge: first row top plus all pitches, minus the trailing
+        // gap (there is no gap after the last row), plus the footing
+        // -- the colony's shade band and bevel below its last row.
         panel_h_ = (int16_t)(first_row_y_ + rows * spacing.Row_Pitch() -
-            spacing.row_gap - panel_y);
+            spacing.row_gap - panel_y + spacing.list_footing);
         scroll_track_h_ = (int16_t)(rows * spacing.Row_Pitch() -
             spacing.row_gap);
         info_y_ = (int16_t)(panel_y + panel_h_ + spacing.list_to_info);
@@ -321,8 +438,9 @@ namespace ui_kit {
             // edges, shade lines just inside each. The bottom
             // light line sits one pixel above the cell's last row:
             // that last pixel is the shade below the light line
-            // (the cell's drop shadow), except on the last row,
-            // where it is the panel border itself.
+            // (the cell's drop shadow), on every row including the
+            // last: the colony's last row has its shade too, and
+            // the footing below it is drawn next.
             graphics::Fill((int16_t)(x + 1), row_y,
                 layout.content_right(), row_y, style.frame_light);
             graphics::Fill((int16_t)(x + 1), (int16_t)(row_y + 1),
@@ -334,11 +452,24 @@ namespace ui_kit {
             graphics::Fill((int16_t)(x + 1), (int16_t)(bottom - 1),
                 layout.content_right(), (int16_t)(bottom - 1),
                 style.frame_light);
-            if (index + 1 < layout.rows()) {
-                graphics::Fill((int16_t)(x + 1), bottom,
-                    layout.content_right(), bottom, style.frame_shade);
-            }
+            graphics::Fill((int16_t)(x + 1), bottom,
+                layout.content_right(), bottom, style.frame_shade);
         }
+        // The panel footing: the colony's shade band and bevel
+        // below the last row -- two shade lines and a light line;
+        // the panel border box above is the fourth, dark line. The
+        // band sits against the border, so a taller footing leaves
+        // plain panel interior above it.
+        const int16_t panel_bottom = (int16_t)(y + layout.panel_h());
+        graphics::Fill((int16_t)(x + 1), (int16_t)(panel_bottom - 4),
+            layout.content_right(), (int16_t)(panel_bottom - 4),
+            style.frame_shade);
+        graphics::Fill((int16_t)(x + 1), (int16_t)(panel_bottom - 3),
+            layout.content_right(), (int16_t)(panel_bottom - 3),
+            style.frame_shade);
+        graphics::Fill((int16_t)(x + 1), (int16_t)(panel_bottom - 2),
+            layout.content_right(), (int16_t)(panel_bottom - 2),
+            style.frame_light);
     }
 
     Column_Layout::Column_Layout(const std::vector<Column>& columns,
