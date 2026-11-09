@@ -30,6 +30,7 @@ namespace test::fakes {
     int16_t g_anim_full_store_flag = 0;
 
     int16_t g_font_style = 3;
+    int16_t g_font_spacing = -1;
     int16_t g_font_height = 8;
     uint16_t g_font_vertical_spacing = 2;
     int16_t g_string_width = 6;
@@ -74,6 +75,7 @@ namespace test::fakes {
         g_anim_full_store_flag = 0;
 
         g_font_style = 3;
+        g_font_spacing = -1;
         g_font_height = 8;
         g_font_vertical_spacing = 2;
         g_string_width = 6;

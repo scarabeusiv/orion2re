@@ -62,8 +62,11 @@ namespace ui_kit {
     // ever used by the colony-sized fonts, the rest repeat the face.
     class Engine_Font : public Font {
       public:
+        // spacing overrides the font's own inter-glyph spacing
+        // (-1 keeps it): the baked RETURN text measures as style 2
+        // with 1 px spacing, not the font's own 2 px.
         Engine_Font(int16_t style, const s_colors& normal_colors,
-            const s_colors& active_colors);
+            const s_colors& active_colors, int16_t spacing = -1);
         int16_t Width(const char* text) const override;
         int16_t Height() const override;
         void Print(int16_t x, int16_t y, const char* text,
@@ -71,6 +74,7 @@ namespace ui_kit {
 
       private:
         int16_t style_;
+        int16_t spacing_;
         s_colors normal_colors_;
         s_colors active_colors_;
     };

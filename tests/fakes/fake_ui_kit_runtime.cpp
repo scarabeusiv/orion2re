@@ -3,8 +3,9 @@
 #include "fakes/fake_test_support.h"
 
 // Minimal recording fakes for the fonts::/graphics:: surface ui_kit
-// uses: Set_Font_Style, Get_String_Width, Get_Font_Height, Print,
-// Fill, Box. Bodies copy the fields-runtime fake
+// uses: Set_Font_Style, Set_Font_Spacing, Get_String_Width,
+// Get_Font_Height, Print, Fill, Box. Bodies copy the
+// fields-runtime fake
 // (fake_fields_runtime.cpp), which this target cannot link: that
 // fake duplicates symbols the production set already defines
 // (compat.cpp's Query_Memory_Status / Show_Message_Box) and the
@@ -16,6 +17,10 @@ namespace fonts {
         if (new_colors != nullptr) {
             test::fakes::g_font_color = *new_colors;
         }
+    }
+
+    void __cdecl Set_Font_Spacing(int16_t spacing) {
+        test::fakes::g_font_spacing = spacing;
     }
 
     int16_t __cdecl Get_String_Width(const char* str) {

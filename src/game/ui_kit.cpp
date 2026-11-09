@@ -193,12 +193,15 @@ namespace ui_kit {
     } // namespace
 
     Engine_Font::Engine_Font(int16_t style, const s_colors& normal_colors,
-        const s_colors& active_colors)
-        : style_(style), normal_colors_(normal_colors),
+        const s_colors& active_colors, int16_t spacing)
+        : style_(style), spacing_(spacing), normal_colors_(normal_colors),
           active_colors_(active_colors) {}
 
     int16_t Engine_Font::Width(const char* text) const {
         fonts::Set_Font_Style(style_, &normal_colors_);
+        if (spacing_ >= 0) {
+            fonts::Set_Font_Spacing(spacing_);
+        }
         return fonts::Get_String_Width(text);
     }
 
@@ -211,6 +214,9 @@ namespace ui_kit {
         bool active) const {
         fonts::Set_Font_Style(style_,
             active ? &active_colors_ : &normal_colors_);
+        if (spacing_ >= 0) {
+            fonts::Set_Font_Spacing(spacing_);
+        }
         fonts::Print(x, y, text);
     }
 
@@ -262,13 +268,16 @@ namespace ui_kit {
         const s_colors& title_colors)
         // Tab labels are engine font style 2: the baked colony
         // labels measure as style 2 (widths within 1-2 px per
-        // label, ink 8-9 rows tall). The title, button labels and
-        // cell labels keep style 4.
+        // label, ink 8-9 rows tall). Button labels are style 2
+        // with spacing 1, not style 4: the baked RETURN text inks
+        // 9 rows (style 4 inks 12) and its 41 px string measures
+        // as style-2 widths with 1 px spacing (style 4 measures
+        // 71 px). The title and cell labels keep style 4.
         : tab_font_(2, kTab_Label_Normal, kTab_Label_Active),
           title_font_(4, title_colors, title_colors),
-          button_font_(4, kButton_Label_Dark, kButton_Label_Light),
-          button_pressed_font_(4, kButton_Label_Pressed,
-              kButton_Label_Pressed),
+          button_font_(2, kButton_Label_Dark, kButton_Label_Light, 1),
+          button_pressed_font_(2, kButton_Label_Pressed,
+              kButton_Label_Pressed, 1),
           cell_font_(4, kCell_Label_Normal, kCell_Label_Active),
           tab_normal_(tab_normal), tab_active_(tab_active),
           return_normal_(return_normal),

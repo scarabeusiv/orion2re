@@ -1530,14 +1530,18 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(style.toggle_on_bright == 247);
         DOCTEST_CHECK(style.toggle_off_base == 236);
         DOCTEST_CHECK(style.toggle_off_bright == 246);
-        // The label fonts are engine font style 4: dark text on
-        // the metal face, light on the blue face; the cell font
-        // is the colony cyan at rest, light on the blue fill.
+        // The label fonts are engine font style 2 with 1 px
+        // spacing: the baked RETURN text inks 9 rows (style 4
+        // inks 12) and measures 41 px as style-2 widths with
+        // 1 px spacing. Dark text on the metal face, light on
+        // the blue face; the cell font is the colony cyan at
+        // rest, light on the blue fill.
         DOCTEST_REQUIRE(style.label_font != nullptr);
         DOCTEST_REQUIRE(style.cell_font != nullptr);
         test::fakes::Reset_All_();
         style.label_font->Print(0, 0, "Show", false);
-        DOCTEST_CHECK(test::fakes::g_font_style == 4);
+        DOCTEST_CHECK(test::fakes::g_font_style == 2);
+        DOCTEST_CHECK(test::fakes::g_font_spacing == 1);
         DOCTEST_CHECK(test::fakes::g_font_color.colors[0] == 230);
         style.label_font->Print(0, 0, "Show", true);
         DOCTEST_CHECK(test::fakes::g_font_color.colors[0] == 247);
@@ -1546,11 +1550,15 @@ DOCTEST_TEST_SUITE("ui kit") {
         // orange whether the print is active or not.
         DOCTEST_REQUIRE(style.label_pressed_font != nullptr);
         style.label_pressed_font->Print(0, 0, "MORE", false);
-        DOCTEST_CHECK(test::fakes::g_font_style == 4);
+        DOCTEST_CHECK(test::fakes::g_font_style == 2);
+        DOCTEST_CHECK(test::fakes::g_font_spacing == 1);
         DOCTEST_CHECK(test::fakes::g_font_color.colors[0] == 221);
         style.label_pressed_font->Print(0, 0, "MORE", true);
         DOCTEST_CHECK(test::fakes::g_font_color.colors[0] == 221);
+        // The cell font keeps the font's own spacing: no override.
+        test::fakes::Reset_All_();
         style.cell_font->Print(0, 0, "pixelart", false);
+        DOCTEST_CHECK(test::fakes::g_font_spacing == -1);
         DOCTEST_CHECK(test::fakes::g_font_color.colors[0] == 150);
         style.cell_font->Print(0, 0, "pixelart", true);
         DOCTEST_CHECK(test::fakes::g_font_color.colors[0] == 247);
