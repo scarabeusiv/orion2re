@@ -60,6 +60,25 @@ Contents:
   face at rest and a blue-white face when active (see
   src/game/ui_kit.h, Colony_Theme).
 
+- `metal-button` — NOT derived from game art. The metallic button
+  frames (blank, pressed, disabled) are original work, created from
+  scratch by observing how the game's metallic buttons look: a 2 px
+  bevel with a highlight top/left and a shadow bottom/right, a
+  vertical metallic gradient fill, in the menu palette's grey ramp.
+  `tools/generate_metal_buttons.py` computes them from that design
+  spec — it reads no game data — and writes
+  `data/base/sprites/metal-button/{normal,pressed,disabled}.bin`
+  (85x26, the RETURN size). Reproduce with
+  `tools/generate_metal_buttons.py`, verify with the same command
+  plus `--check`. The frames carry no label: the button component
+  (`src/game/metal_button.h`) interposes the label at runtime with
+  the game font, so one frame serves any short label (MORE, LESS,
+  RETURN). The pressed state inverts the bevel and darkens the fill;
+  the disabled state is a flat face with a low-contrast bevel. The
+  component draws the frame stretched (2 px slices preserved at both
+  edges) and falls back to an engine-drawn button in the same colours
+  when a frame is missing, so a stale base.zip still renders.
+
 ## What cannot be derived from game art
 
 - Border, list panel, header plates, description box, toggle
