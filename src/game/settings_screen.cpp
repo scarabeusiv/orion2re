@@ -32,29 +32,75 @@ namespace SETTINGS_SCREEN {
 
     namespace {
 
-        // Full-window layout, mapped to the colony build screen
-        // (COLBLDG.LBX entry 0, colbldg.cpp): the screen fills the
-        // whole 640x480 window, tabs at the top, the list filling
-        // the main panel, the help/status panel above the footer
-        // buttons at the bottom. The colony build screen's panels
-        // are baked into its 640x480 background art, so the frame
-        // here is the engine-drawn equivalent: a thin light-grey
-        // outer line with a dark inner line and corner rivets,
-        // thin grey panel borders, and framed row slots.
+        // Full-window layout, mapped to the colony screens
+        // (COLBLDG.LBX entry 0, colbldg.cpp; COLSUM.LBX, colsum.cpp):
+        // the screen fills the whole 640x480 window. The category
+        // selector bar sits at the bottom, like the colony summary's
+        // sort buttons (Name / Population / Food ...), with Show more
+        // and RETURN beside it on the same line. The list fills the
+        // main panel above it, with SETTING / VALUE header plates
+        // like the colony list's header boxes, and the description
+        // box spans the whole width between the list and the bottom
+        // bar, like the colony screen's bottom info area. The colony
+        // screens' panels are baked into their 640x480 background
+        // art, so the frame here is the engine-drawn equivalent: a
+        // thin light-grey outer line with a dark inner line, thin
+        // grey panel borders, and framed row slots.
+        //
+        // Asset sourcing: no LBX sprite is drawn directly here, and
+        // no new graphics file was created — every visual is an
+        // engine-drawn Fill/Box in menu-palette indices, the same
+        // technique the game itself uses for its chrome. The colony
+        // sprites were audited against COLSUM.LBX (rendered and
+        // measured, 2026-11-09):
+        // - Border, list panel, header plates, description box,
+        //   toggle squares, scrollbar track/thumb: baked into the
+        //   640x480 background (anims[0]); colsum.cpp draws no boxes
+        //   itself, so there is no separable sprite for any of them.
+        // - Category selectors: COLSUM anims[4..10] are real sprites,
+        //   but their labels are baked in (Name, Population, Food,
+        //   ...) and do not match Game Internals / Gameplay / Mods;
+        //   the frame without text is not a separate sprite.
+        // - Star buy buttons (anims[11..20]) are purchase actions,
+        //   not on/off toggles, so they cannot stand in for the
+        //   toggle squares (the diamond is a buy button, not a value).
+        // - Scrollbar arrows (anims[2]/[3]) are real sprites, but the
+        //   scrollbar here is a drag thumb with no arrow buttons, so
+        //   adding them would be a design change, not a visual swap.
+        // - Dropdown popup: no popup-window sprite exists; the game's
+        //   own modal lists are engine-drawn.
+        // - RETURN (COLSUM anims[1], 85x26, "RETURN" baked in) is the
+        //   one sprite that matches, but it is authored for palette 1
+        //   (indices 80-98 are a grey ramp there) while this screen
+        //   uses the menu palette (those indices are browns/greens/
+        //   blues/oranges there), so drawing it directly renders a
+        //   multicoloured button. Using it needs a palette remap
+        //   (translate its indices to menu-palette greys); the
+        //   engine-drawn metallic RETURN below is the equivalent
+        //   until that remap exists. Loading palette 1 for the whole
+        //   screen is not an alternative: it turns the settings text
+        //   pink/red and the panels blue/green/red.
         constexpr int16_t TITLE_X = 16;
         constexpr int16_t TITLE_Y = 8;
-        constexpr int16_t TAB_Y = 30;
-        constexpr int16_t TAB_HEIGHT = 24;
         constexpr int16_t TITLE_WIDTH = 348;
         constexpr int16_t VALUE_X = 372;
         constexpr int16_t VALUE_WIDTH = 244;
         constexpr int16_t LIST_PANEL_X = 8;
-        constexpr int16_t LIST_PANEL_Y = 62;
+        constexpr int16_t LIST_PANEL_Y = 30;
         constexpr int16_t LIST_PANEL_W = 624;
-        constexpr int16_t LIST_PANEL_H = 332;
-        constexpr int16_t FIRST_ROW_Y = 64;
+        constexpr int16_t LIST_PANEL_H = 326;
+        // SETTING / VALUE header plates, like the colony list's
+        // header boxes (NAME, FARMERS, ...), at the top of the list
+        // panel, aligned to the name and value columns.
+        constexpr int16_t HEADER_Y = 32;
+        constexpr int16_t HEADER_HEIGHT = 22;
+        constexpr int16_t HEADER_SETTING_X = 10;
+        constexpr int16_t HEADER_SETTING_W = 354;
+        constexpr int16_t HEADER_VALUE_X = 368;
+        constexpr int16_t HEADER_VALUE_W = 248;
+        constexpr int16_t FIRST_ROW_Y = 56;
         constexpr int16_t ROW_HEIGHT = 30;
-        constexpr int ROWS_PER_PAGE = 11;
+        constexpr int ROWS_PER_PAGE = 10;
         constexpr int16_t ROW_TEXT_Y_OFFSET = 8;
         // Colony-list scrollbar, like COLSUM's: a 5-wide vertical
         // bar in its own strip at the right edge of the list panel.
@@ -78,17 +124,34 @@ namespace SETTINGS_SCREEN {
         constexpr int16_t SQUARE_SIZE = 20;
         // Description box: spans the whole width of the window,
         // like the colony screen's bottom info area — the selected
-        // row's description lives here.
+        // row's description lives here, with a "Requires restart."
+        // line for the settings it applies to and the status line
+        // below it. No permanent restart legend anywhere else.
         constexpr int16_t HELP_PANEL_X = 2;
-        constexpr int16_t HELP_PANEL_Y = 398;
+        constexpr int16_t HELP_PANEL_Y = 360;
         constexpr int16_t HELP_PANEL_W = 636;
-        constexpr int16_t HELP_PANEL_H = 50;
-        constexpr int16_t HELP_Y = 402;
+        constexpr int16_t HELP_PANEL_H = 78;
+        constexpr int16_t HELP_Y = 366;
         constexpr int16_t HELP_LINE_HEIGHT = 15;
-        constexpr int16_t STATUS_Y = 433;
-        constexpr int16_t FOOTER_Y = 457;
-        constexpr int16_t NAV_Y = 452;
-        constexpr int16_t NAV_Y_END = 474;
+        constexpr int16_t RESTART_Y = 396;
+        constexpr int16_t STATUS_Y = 411;
+        // Bottom bar: the category selectors on the left, Show more
+        // and RETURN side by side on the right, all on one line —
+        // Show more and RETURN never wrap to a second line.
+        constexpr int16_t CAT_Y = 444;
+        constexpr int16_t CAT_HEIGHT = 24;
+        constexpr int16_t FOOTER_Y = 449;
+        constexpr int16_t NAV_Y = 444;
+        constexpr int16_t NAV_Y_END = 468;
+        // Show more and RETURN, side by side at the right end of the
+        // bottom bar. The widths fit their labels with room to spare:
+        // "Show more" measures ~102 px, "RETURN" ~64 px, so the
+        // buttons are 112 and 76 px wide (the old 88/68 px widths
+        // clipped both labels).
+        constexpr int16_t SHOW_MORE_X = 428;
+        constexpr int16_t SHOW_MORE_W = 112;
+        constexpr int16_t RETURN_X = 548;
+        constexpr int16_t RETURN_W = 76;
         constexpr int16_t TEXT_WIDTH = 608;
 
         // Colony chrome, in menu-palette indices (MAINMENU.LBX
@@ -233,13 +296,14 @@ namespace SETTINGS_SCREEN {
             APPLY_FAILED,
         };
 
-        // Categories, in tab order. A tab is the cleanest fit for the
-        // existing field system: the screen is already a scrolling
-        // list with Done/Show all fields, so a tab is one more row of
-        // hidden fields above the list, and each tab keeps its own
-        // scroll position and selection. Sections (one long list with
-        // headers) would break the scrolling and edit-field geometry
-        // instead.
+        // Categories, in selector order. A category button is the
+        // cleanest fit for the existing field system: the screen is
+        // already a scrolling list with RETURN/Show more fields, so a
+        // category is one more row of hidden fields, now in the
+        // bottom selector bar like the colony summary's sort buttons,
+        // and each category keeps its own scroll position and
+        // selection. Sections (one long list with headers) would
+        // break the scrolling and edit-field geometry instead.
         constexpr int CATEGORY_INTERNALS = 0;
         constexpr int CATEGORY_GAMEPLAY = 1;
         constexpr int CATEGORY_MODS = 2;
@@ -299,7 +363,7 @@ namespace SETTINGS_SCREEN {
             int16_t scroll_field = -1;
             int16_t done_field = -1;
             int16_t show_all_field = -1;
-            // Show all is global for the screen, not per tab: the user
+            // Show more is global for the screen, not per category: the user
             // is either browsing the most-used settings or everything.
             // It resets when the screen reopens (fresh state).
             bool show_all = false;
@@ -360,7 +424,7 @@ namespace SETTINGS_SCREEN {
         // slider is inverted, so the top row is the maximum minus
         // the slider. Clamps the slider into range (the field
         // system also clamps it, but the count can shrink under it
-        // when Show all toggles or the tab changes).
+        // when Show more toggles or the category changes).
         void Sync_Scroll() {
             const int max_scroll = Max_Scroll();
             int16_t& slider = g_state.slider_position[g_state.category];
@@ -631,7 +695,7 @@ namespace SETTINGS_SCREEN {
                     wanted) {
                     continue;
                 }
-                // Secondary settings stay hidden until Show all. The
+                // Secondary settings stay hidden until Show more. The
                 // catalogue on the Mods tab is not a setting row, so
                 // it is never filtered.
                 if (!g_state.show_all &&
@@ -733,18 +797,22 @@ namespace SETTINGS_SCREEN {
             return APPLY_LIVE;
         }
 
-        // Rebuilds the tab, row and navigation fields for the current
-        // page. Only call when no edit field is open: the edit field is
-        // added separately by Open_Edit and removed by Commit/Cancel_Edit.
+        // Rebuilds the category, row and navigation fields for the
+        // current page. Only call when no edit field is open: the edit
+        // field is added separately by Open_Edit and removed by
+        // Commit/Cancel_Edit.
         void Rebuild_Fields() {
             fields::Clear_Fields();
             fonts::Set_Font_Style(4, &g_normal_colors);
+            // Category selectors in the bottom bar, like the colony
+            // summary's sort buttons: one hidden field per category,
+            // left to right, each keeping its own scroll position.
             int16_t tab_x = TITLE_X;
             for (int category = 0; category < CATEGORY_COUNT; ++category) {
                 const int16_t width = (int16_t)(
                     fonts::Get_String_Width(CATEGORY_LABELS[category]) + 16);
                 g_state.tab_fields[category] = fields::Add_Hidden_Field(
-                    tab_x, TAB_Y, tab_x + width - 1, TAB_Y + TAB_HEIGHT - 1, "", 0);
+                    tab_x, CAT_Y, tab_x + width - 1, CAT_Y + CAT_HEIGHT - 1, "", 0);
                 tab_x += width + 8;
             }
             Sync_Scroll();
@@ -776,12 +844,15 @@ namespace SETTINGS_SCREEN {
             } else {
                 g_state.scroll_field = -1;
             }
-            // Show all sits in the footer between the centred note and
-            // Done: the note ends near x=444 at most, Done starts at
-            // 556, so 456-544 is clear on every tab.
+            // Show more and RETURN sit side by side in the bottom
+            // bar at the right end: the categories occupy the left
+            // end, so SHOW_MORE_X..RETURN_X+RETURN_W is clear in
+            // every category. They share the bar's single line and
+            // never wrap.
             g_state.show_all_field = fields::Add_Hidden_Field(
-                456, NAV_Y, 544, NAV_Y_END, "", 0);
-            g_state.done_field = fields::Add_Hidden_Field(556, NAV_Y, 624, NAV_Y_END, "", 0);
+                SHOW_MORE_X, NAV_Y, SHOW_MORE_X + SHOW_MORE_W - 1, NAV_Y_END, "", 0);
+            g_state.done_field = fields::Add_Hidden_Field(
+                RETURN_X, NAV_Y, RETURN_X + RETURN_W - 1, NAV_Y_END, "", 0);
         }
 
         void Toggle_Show_All() {
@@ -794,7 +865,7 @@ namespace SETTINGS_SCREEN {
             g_state.scroll_top[g_state.category] = 0;
             g_state.status = g_state.show_all
                 ? "Showing all settings, including advanced and ordering options."
-                : "Showing the most-used settings. Use Show all for the rest.";
+                : "Showing the most-used settings. Use Show more for the rest.";
             Rebuild_Fields();
         }
 
@@ -809,7 +880,7 @@ namespace SETTINGS_SCREEN {
             g_state.category = category;
             Rebuild_Visible_Rows();
             Sync_Scroll();
-            // The tab keeps its own scroll position (per-tab slider
+            // The category keeps its own scroll position (per-category slider
             // and top row); the selection moves to the first visible
             // row so the highlight stays on screen.
             g_state.selected = g_state.scroll_top[category];
@@ -817,10 +888,9 @@ namespace SETTINGS_SCREEN {
                 Read_Enabled_Set();
                 Refresh_Mods();
                 g_state.status =
-                    "Click a mod to enable or disable it. Broken mods cannot be enabled.";
+                    "Mod changes apply immediately. Click a mod to enable or disable it.";
             } else {
-                g_state.status =
-                    "Click a setting to change it. * marks settings that need a restart.";
+                g_state.status = "Click a setting to change it.";
             }
             Rebuild_Fields();
         }
@@ -982,7 +1052,7 @@ namespace SETTINGS_SCREEN {
         // its selection is a ship-icon sprite -- so the popup uses
         // the settings screen's own colony chrome (thin border,
         // dark interior) for the frame and a filled blue bar for the
-        // selection, the same blue as the active tab and Done button.
+        // selection, the same blue as the active category and RETURN button.
         // The shared fields::Get_List_Field picker is not used here:
         // it draws its own unframed list and cannot render this shape.
         void Open_Resolution_Popup(int visible) {
@@ -1331,7 +1401,7 @@ namespace SETTINGS_SCREEN {
                     g_state.resolution_popup_row_step - 1);
                 if ((int)index == g_state.resolution_popup_selected) {
                     // Blue bar around the selected value, the same blue
-                    // as the active tab and the Done button.
+                    // as the active category and the RETURN button.
                     graphics::Fill(x + 1, row_y, (int16_t)(x + w - 2), row_end,
                         PRIMARY_FACE);
                     fonts::Set_Font_Style(4, &g_light_text_colors);
@@ -1360,24 +1430,6 @@ namespace SETTINGS_SCREEN {
             fonts::Print((640 - fonts::Get_String_Width(title)) / 2, TITLE_Y, title);
             fonts::Set_Font_Style(4, &g_normal_colors);
 
-            // Tabs, like the colony summary's sort buttons: dark
-            // buttons, the active tab in the Auto Build blue.
-            int16_t tab_x = TITLE_X;
-            for (int category = 0; category < CATEGORY_COUNT; ++category) {
-                const int16_t width = (int16_t)(
-                    fonts::Get_String_Width(CATEGORY_LABELS[category]) + 16);
-                const bool active = category == g_state.category;
-                graphics::Fill(tab_x, TAB_Y, tab_x + width - 1,
-                    TAB_Y + TAB_HEIGHT - 1, active ? PRIMARY_FACE : 232);
-                graphics::Box(tab_x, TAB_Y, width, TAB_HEIGHT, 1, PANEL_BORDER);
-                fonts::Set_Font_Style(4,
-                    active ? &g_title_colors : &g_colony_dim_colors);
-                const int16_t label_x = (int16_t)(tab_x +
-                    (width - fonts::Get_String_Width(CATEGORY_LABELS[category])) / 2);
-                fonts::Print(label_x, TAB_Y + 5, CATEGORY_LABELS[category]);
-                tab_x += width + 8;
-            }
-
             // List panel, like the colony list: dark interior, thin
             // grey border, framed row slots even when empty.
             graphics::Fill(LIST_PANEL_X, LIST_PANEL_Y,
@@ -1391,6 +1443,23 @@ namespace SETTINGS_SCREEN {
                 graphics::Fill(LIST_PANEL_X + 1, sep_y,
                     LIST_PANEL_X + LIST_PANEL_W - 2, sep_y, PANEL_SEPARATOR);
             }
+
+            // Header plates, like the colony list's header boxes
+            // (NAME, FARMERS, WORKERS, ...): bordered boxes over
+            // the name and value columns at the top of the list panel.
+            // Drawn after the panel fill, so the fill does not cover them.
+            const auto draw_header_plate = [](int16_t x, int16_t w, const char* label) {
+                graphics::Fill(x, HEADER_Y, x + w - 1, HEADER_Y + HEADER_HEIGHT - 1,
+                    PANEL_INTERIOR);
+                graphics::Box(x, HEADER_Y, w, HEADER_HEIGHT, 1, PANEL_BORDER);
+                fonts::Set_Font_Style(4, &g_title_colors);
+                const int16_t label_x = (int16_t)(x +
+                    (w - fonts::Get_String_Width(label)) / 2);
+                fonts::Print(label_x, HEADER_Y + 4, label);
+                fonts::Set_Font_Style(4, &g_normal_colors);
+            };
+            draw_header_plate(HEADER_SETTING_X, HEADER_SETTING_W, "SETTING");
+            draw_header_plate(HEADER_VALUE_X, HEADER_VALUE_W, "VALUE");
 
             const bool mods_tab = g_state.category == CATEGORY_MODS;
             Sync_Scroll();
@@ -1435,14 +1504,9 @@ namespace SETTINGS_SCREEN {
                     g_state.rows[(size_t)Visible_Row_Index(visible)];
                 const std::string title_text = Truncate_To_Width(row.title, TITLE_WIDTH);
                 fonts::Print(TITLE_X, text_y, title_text.c_str());
-                if (row.restart_required) {
-                    const int16_t mark_x = (int16_t)(TITLE_X +
-                        fonts::Get_String_Width(title_text.c_str()) + 2);
-                    if (mark_x + fonts::Get_String_Width("*") < VALUE_X - 4) {
-                        fonts::Set_Font_Style(4, &g_colony_highlight_colors);
-                        fonts::Print(mark_x, text_y, "*");
-                    }
-                }
+                // Restart-required settings carry no marker on the
+                // row: the restart note lives in the description box
+                // for the selected row instead.
                 // The edit field draws its own text while it is open.
                 if (visible == g_state.editing_row) {
                     continue;
@@ -1514,20 +1578,27 @@ namespace SETTINGS_SCREEN {
             Draw_Scroll_Bar();
 
             // Description box, spanning the whole width of the
-            // window like the colony screen's bottom info area:
-            // the selected row's description, with the status
-            // line below it.
+            // window like the colony screen's bottom info area
+            // (the "Large Terran" panel): the selected row's
+            // description, a "Requires restart." line for the
+            // settings it applies to, and the status line below.
+            // There is no permanent restart legend: the restart
+            // note lives here, only for the selected setting.
             graphics::Fill(HELP_PANEL_X, HELP_PANEL_Y,
                 HELP_PANEL_X + HELP_PANEL_W - 1, HELP_PANEL_Y + HELP_PANEL_H - 1,
                 PANEL_INTERIOR);
             graphics::Box(HELP_PANEL_X, HELP_PANEL_Y, HELP_PANEL_W, HELP_PANEL_H, 1,
                 PANEL_BORDER);
             std::string help_text;
+            bool restart_required = false;
             if (mods_tab && Is_Mod_Row(g_state.selected)) {
                 help_text = Mod_Help_Text(g_state.mods[(size_t)Mod_Index(g_state.selected)],
                     g_state.mods);
             } else if (Visible_Count() > 0) {
-                help_text = g_state.rows[(size_t)Visible_Row_Index(g_state.selected)].description;
+                const config::s_settings_row& selected_row =
+                    g_state.rows[(size_t)Visible_Row_Index(g_state.selected)];
+                help_text = selected_row.description;
+                restart_required = selected_row.restart_required;
             }
             std::string help_line1;
             std::string help_line2;
@@ -1537,12 +1608,41 @@ namespace SETTINGS_SCREEN {
             if (!help_line2.empty()) {
                 fonts::Print(TITLE_X, HELP_Y + HELP_LINE_HEIGHT, help_line2.c_str());
             }
-            fonts::Print(TITLE_X, STATUS_Y,
+            // The status sits directly under the restart note when
+            // one is shown, so no blank line opens up otherwise.
+            int16_t status_y = RESTART_Y;
+            if (restart_required) {
+                fonts::Set_Font_Style(4, &g_colony_highlight_colors);
+                fonts::Print(TITLE_X, RESTART_Y, "Requires restart.");
+                status_y = STATUS_Y;
+            }
+            fonts::Set_Font_Style(4, &g_colony_dim_colors);
+            fonts::Print(TITLE_X, status_y,
                 Truncate_To_Width(g_state.status, TEXT_WIDTH).c_str());
 
-            // Footer buttons, like the colony build screen's raised
-            // buttons: metallic Show all, blue Done. Each button rect
-            // matches its field; the label is centred.
+            // Bottom bar: the category selectors on the left, like
+            // the colony summary's sort buttons (Name / Population
+            // / Food ...), dark buttons with the active one in the
+            // Auto Build blue; Show more and RETURN side by side
+            // on the right, on the same line, never wrapping.
+            // Show more is a blue selector button, like the colony
+            // screen's "No Enemy Presence" selector; RETURN is a
+            // raised metallic button, like the colony RETURN.
+            int16_t cat_x = TITLE_X;
+            for (int category = 0; category < CATEGORY_COUNT; ++category) {
+                const int16_t width = (int16_t)(
+                    fonts::Get_String_Width(CATEGORY_LABELS[category]) + 16);
+                const bool active = category == g_state.category;
+                graphics::Fill(cat_x, CAT_Y, cat_x + width - 1,
+                    CAT_Y + CAT_HEIGHT - 1, active ? PRIMARY_FACE : 232);
+                graphics::Box(cat_x, CAT_Y, width, CAT_HEIGHT, 1, PANEL_BORDER);
+                fonts::Set_Font_Style(4,
+                    active ? &g_title_colors : &g_colony_dim_colors);
+                const int16_t label_x = (int16_t)(cat_x +
+                    (width - fonts::Get_String_Width(CATEGORY_LABELS[category])) / 2);
+                fonts::Print(label_x, CAT_Y + 5, CATEGORY_LABELS[category]);
+                cat_x += width + 8;
+            }
             const auto draw_action_button = [](int16_t x, int16_t w, const char* label,
                 bool primary) {
                 Draw_Metal_Button(x, NAV_Y, w, NAV_Y_END - NAV_Y, primary);
@@ -1552,15 +1652,9 @@ namespace SETTINGS_SCREEN {
                     (w - fonts::Get_String_Width(label)) / 2);
                 fonts::Print(label_x, FOOTER_Y, label);
             };
-            draw_action_button(456, 88, g_state.show_all ? "Show less" : "Show all",
-                false);
-            draw_action_button(556, 68, "Done", true);
-            const char* footer_note = mods_tab
-                ? "Mod changes apply immediately"
-                : "* = takes effect after restart";
-            fonts::Set_Font_Style(4, &g_colony_dim_colors);
-            fonts::Print((640 - fonts::Get_String_Width(footer_note)) / 2, FOOTER_Y,
-                footer_note);
+            draw_action_button(SHOW_MORE_X, SHOW_MORE_W,
+                g_state.show_all ? "Show less" : "Show more", true);
+            draw_action_button(RETURN_X, RETURN_W, "RETURN", false);
 
             Draw_Resolution_Popup();
 
@@ -1578,8 +1672,7 @@ namespace SETTINGS_SCREEN {
             MOX::current_screen = SCREEN_MAIN_MENU;
             return;
         }
-        g_state.status =
-            "Click a setting to change it. * marks settings that need a restart.";
+        g_state.status = "Click a setting to change it.";
         Resolve_Target();
         Read_Enabled_Set();
         Rebuild_Visible_Rows();
@@ -1604,8 +1697,8 @@ namespace SETTINGS_SCREEN {
                     screen_exit = true;
                 }
             } else if (input != 0) {
-                // Anything other than the edit field or Done cancels a
-                // pending edit (Done commits it instead). The cancel
+                // Anything other than the edit field or RETURN cancels a
+                // pending edit (RETURN commits it instead). The cancel
                 // rebuilds the field set, but the row and navigation
                 // field ids are deterministic — the edit field is always
                 // added after them, so the input id still matches below.
