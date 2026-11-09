@@ -232,6 +232,42 @@ DOCTEST_TEST_SUITE("sprite art") {
         DOCTEST_CHECK(page.At(0, 3) == 0xFF);
     }
 
+    DOCTEST_TEST_CASE("resampled stretched draw spans a gradient middle once") {
+        using namespace test_sprite_art_detail;
+        // 10x1 frame: left slice [1, 2], middle [3..8], right [9, 10].
+        const std::string frame = Make_Frame_Pixels(10, 1, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+        const auto* header = (const s_animation_header*)frame.data();
+
+        Scoped_Video_Page page;
+        sprite_art::Draw_Sprite_Frame_Stretched_Resampled(header, 0, 0, 16, 2, 2);
+        // Middle resampled 6 -> 12 columns: first stays 3, last stays
+        // 8, no tiling repeat.
+        const uint8_t wide[16] = {1, 2, 3, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 9, 10};
+        for (int16_t x = 0; x < 16; ++x) {
+            DOCTEST_CHECK(page.At(x, 0) == wide[x]);
+        }
+
+        // Same width as the source: the resample is the identity.
+        sprite_art::Draw_Sprite_Frame_Stretched_Resampled(header, 0, 1, 10, 2, 2);
+        const uint8_t same[10] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+        for (int16_t x = 0; x < 10; ++x) {
+            DOCTEST_CHECK(page.At(x, 1) == same[x]);
+        }
+
+        // Narrower than the source middle: the middle crops to the
+        // resampled endpoints, the slices stay whole.
+        sprite_art::Draw_Sprite_Frame_Stretched_Resampled(header, 0, 2, 6, 2, 2);
+        const uint8_t narrow[6] = {1, 2, 3, 8, 9, 10};
+        for (int16_t x = 0; x < 6; ++x) {
+            DOCTEST_CHECK(page.At(x, 2) == narrow[x]);
+        }
+
+        // A null frame or slices that do not fit draw nothing.
+        sprite_art::Draw_Sprite_Frame_Stretched_Resampled(nullptr, 0, 3, 16, 2, 2);
+        sprite_art::Draw_Sprite_Frame_Stretched_Resampled(header, 0, 3, 16, 5, 5);
+        DOCTEST_CHECK(page.At(0, 3) == 0xFF);
+    }
+
     DOCTEST_TEST_CASE("draw honours the animate clip window when clipping is on") {
         using namespace test_sprite_art_detail;
         const std::string frame = Make_Frame(4, 2, 7);
@@ -315,28 +351,40 @@ DOCTEST_TEST_SUITE("sprite art") {
         check_allowed(return_pressed,
             {10, 12, 15, 17, 29, 54, 106, 112, 207, 221, 223, 230, 233,
              234, 235, 236, 238, 239, 240, 241, 242, 243, 244, 245, 246,
-             247, 248});
+             247, 248, 252});
         check_allowed(selector_normal,
-            {15, 29, 54, 84, 94, 106, 233, 234, 235, 236, 238, 239, 240,
-             241, 242, 243});
-        check_allowed(selector_active,
-            {15, 29, 54, 84, 94, 106, 138, 233, 234, 235, 236, 238, 239,
+            {15, 29, 50, 54, 84, 94, 106, 233, 234, 235, 236, 238, 239,
              240, 241, 242, 243});
+        check_allowed(selector_active,
+            {15, 29, 50, 54, 94, 103, 106, 138, 233, 234, 235, 236,
+             238, 239, 240, 241, 242, 243});
 
-        // The selector label is blanked: the label band (rows 8-15,
-        // past the left bevel) is flat interior in both states.
+        // The selector label is blanked: the label band (rows 7-17,
+        // past the left bevel) holds no label pixels in either
+        // state. The rest frame's field is flat, so its band is the
+        // flat dark navy (50); the selected frame's field is a blue
+        // gradient, so its band continues the gradient from the
+        // label-free row above (row 5), column by column -- the band
+        // varies across columns and is never the flat menu blue.
         const auto selector_pixels = [&](const std::string& bytes) {
             return std::vector<uint8_t>((const uint8_t*)bytes.data() + 16,
                 (const uint8_t*)bytes.data() + 16 + 50 * 24);
         };
         const std::vector<uint8_t> normal_px = selector_pixels(selector_normal);
         const std::vector<uint8_t> active_px = selector_pixels(selector_active);
-        for (int16_t y = 8; y <= 15; ++y) {
+        for (int16_t y = 7; y <= 17; ++y) {
             for (int16_t x = 4; x < 50; ++x) {
-                DOCTEST_CHECK_MESSAGE(normal_px[(size_t)y * 50 + (size_t)x] == 0, "label survives blanking");
-                DOCTEST_CHECK_MESSAGE(active_px[(size_t)y * 50 + (size_t)x] == 138, "active interior is not the menu blue");
+                DOCTEST_CHECK_MESSAGE(normal_px[(size_t)y * 50 + (size_t)x] == 50, "rest label band is not flat dark navy");
+                DOCTEST_CHECK_MESSAGE(active_px[(size_t)y * 50 + (size_t)x] == active_px[(size_t)5 * 50 + (size_t)x], "selected label band does not continue the gradient");
             }
         }
+        bool active_band_varies = false;
+        for (int16_t x = 5; x < 50; ++x) {
+            if (active_px[(size_t)12 * 50 + (size_t)x] != active_px[(size_t)12 * 50 + 4]) {
+                active_band_varies = true;
+            }
+        }
+        DOCTEST_CHECK_MESSAGE(active_band_varies, "selected label band is flat, not a gradient");
         // The pressed RETURN keeps its orange text, remapped into the
         // menu palette's orange.
         bool has_orange = false;
