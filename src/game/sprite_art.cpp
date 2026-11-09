@@ -199,22 +199,28 @@ namespace sprite_art {
                 dst_y);
             cursor = (int16_t)(cursor + left_width);
             // Middle, resampled to the remaining width: source column
-            // (dst * (middle_width - 1)) / (middle_target - 1) maps
+            // (dst * (middle_width - 1)) / (middle_count - 1) maps
             // the first middle column to the first target column and
             // the last to the last, so a gradient spans the width
-            // once instead of repeating.
+            // once instead of repeating. A width narrower than the
+            // two slices leaves no middle: the count clamps to zero,
+            // or the cursor would run backwards and the right slice
+            // would overwrite the left one (the same flaw fixed in
+            // Three_Slice).
             const int16_t middle_target =
                 (int16_t)(width - left_width - right_slice);
-            for (int16_t dst = 0; dst < middle_target; ++dst) {
-                const int16_t src_col = middle_target > 1
+            const int16_t middle_count =
+                middle_target > 0 ? middle_target : 0;
+            for (int16_t dst = 0; dst < middle_count; ++dst) {
+                const int16_t src_col = middle_count > 1
                     ? (int16_t)(left_slice +
                           (int32_t)dst * (middle_width - 1) /
-                              (middle_target - 1))
+                              (middle_count - 1))
                     : left_slice;
                 Blit_Row(pixels, frame->width, src_col, row, 1,
                     (int16_t)(cursor + dst), dst_y);
             }
-            cursor = (int16_t)(cursor + middle_target);
+            cursor = (int16_t)(cursor + middle_count);
             // Right slice, as-is (cropped when the width runs out).
             const int16_t right_target = (int16_t)(width - (cursor - x));
             if (right_target > 0) {

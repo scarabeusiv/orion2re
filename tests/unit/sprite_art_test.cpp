@@ -262,6 +262,15 @@ DOCTEST_TEST_SUITE("sprite art") {
             DOCTEST_CHECK(page.At(x, 2) == narrow[x]);
         }
 
+        // Narrower than the two slices: no middle, and the right
+        // slice must not run backwards over the left one (the cursor
+        // flaw fixed in Three_Slice).
+        sprite_art::Draw_Sprite_Frame_Stretched_Resampled(header, 0, 4, 3, 2, 2);
+        const uint8_t narrowest[3] = {1, 2, 9};
+        for (int16_t x = 0; x < 3; ++x) {
+            DOCTEST_CHECK(page.At(x, 4) == narrowest[x]);
+        }
+
         // A null frame or slices that do not fit draw nothing.
         sprite_art::Draw_Sprite_Frame_Stretched_Resampled(nullptr, 0, 3, 16, 2, 2);
         sprite_art::Draw_Sprite_Frame_Stretched_Resampled(header, 0, 3, 16, 5, 5);
