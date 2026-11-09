@@ -425,14 +425,12 @@ namespace SETTINGS_SCREEN {
         // Pressed RETURN frame (orange text), same 85x26 size, so
         // the RETURN geometry follows g_return_frame either way.
         s_animation_header* g_return_frame_pressed = nullptr;
-        s_animation_header* g_selector_frame = nullptr;
-        s_animation_header* g_selector_frame_active = nullptr;
-
         // The colony theme for this screen's tab bar and window
         // frame (game/ui_kit.h): the tab font, frames, metrics and
         // window frame of the colony screens, so a hi-res asset set
         // can replace the theme without touching the screen. Built
-        // in Settings_Screen(), once the selector frames load.
+        // in Settings_Screen() by Load_Colony_Theme, which loads
+        // the theme's frames; the screen never names a sprite id.
         std::unique_ptr<ui_kit::Colony_Theme> g_theme;
 
         // The tab bar for the current category set: the rects come
@@ -1766,20 +1764,18 @@ namespace SETTINGS_SCREEN {
         // Derived sprites for this screen (MOX::screen_seg is
         // released between screens, so they load on every entry).
         // A missing frame leaves the pointer null and the Draw falls
-        // back to the engine-drawn button.
+        // back to the engine-drawn button. (RETURN still loads its
+        // frames here directly: it is drawn by this screen, not by
+        // the kit -- a button component is a follow-up, not part of
+        // the tab/window abstraction.)
         g_return_frame = sprite_art::Load_Sprite_Frame("return", "normal",
             MOX::screen_seg);
         g_return_frame_pressed = sprite_art::Load_Sprite_Frame("return",
             "pressed", MOX::screen_seg);
-        g_selector_frame = sprite_art::Load_Sprite_Frame("selector-frame",
-            "normal", MOX::screen_seg);
-        g_selector_frame_active = sprite_art::Load_Sprite_Frame(
-            "selector-frame", "active", MOX::screen_seg);
-        // The theme owns the tab bar and window frame; it takes the
-        // loaded frames (null when a frame is missing, and the bar
-        // falls back to the engine-drawn button).
-        g_theme = std::make_unique<ui_kit::Colony_Theme>(
-            g_selector_frame, g_selector_frame_active, g_title_colors);
+        // The theme loads its own frames; the screen never names a
+        // sprite id or sees a frame pointer.
+        g_theme = ui_kit::Load_Colony_Theme(MOX::screen_seg,
+            g_title_colors);
         Rebuild_Fields();
         fields::Assign_Auto_Function(Draw_Settings_Screen, 2);
 
