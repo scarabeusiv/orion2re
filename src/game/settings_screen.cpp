@@ -29,35 +29,53 @@ namespace SETTINGS_SCREEN {
 
     namespace {
 
+        // Full-window layout, mapped to the colony build screen
+        // (COLBLDG.LBX entry 0, colbldg.cpp): the screen fills the
+        // whole 640x480 window, tabs at the top, the list filling
+        // the main panel, the help/status panel above the footer
+        // buttons at the bottom. The colony build screen's panels
+        // are baked into its 640x480 background art, so the frame
+        // here is the engine-drawn equivalent: a thin light-grey
+        // outer line with a dark inner line and corner rivets,
+        // thin grey panel borders, and framed row slots.
         constexpr int16_t TITLE_X = 16;
         constexpr int16_t TITLE_Y = 8;
         constexpr int16_t TAB_Y = 30;
-        constexpr int16_t TAB_HEIGHT = 18;
+        constexpr int16_t TAB_HEIGHT = 24;
         constexpr int16_t TITLE_WIDTH = 348;
         constexpr int16_t VALUE_X = 372;
         constexpr int16_t VALUE_WIDTH = 244;
-        constexpr int16_t FIRST_ROW_Y = 58;
-        constexpr int16_t ROW_HEIGHT = 22;
-        constexpr int ROWS_PER_PAGE = 14;
-        constexpr int16_t HELP_Y = 376;
-        constexpr int16_t HELP_LINE_HEIGHT = 14;
-        constexpr int16_t STATUS_Y = 412;
-        constexpr int16_t FOOTER_Y = 436;
-        constexpr int16_t NAV_Y = 430;
-        constexpr int16_t NAV_Y_END = 452;
+        constexpr int16_t LIST_PANEL_X = 8;
+        constexpr int16_t LIST_PANEL_Y = 62;
+        constexpr int16_t LIST_PANEL_W = 624;
+        constexpr int16_t LIST_PANEL_H = 332;
+        constexpr int16_t FIRST_ROW_Y = 64;
+        constexpr int16_t ROW_HEIGHT = 30;
+        constexpr int ROWS_PER_PAGE = 11;
+        constexpr int16_t ROW_TEXT_Y_OFFSET = 8;
+        constexpr int16_t HELP_PANEL_X = 8;
+        constexpr int16_t HELP_PANEL_Y = 398;
+        constexpr int16_t HELP_PANEL_W = 624;
+        constexpr int16_t HELP_PANEL_H = 50;
+        constexpr int16_t HELP_Y = 402;
+        constexpr int16_t HELP_LINE_HEIGHT = 15;
+        constexpr int16_t STATUS_Y = 433;
+        constexpr int16_t FOOTER_Y = 457;
+        constexpr int16_t NAV_Y = 452;
+        constexpr int16_t NAV_Y_END = 474;
         constexpr int16_t TEXT_WIDTH = 608;
 
-        // Frame for the screen, like the original GAME SETTINGS dialog's
-        // baked panel: dark interior with a double-bevel border (outer
-        // light, inner dark). Content spans x 16-632, y 8-452, so this
-        // frame encloses everything with no coordinate changes.
-        constexpr int16_t FRAME_X = 8;
-        constexpr int16_t FRAME_Y = 4;
-        constexpr int16_t FRAME_W = 624;
-        constexpr int16_t FRAME_H = 456;
+        // Colony chrome, in menu-palette indices (MAINMENU.LBX
+        // entries 1/2 palette: 230-249 is a blue-grey ramp).
+        // 244 is the light outer frame, 230 the dark panel
+        // interior, 234 the mid-grey panel border, 229 the dark
+        // row separator.
         constexpr uint8_t PANEL_INTERIOR = 230;
-        constexpr uint8_t PANEL_BEVEL_LIGHT = 234;
-        constexpr uint8_t PANEL_BEVEL_DARK = 229;
+        constexpr uint8_t PANEL_BORDER = 234;
+        constexpr uint8_t PANEL_SEPARATOR = 229;
+        constexpr uint8_t FRAME_OUTER = 244;
+        constexpr uint8_t FRAME_INNER = 230;
+        constexpr uint8_t FRAME_RIVET = 244;
 
         // The standard UI text palette, as used by the council screen.
         s_colors g_normal_colors = {{150, 154, 155, 151, 152, 153, 154, 155}};
@@ -83,30 +101,140 @@ namespace SETTINGS_SCREEN {
         s_colors g_colony_highlight_colors = {{150, 155, 155, 152, 153, 155, 155, 155}};
         s_colors g_colony_dim_colors = {{244, 249, 248, 249, 248, 249, 248, 249}};
 
-        // Buy-button toggle: a small engine-drawn button in the
-        // colony buy button's color states. The colony buy button
-        // (COLSUM.LBX entries 11-20, colsum.cpp) is a two-frame
-        // sprite: on/active is bright, off/inactive is dark, and a
-        // locked (unusable) button is dimmed. The settings toggle
-        // draws the same three states with the game's own Fill/Box
-        // primitives — the literal BUY sprite cannot be reused (it
-        // would say BUY), so the reusable part is its shape and its
-        // on/off/disabled color states. The fills are menu-palette
-        // indices: 155 is the brightest cyan, 230 the dark panel
-        // interior, 234 a mid grey.
-        constexpr int16_t TOGGLE_W = 20;
-        constexpr int16_t TOGGLE_H = 14;
-        constexpr uint8_t TOGGLE_ON_FILL = 155;
-        constexpr uint8_t TOGGLE_OFF_FILL = 230;
-        constexpr uint8_t TOGGLE_DISABLED_FILL = 234;
-        constexpr uint8_t TOGGLE_BORDER = 234;
+        // Flat text colours for the raised metallic buttons: dark
+        // text on the light metal face, light text on the blue
+        // primary face. A font style maps glyph shade to a palette
+        // index, so a flat array renders a single-colour label.
+        s_colors g_dark_text_colors = {{230, 230, 230, 230, 230, 230, 230, 230}};
+        s_colors g_light_text_colors = {{247, 247, 247, 247, 247, 247, 247, 247}};
 
-        // Draw a small button (Fill + single bevel border) at (x, y)
-        // with the given size and fill, in the buy button's shape.
-        void Draw_Small_Button(int16_t x, int16_t y, int16_t w, int16_t h,
-            uint8_t fill) {
-            graphics::Fill(x, y, x + w - 1, y + h - 1, fill);
-            graphics::Box(x, y, w, h, 1, TOGGLE_BORDER);
+        // The colony buy button (COLSUM.LBX entries 11-20, colsum.cpp
+        // Add_Fields / fields::Add_Locked_Button_Field) is the
+        // diamond Tom means: a 19x28-30 two-frame sprite, a dark
+        // plaque with a grey ring around a four-point star.
+        // fields.cpp draws frame 0 while *selection == 0 and frame 1
+        // once it is set, and selection is the colony's
+        // bought_outright — so frame 0 (grey star) is "not bought",
+        // frame 1 (blue star) is "bought". A colony that cannot buy
+        // gets no live button at all, only the dim disc baked into
+        // the colony background. The three states map to the
+        // settings toggle as off / on / disabled.
+        //
+        // The star's exact shape, decoded from COLSUM.LBX entry 11
+        // frame 1 (blue indices 38-62 in the colony palette): a
+        // vertical diamond 11 wide x 14 tall, rows y 8-21 of the
+        // 19x29 sprite, widest (x 4-14) at rows 13-14 and 17, with
+        // a bright centre and a bright horizontal bar at row 13.
+        // The diamond below is that same shape, 1:1, as row spans.
+        //
+        // The literal sprite cannot be drawn here: the settings
+        // screen runs under the main-menu palette, where the
+        // colony palette's blue indices 38-62 are browns and
+        // olives (MAINMENU.LBX palette), so the sprite would render
+        // brown, not blue. The toggle is therefore an engine-drawn
+        // replica in the closest menu-palette equivalents, keeping
+        // the sprite's own structure: a darker rim, a brighter
+        // body, and a small pale centre. On is the most saturated
+        // menu blue, 138 (53,49,138), rimming a pale cyan-blue
+        // body, 154 (121,182,186), with a near-white centre, 247;
+        // off is the menu grey ramp, 232 rimming 236 with a 246
+        // centre; disabled is the bare plaque with no star, like
+        // the colony's no-button state. Plaque and ring keep the
+        // sprite's 19x28 size, so rows are 30 tall (the colony
+        // summary's rows are 31).
+        constexpr int16_t TOGGLE_W = 19;
+        constexpr int16_t TOGGLE_H = 28;
+        constexpr uint8_t TOGGLE_PLAQUE = 230;
+        constexpr uint8_t TOGGLE_BORDER = 234;
+        constexpr uint8_t TOGGLE_RING = 238;
+        constexpr uint8_t TOGGLE_RING_DIM = 231;
+        constexpr uint8_t TOGGLE_ON_RIM = 138;
+        constexpr uint8_t TOGGLE_ON_BASE = 154;
+        constexpr uint8_t TOGGLE_ON_BRIGHT = 247;
+        constexpr uint8_t TOGGLE_OFF_RIM = 232;
+        constexpr uint8_t TOGGLE_OFF_BASE = 236;
+        constexpr uint8_t TOGGLE_OFF_BRIGHT = 246;
+
+        // Diamond row spans (x1, x2), plaque-relative, rows y+7 to
+        // y+20 of the 19x28 plaque. Decoded from COLSUM.LBX entry
+        // 11 frame 1.
+        constexpr int8_t DIAMOND_SPANS[14][2] = {
+            {7, 11}, {6, 12}, {5, 13}, {5, 13}, {5, 14}, {4, 14}, {4, 14},
+            {5, 14}, {5, 14}, {4, 14}, {5, 13}, {6, 13}, {7, 12}, {10, 10},
+        };
+
+        enum e_toggle_state {
+            TOGGLE_OFF,
+            TOGGLE_ON,
+            TOGGLE_DISABLED,
+        };
+
+        // Draw the colony buy button's diamond toggle at (x, y):
+        // dark plaque, grey ring, four-point star in the on/off
+        // colours; disabled draws the bare plaque with no star.
+        void Draw_Diamond_Toggle(int16_t x, int16_t y, e_toggle_state state) {
+            graphics::Fill(x, y, x + TOGGLE_W - 1, y + TOGGLE_H - 1, TOGGLE_PLAQUE);
+            graphics::Box(x, y, TOGGLE_W, TOGGLE_H, 1,
+                state == TOGGLE_DISABLED ? TOGGLE_RING_DIM : TOGGLE_BORDER);
+            graphics::Fill(x + 1, y + 1, x + TOGGLE_W - 2, y + 1, TOGGLE_RING);
+            const uint8_t ring =
+                state == TOGGLE_DISABLED ? TOGGLE_RING_DIM : TOGGLE_RING;
+            // Ring: octagon outline around the star, as the sprite's
+            // grey oval ring.
+            line::Line(x + 7, y + 3, x + 11, y + 3, ring);
+            line::Line(x + 11, y + 3, x + 15, y + 7, ring);
+            line::Line(x + 15, y + 7, x + 15, y + 20, ring);
+            line::Line(x + 15, y + 20, x + 11, y + 24, ring);
+            line::Line(x + 11, y + 24, x + 7, y + 24, ring);
+            line::Line(x + 7, y + 24, x + 3, y + 20, ring);
+            line::Line(x + 3, y + 20, x + 3, y + 7, ring);
+            line::Line(x + 3, y + 7, x + 7, y + 3, ring);
+            if (state == TOGGLE_DISABLED) {
+                return;
+            }
+            const uint8_t rim =
+                state == TOGGLE_ON ? TOGGLE_ON_RIM : TOGGLE_OFF_RIM;
+            const uint8_t base =
+                state == TOGGLE_ON ? TOGGLE_ON_BASE : TOGGLE_OFF_BASE;
+            const uint8_t bright =
+                state == TOGGLE_ON ? TOGGLE_ON_BRIGHT : TOGGLE_OFF_BRIGHT;
+            for (int row = 0; row < 14; ++row) {
+                graphics::Fill(x + DIAMOND_SPANS[row][0], y + 7 + row,
+                    x + DIAMOND_SPANS[row][1], y + 7 + row, rim);
+            }
+            // Brighter body, inset one pixel from the rim on every
+            // side but the pointed ends.
+            for (int row = 1; row < 13; ++row) {
+                graphics::Fill(x + DIAMOND_SPANS[row][0] + 1, y + 7 + row,
+                    x + DIAMOND_SPANS[row][1] - 1, y + 7 + row, base);
+            }
+            // Small pale star centre: a 2-pixel vertical bar with
+            // the full-width horizontal bar at y+12.
+            graphics::Fill(x + 9, y + 10, x + 10, y + 13, bright);
+            graphics::Fill(x + 6, y + 12, x + 13, y + 12, bright);
+        }
+
+        // Raised metallic button, like the colony build screen's
+        // REFIT / DESIGN / CANCEL / OK: light face, bright top and
+        // left edges, dark bottom and right edges, dark label.
+        // A primary (blue) button takes the Auto Build blue face
+        // with a light label instead.
+        constexpr uint8_t METAL_FACE = 242;
+        constexpr uint8_t METAL_HIGHLIGHT = 247;
+        constexpr uint8_t METAL_SHADOW = 232;
+        constexpr uint8_t PRIMARY_FACE = 138;
+        constexpr uint8_t PRIMARY_HIGHLIGHT = 154;
+
+        void Draw_Metal_Button(int16_t x, int16_t y, int16_t w, int16_t h,
+            bool primary) {
+            const uint8_t face = primary ? PRIMARY_FACE : METAL_FACE;
+            const uint8_t highlight =
+                primary ? PRIMARY_HIGHLIGHT : METAL_HIGHLIGHT;
+            graphics::Fill(x, y, x + w - 1, y + h - 1, face);
+            graphics::Fill(x, y, x + w - 1, y, highlight);
+            graphics::Fill(x, y, x, y + h - 1, highlight);
+            graphics::Fill(x, y + h - 1, x + w - 1, y + h - 1, METAL_SHADOW);
+            graphics::Fill(x + w - 1, y, x + w - 1, y + h - 1, METAL_SHADOW);
         }
 
         enum e_apply_result {
@@ -888,11 +1016,15 @@ namespace SETTINGS_SCREEN {
             video::Set_Page_Off();
             graphics::Fill(0, 0, 639, 479, 0);
 
-            // Frame the screen like the original GAME SETTINGS dialog: a dark
-            // panel with a double-bevel border (outer light, inner dark).
-            graphics::Fill(FRAME_X, FRAME_Y, FRAME_X + FRAME_W - 1, FRAME_Y + FRAME_H - 1, PANEL_INTERIOR);
-            graphics::Box(FRAME_X, FRAME_Y, FRAME_W, FRAME_H, 1, PANEL_BEVEL_LIGHT);
-            graphics::Box(FRAME_X + 1, FRAME_Y + 1, FRAME_W - 2, FRAME_H - 2, 1, PANEL_BEVEL_DARK);
+            // Full-window colony chrome: a thin light outer line, a
+            // dark inner line, and corner rivets, like the frame
+            // baked into the colony screens' backgrounds.
+            graphics::Box(0, 0, 640, 480, 1, FRAME_OUTER);
+            graphics::Box(2, 2, 636, 476, 1, FRAME_INNER);
+            graphics::Fill(4, 4, 6, 6, FRAME_RIVET);
+            graphics::Fill(633, 4, 635, 6, FRAME_RIVET);
+            graphics::Fill(4, 473, 6, 475, FRAME_RIVET);
+            graphics::Fill(633, 473, 635, 475, FRAME_RIVET);
 
             fonts::Set_Font_Style(4, &g_title_colors);
             const char* title = "Settings";
@@ -903,17 +1035,37 @@ namespace SETTINGS_SCREEN {
                 g_state.page + 1, Page_Count());
             fonts::Print(640 - 16 - fonts::Get_String_Width(page_text), TITLE_Y, page_text);
 
+            // Tabs, like the colony summary's sort buttons: dark
+            // buttons, the active tab in the Auto Build blue.
             int16_t tab_x = TITLE_X;
             for (int category = 0; category < CATEGORY_COUNT; ++category) {
+                const int16_t width = (int16_t)(
+                    fonts::Get_String_Width(CATEGORY_LABELS[category]) + 16);
+                const bool active = category == g_state.category;
+                graphics::Fill(tab_x, TAB_Y, tab_x + width - 1,
+                    TAB_Y + TAB_HEIGHT - 1, active ? PRIMARY_FACE : 232);
+                graphics::Box(tab_x, TAB_Y, width, TAB_HEIGHT, 1, PANEL_BORDER);
                 fonts::Set_Font_Style(4,
-                    category == g_state.category ? &g_colony_highlight_colors : &g_colony_dim_colors);
-                fonts::Print(tab_x + 8, TAB_Y + 2, CATEGORY_LABELS[category]);
-                tab_x += (int16_t)(fonts::Get_String_Width(CATEGORY_LABELS[category]) + 16) + 8;
+                    active ? &g_title_colors : &g_colony_dim_colors);
+                const int16_t label_x = (int16_t)(tab_x +
+                    (width - fonts::Get_String_Width(CATEGORY_LABELS[category])) / 2);
+                fonts::Print(label_x, TAB_Y + 5, CATEGORY_LABELS[category]);
+                tab_x += width + 8;
             }
-            // Divider under the tabs, echoing the colony list header's
-            // bottom edge.
-            graphics::Fill(TITLE_X, TAB_Y + TAB_HEIGHT, 632, TAB_Y + TAB_HEIGHT,
-                PANEL_BEVEL_DARK);
+
+            // List panel, like the colony list: dark interior, thin
+            // grey border, framed row slots even when empty.
+            graphics::Fill(LIST_PANEL_X, LIST_PANEL_Y,
+                LIST_PANEL_X + LIST_PANEL_W - 1, LIST_PANEL_Y + LIST_PANEL_H - 1,
+                PANEL_INTERIOR);
+            graphics::Box(LIST_PANEL_X, LIST_PANEL_Y, LIST_PANEL_W, LIST_PANEL_H, 1,
+                PANEL_BORDER);
+            for (int slot = 0; slot < ROWS_PER_PAGE - 1; ++slot) {
+                const int16_t sep_y = (int16_t)(FIRST_ROW_Y + slot * ROW_HEIGHT +
+                    ROW_HEIGHT - 1);
+                graphics::Fill(LIST_PANEL_X + 1, sep_y,
+                    LIST_PANEL_X + LIST_PANEL_W - 2, sep_y, PANEL_SEPARATOR);
+            }
 
             const bool mods_tab = g_state.category == CATEGORY_MODS;
             const int first = g_state.page * ROWS_PER_PAGE;
@@ -921,6 +1073,7 @@ namespace SETTINGS_SCREEN {
             for (int index = 0; index < count; ++index) {
                 const int visible = first + index;
                 const int16_t y = FIRST_ROW_Y + (int16_t)index * ROW_HEIGHT;
+                const int16_t text_y = (int16_t)(y + ROW_TEXT_Y_OFFSET);
                 const bool selected = visible == g_state.selected;
                 // Colony-list row: name in the colony color, selected
                 // row in the bright-blue highlight.
@@ -933,55 +1086,55 @@ namespace SETTINGS_SCREEN {
                     if (!entry.version_text.empty()) {
                         title_text += " " + entry.version_text;
                     }
-                    fonts::Print(TITLE_X, y,
+                    fonts::Print(TITLE_X, text_y,
                         Truncate_To_Width(title_text, TITLE_WIDTH).c_str());
-                    // Buy-button toggle: bright when on, dark when off,
-                    // dimmed when the mod is broken and cannot be enabled.
+                    // Colony buy-button diamond: blue when on, grey
+                    // when off, bare plaque when the mod is broken
+                    // and cannot be enabled.
                     const int16_t toggle_y = (int16_t)(y + (ROW_HEIGHT - TOGGLE_H) / 2);
                     if (entry.broken) {
-                        Draw_Small_Button(VALUE_X, toggle_y, TOGGLE_W, TOGGLE_H,
-                            TOGGLE_DISABLED_FILL);
+                        Draw_Diamond_Toggle(VALUE_X, toggle_y, TOGGLE_DISABLED);
                         fonts::Set_Font_Style(4, &g_colony_dim_colors);
-                        fonts::Print(VALUE_X + TOGGLE_W + 6, y, "Broken");
+                        fonts::Print(VALUE_X + TOGGLE_W + 6, text_y, "Broken");
                     } else {
-                        Draw_Small_Button(VALUE_X, toggle_y, TOGGLE_W, TOGGLE_H,
-                            entry.enabled ? TOGGLE_ON_FILL : TOGGLE_OFF_FILL);
+                        Draw_Diamond_Toggle(VALUE_X, toggle_y,
+                            entry.enabled ? TOGGLE_ON : TOGGLE_OFF);
                     }
-                    // Row separator, as on the colony list.
-                    graphics::Fill(TITLE_X, y + ROW_HEIGHT - 1, 632, y + ROW_HEIGHT - 1,
-                        PANEL_BEVEL_DARK);
                     continue;
                 }
                 const config::s_settings_row& row =
                     g_state.rows[(size_t)Visible_Row_Index(visible)];
                 const std::string title_text = Truncate_To_Width(row.title, TITLE_WIDTH);
-                fonts::Print(TITLE_X, y, title_text.c_str());
+                fonts::Print(TITLE_X, text_y, title_text.c_str());
                 if (row.restart_required) {
                     const int16_t mark_x = (int16_t)(TITLE_X +
                         fonts::Get_String_Width(title_text.c_str()) + 2);
                     if (mark_x + fonts::Get_String_Width("*") < VALUE_X - 4) {
                         fonts::Set_Font_Style(4, &g_colony_highlight_colors);
-                        fonts::Print(mark_x, y, "*");
+                        fonts::Print(mark_x, text_y, "*");
                     }
                 }
                 // The edit field draws its own text while it is open.
                 if (visible == g_state.editing_row) {
-                    graphics::Fill(TITLE_X, y + ROW_HEIGHT - 1, 632, y + ROW_HEIGHT - 1,
-                        PANEL_BEVEL_DARK);
                     continue;
                 }
-                const int16_t toggle_y = (int16_t)(y + (ROW_HEIGHT - TOGGLE_H) / 2);
                 if (row.widget == config::SETTINGS_WIDGET_TOGGLE) {
-                    // Buy-button toggle instead of the "[x]"/"[ ]" text.
+                    // Colony buy-button diamond instead of the
+                    // "[x]"/"[ ]" text: blue when on, grey when off.
                     config::s_typed_value value;
                     const bool on = config::Get_Settings_Row_Value(row, &value)
                         && value.bool_value;
-                    Draw_Small_Button(VALUE_X, toggle_y, TOGGLE_W, TOGGLE_H,
-                        on ? TOGGLE_ON_FILL : TOGGLE_OFF_FILL);
+                    const int16_t toggle_y =
+                        (int16_t)(y + (ROW_HEIGHT - TOGGLE_H) / 2);
+                    Draw_Diamond_Toggle(VALUE_X, toggle_y,
+                        on ? TOGGLE_ON : TOGGLE_OFF);
                 } else if (row.widget == config::SETTINGS_WIDGET_DROPDOWN) {
-                    // Dropdown: the value in a small framed button with
-                    // a down-arrow — the game's only missing widget,
-                    // drawn in the same Fill/Box shape as the toggle.
+                    // Dropdown: the value in a raised metallic button
+                    // with a down-arrow — the game's only missing
+                    // widget, restyled to the colony build screen's
+                    // buttons. The list itself is the shared
+                    // fields::Get_List_Field picker; its frame is
+                    // that picker's, not the settings screen's.
                     config::s_typed_value value;
                     std::string value_text = config::Get_Settings_Row_Value(row, &value)
                         ? config::Format_Leaf_Value(row.variable_id, value)
@@ -992,11 +1145,11 @@ namespace SETTINGS_SCREEN {
                     if (box_w > VALUE_WIDTH) {
                         box_w = VALUE_WIDTH;
                     }
-                    Draw_Small_Button(VALUE_X, toggle_y, box_w, TOGGLE_H, TOGGLE_OFF_FILL);
-                    fonts::Set_Font_Style(4,
-                        selected ? &g_colony_highlight_colors : &g_colony_dim_colors);
-                    fonts::Print(VALUE_X + 4, toggle_y + 1, value_text.c_str());
-                    fonts::Print(VALUE_X + box_w - 12, toggle_y + 1, "v");
+                    const int16_t trigger_y = (int16_t)(y + 5);
+                    Draw_Metal_Button(VALUE_X, trigger_y, box_w, 20, false);
+                    fonts::Set_Font_Style(4, &g_dark_text_colors);
+                    fonts::Print(VALUE_X + 4, trigger_y + 4, value_text.c_str());
+                    fonts::Print(VALUE_X + box_w - 12, trigger_y + 4, "v");
                 } else {
                     // Info and edit values: text in the colony dim color.
                     config::s_typed_value value;
@@ -1009,14 +1162,18 @@ namespace SETTINGS_SCREEN {
                             : "?";
                     }
                     fonts::Set_Font_Style(4, &g_colony_dim_colors);
-                    fonts::Print(VALUE_X, y,
+                    fonts::Print(VALUE_X, text_y,
                         Truncate_To_Width(value_text, VALUE_WIDTH).c_str());
                 }
-                // Row separator, as on the colony list.
-                graphics::Fill(TITLE_X, y + ROW_HEIGHT - 1, 632, y + ROW_HEIGHT - 1,
-                    PANEL_BEVEL_DARK);
             }
 
+            // Help and status panel, like the colony screens' bottom
+            // info panels.
+            graphics::Fill(HELP_PANEL_X, HELP_PANEL_Y,
+                HELP_PANEL_X + HELP_PANEL_W - 1, HELP_PANEL_Y + HELP_PANEL_H - 1,
+                PANEL_INTERIOR);
+            graphics::Box(HELP_PANEL_X, HELP_PANEL_Y, HELP_PANEL_W, HELP_PANEL_H, 1,
+                PANEL_BORDER);
             std::string help_text;
             if (mods_tab && Is_Mod_Row(g_state.selected)) {
                 help_text = Mod_Help_Text(g_state.mods[(size_t)Mod_Index(g_state.selected)],
@@ -1035,24 +1192,27 @@ namespace SETTINGS_SCREEN {
             fonts::Print(TITLE_X, STATUS_Y,
                 Truncate_To_Width(g_state.status, TEXT_WIDTH).c_str());
 
-            // Action buttons, drawn as small buttons like the colony
-            // screen's SORT and RETURN buttons, instead of bare text.
+            // Footer buttons, like the colony build screen's raised
+            // buttons: metallic Prev / Next / Show all, blue Done.
             // Each button rect matches its field; the label is centred.
-            const auto draw_action_button = [](int16_t x, int16_t w, const char* label) {
-                Draw_Small_Button(x, NAV_Y, w, NAV_Y_END - NAV_Y, TOGGLE_OFF_FILL);
-                fonts::Set_Font_Style(4, &g_colony_colors);
+            const auto draw_action_button = [](int16_t x, int16_t w, const char* label,
+                bool primary) {
+                Draw_Metal_Button(x, NAV_Y, w, NAV_Y_END - NAV_Y, primary);
+                fonts::Set_Font_Style(4,
+                    primary ? &g_light_text_colors : &g_dark_text_colors);
                 const int16_t label_x = (int16_t)(x +
                     (w - fonts::Get_String_Width(label)) / 2);
                 fonts::Print(label_x, FOOTER_Y, label);
             };
             if (g_state.prev_field != -1) {
-                draw_action_button(TITLE_X, 74, "Prev");
+                draw_action_button(TITLE_X, 74, "Prev", false);
             }
             if (g_state.next_field != -1) {
-                draw_action_button(110, 74, "Next");
+                draw_action_button(110, 74, "Next", false);
             }
-            draw_action_button(456, 88, g_state.show_all ? "Show less" : "Show all");
-            draw_action_button(556, 68, "Done");
+            draw_action_button(456, 88, g_state.show_all ? "Show less" : "Show all",
+                false);
+            draw_action_button(556, 68, "Done", true);
             const char* footer_note = mods_tab
                 ? "Mod changes apply immediately"
                 : "* = takes effect after restart";
