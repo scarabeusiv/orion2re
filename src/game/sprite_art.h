@@ -68,4 +68,18 @@ namespace sprite_art {
     void Draw_Sprite_Frame_Stretched(const s_animation_header* frame,
         int16_t x, int16_t y, int16_t width, int16_t left_slice,
         int16_t right_slice);
+
+    /**
+     * Like Draw_Sprite_Frame_Stretched, but the middle band is
+     * resampled (nearest neighbour) to fill the target width instead
+     * of tiled: the first middle column maps to the first target
+     * column and the last to the last, so a gradient middle spans
+     * the width once. For a frame whose middle is a gradient (the
+     * selected sort tab's blue field) tiling would repeat the
+     * gradient like stripes; for a flat middle the two draws are
+     * identical. Same slice, clipping, and silent-return rules.
+     */
+    void Draw_Sprite_Frame_Stretched_Resampled(
+        const s_animation_header* frame, int16_t x, int16_t y,
+        int16_t width, int16_t left_slice, int16_t right_slice);
 } // namespace sprite_art
