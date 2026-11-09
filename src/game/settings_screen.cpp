@@ -68,6 +68,47 @@ namespace SETTINGS_SCREEN {
         // the darker outline (same shape as science_high_color).
         s_colors g_title_colors = {{234, 238, 240, 242, 243, 244, 246, 247}};
 
+        // Colony-list palette, as rendered on the settings screen.
+        // The colony screen loads palette 1 (colony.cpp), the
+        // settings screen the menu palette, so the colony's own
+        // indices (245/253/252) do NOT map to its blue here — 253
+        // renders black and the name indices render dark olive.
+        // The restyle therefore uses the menu palette's own bright
+        // cyan (150-155, the old row color) as the colony-blue
+        // equivalent, with the orange highlight for the selected
+        // row and a bright white for secondary info. The colony
+        // look is carried by the list structure (separators,
+        // buttons) as much as by the hue.
+        s_colors g_colony_colors = {{150, 154, 155, 151, 152, 153, 154, 155}};
+        s_colors g_colony_highlight_colors = {{150, 155, 155, 152, 153, 155, 155, 155}};
+        s_colors g_colony_dim_colors = {{244, 249, 248, 249, 248, 249, 248, 249}};
+
+        // Buy-button toggle: a small engine-drawn button in the
+        // colony buy button's color states. The colony buy button
+        // (COLSUM.LBX entries 11-20, colsum.cpp) is a two-frame
+        // sprite: on/active is bright, off/inactive is dark, and a
+        // locked (unusable) button is dimmed. The settings toggle
+        // draws the same three states with the game's own Fill/Box
+        // primitives — the literal BUY sprite cannot be reused (it
+        // would say BUY), so the reusable part is its shape and its
+        // on/off/disabled color states. The fills are menu-palette
+        // indices: 155 is the brightest cyan, 230 the dark panel
+        // interior, 234 a mid grey.
+        constexpr int16_t TOGGLE_W = 20;
+        constexpr int16_t TOGGLE_H = 14;
+        constexpr uint8_t TOGGLE_ON_FILL = 155;
+        constexpr uint8_t TOGGLE_OFF_FILL = 230;
+        constexpr uint8_t TOGGLE_DISABLED_FILL = 234;
+        constexpr uint8_t TOGGLE_BORDER = 234;
+
+        // Draw a small button (Fill + single bevel border) at (x, y)
+        // with the given size and fill, in the buy button's shape.
+        void Draw_Small_Button(int16_t x, int16_t y, int16_t w, int16_t h,
+            uint8_t fill) {
+            graphics::Fill(x, y, x + w - 1, y + h - 1, fill);
+            graphics::Box(x, y, w, h, 1, TOGGLE_BORDER);
+        }
+
         enum e_apply_result {
             APPLY_LIVE,
             APPLY_SAVED,
@@ -648,7 +689,11 @@ namespace SETTINGS_SCREEN {
                 y = 30;
             }
             int8_t selected_index = (int8_t)current_index;
-            fonts::Set_Font_Style(4, &g_normal_colors);
+            // The list items render in the colony-list color, so the
+            // dropdown reads as part of the same list. The list
+            // itself is the shared fields::Get_List_Field picker; its
+            // frame is that picker's, not the settings screen's.
+            fonts::Set_Font_Style(4, &g_colony_colors);
             fonts::Set_Font_LF(4);
             // The selection list clears the field set while it runs, so
             // the screen's fields are stashed and restored around it.
@@ -861,10 +906,14 @@ namespace SETTINGS_SCREEN {
             int16_t tab_x = TITLE_X;
             for (int category = 0; category < CATEGORY_COUNT; ++category) {
                 fonts::Set_Font_Style(4,
-                    category == g_state.category ? &g_highlight_colors : &g_normal_colors);
+                    category == g_state.category ? &g_colony_highlight_colors : &g_colony_dim_colors);
                 fonts::Print(tab_x + 8, TAB_Y + 2, CATEGORY_LABELS[category]);
                 tab_x += (int16_t)(fonts::Get_String_Width(CATEGORY_LABELS[category]) + 16) + 8;
             }
+            // Divider under the tabs, echoing the colony list header's
+            // bottom edge.
+            graphics::Fill(TITLE_X, TAB_Y + TAB_HEIGHT, 632, TAB_Y + TAB_HEIGHT,
+                PANEL_BEVEL_DARK);
 
             const bool mods_tab = g_state.category == CATEGORY_MODS;
             const int first = g_state.page * ROWS_PER_PAGE;
@@ -873,8 +922,10 @@ namespace SETTINGS_SCREEN {
                 const int visible = first + index;
                 const int16_t y = FIRST_ROW_Y + (int16_t)index * ROW_HEIGHT;
                 const bool selected = visible == g_state.selected;
+                // Colony-list row: name in the colony color, selected
+                // row in the bright-blue highlight.
                 fonts::Set_Font_Style(4,
-                    selected ? &g_highlight_colors : &g_normal_colors);
+                    selected ? &g_colony_highlight_colors : &g_colony_colors);
                 if (Is_Mod_Row(visible)) {
                     const config::s_mod_catalogue_entry& entry =
                         g_state.mods[(size_t)Mod_Index(visible)];
@@ -884,15 +935,21 @@ namespace SETTINGS_SCREEN {
                     }
                     fonts::Print(TITLE_X, y,
                         Truncate_To_Width(title_text, TITLE_WIDTH).c_str());
-                    fonts::Set_Font_Style(4,
-                        selected ? &g_highlight_colors : &g_normal_colors);
-                    // The checkbox alone states the state; the word
-                    // next to it only repeated it.
-                    const std::string value_text = entry.broken
-                        ? "Broken"
-                        : (entry.enabled ? "[x]" : "[ ]");
-                    fonts::Print(VALUE_X, y,
-                        Truncate_To_Width(value_text, VALUE_WIDTH).c_str());
+                    // Buy-button toggle: bright when on, dark when off,
+                    // dimmed when the mod is broken and cannot be enabled.
+                    const int16_t toggle_y = (int16_t)(y + (ROW_HEIGHT - TOGGLE_H) / 2);
+                    if (entry.broken) {
+                        Draw_Small_Button(VALUE_X, toggle_y, TOGGLE_W, TOGGLE_H,
+                            TOGGLE_DISABLED_FILL);
+                        fonts::Set_Font_Style(4, &g_colony_dim_colors);
+                        fonts::Print(VALUE_X + TOGGLE_W + 6, y, "Broken");
+                    } else {
+                        Draw_Small_Button(VALUE_X, toggle_y, TOGGLE_W, TOGGLE_H,
+                            entry.enabled ? TOGGLE_ON_FILL : TOGGLE_OFF_FILL);
+                    }
+                    // Row separator, as on the colony list.
+                    graphics::Fill(TITLE_X, y + ROW_HEIGHT - 1, 632, y + ROW_HEIGHT - 1,
+                        PANEL_BEVEL_DARK);
                     continue;
                 }
                 const config::s_settings_row& row =
@@ -903,34 +960,61 @@ namespace SETTINGS_SCREEN {
                     const int16_t mark_x = (int16_t)(TITLE_X +
                         fonts::Get_String_Width(title_text.c_str()) + 2);
                     if (mark_x + fonts::Get_String_Width("*") < VALUE_X - 4) {
-                        fonts::Set_Font_Style(4, &g_highlight_colors);
+                        fonts::Set_Font_Style(4, &g_colony_highlight_colors);
                         fonts::Print(mark_x, y, "*");
                     }
                 }
                 // The edit field draws its own text while it is open.
                 if (visible == g_state.editing_row) {
+                    graphics::Fill(TITLE_X, y + ROW_HEIGHT - 1, 632, y + ROW_HEIGHT - 1,
+                        PANEL_BEVEL_DARK);
                     continue;
                 }
-                fonts::Set_Font_Style(4,
-                    selected ? &g_highlight_colors : &g_normal_colors);
-                std::string value_text;
-                if (row.widget == config::SETTINGS_WIDGET_INFO) {
-                    value_text = row.info;
-                } else if (row.widget == config::SETTINGS_WIDGET_TOGGLE) {
-                    // Checkbox-style booleans, as in the original GAME
-                    // SETTINGS dialog: [x] on, [ ] off.
+                const int16_t toggle_y = (int16_t)(y + (ROW_HEIGHT - TOGGLE_H) / 2);
+                if (row.widget == config::SETTINGS_WIDGET_TOGGLE) {
+                    // Buy-button toggle instead of the "[x]"/"[ ]" text.
                     config::s_typed_value value;
-                    value_text = config::Get_Settings_Row_Value(row, &value)
-                        ? (value.bool_value ? "[x]" : "[ ]")
-                        : "?";
-                } else {
+                    const bool on = config::Get_Settings_Row_Value(row, &value)
+                        && value.bool_value;
+                    Draw_Small_Button(VALUE_X, toggle_y, TOGGLE_W, TOGGLE_H,
+                        on ? TOGGLE_ON_FILL : TOGGLE_OFF_FILL);
+                } else if (row.widget == config::SETTINGS_WIDGET_DROPDOWN) {
+                    // Dropdown: the value in a small framed button with
+                    // a down-arrow — the game's only missing widget,
+                    // drawn in the same Fill/Box shape as the toggle.
                     config::s_typed_value value;
-                    value_text = config::Get_Settings_Row_Value(row, &value)
+                    std::string value_text = config::Get_Settings_Row_Value(row, &value)
                         ? config::Format_Leaf_Value(row.variable_id, value)
                         : "?";
+                    value_text = Truncate_To_Width(value_text, VALUE_WIDTH - 16);
+                    const int16_t text_w = fonts::Get_String_Width(value_text.c_str());
+                    int16_t box_w = (int16_t)(text_w + 24);
+                    if (box_w > VALUE_WIDTH) {
+                        box_w = VALUE_WIDTH;
+                    }
+                    Draw_Small_Button(VALUE_X, toggle_y, box_w, TOGGLE_H, TOGGLE_OFF_FILL);
+                    fonts::Set_Font_Style(4,
+                        selected ? &g_colony_highlight_colors : &g_colony_dim_colors);
+                    fonts::Print(VALUE_X + 4, toggle_y + 1, value_text.c_str());
+                    fonts::Print(VALUE_X + box_w - 12, toggle_y + 1, "v");
+                } else {
+                    // Info and edit values: text in the colony dim color.
+                    config::s_typed_value value;
+                    std::string value_text;
+                    if (row.widget == config::SETTINGS_WIDGET_INFO) {
+                        value_text = row.info;
+                    } else {
+                        value_text = config::Get_Settings_Row_Value(row, &value)
+                            ? config::Format_Leaf_Value(row.variable_id, value)
+                            : "?";
+                    }
+                    fonts::Set_Font_Style(4, &g_colony_dim_colors);
+                    fonts::Print(VALUE_X, y,
+                        Truncate_To_Width(value_text, VALUE_WIDTH).c_str());
                 }
-                fonts::Print(VALUE_X, y,
-                    Truncate_To_Width(value_text, VALUE_WIDTH).c_str());
+                // Row separator, as on the colony list.
+                graphics::Fill(TITLE_X, y + ROW_HEIGHT - 1, 632, y + ROW_HEIGHT - 1,
+                    PANEL_BEVEL_DARK);
             }
 
             std::string help_text;
@@ -943,7 +1027,7 @@ namespace SETTINGS_SCREEN {
             std::string help_line1;
             std::string help_line2;
             Wrap_Text(help_text, TEXT_WIDTH, &help_line1, &help_line2);
-            fonts::Set_Font_Style(4, &g_normal_colors);
+            fonts::Set_Font_Style(4, &g_colony_dim_colors);
             fonts::Print(TITLE_X, HELP_Y, help_line1.c_str());
             if (!help_line2.empty()) {
                 fonts::Print(TITLE_X, HELP_Y + HELP_LINE_HEIGHT, help_line2.c_str());
@@ -951,17 +1035,28 @@ namespace SETTINGS_SCREEN {
             fonts::Print(TITLE_X, STATUS_Y,
                 Truncate_To_Width(g_state.status, TEXT_WIDTH).c_str());
 
+            // Action buttons, drawn as small buttons like the colony
+            // screen's SORT and RETURN buttons, instead of bare text.
+            // Each button rect matches its field; the label is centred.
+            const auto draw_action_button = [](int16_t x, int16_t w, const char* label) {
+                Draw_Small_Button(x, NAV_Y, w, NAV_Y_END - NAV_Y, TOGGLE_OFF_FILL);
+                fonts::Set_Font_Style(4, &g_colony_colors);
+                const int16_t label_x = (int16_t)(x +
+                    (w - fonts::Get_String_Width(label)) / 2);
+                fonts::Print(label_x, FOOTER_Y, label);
+            };
             if (g_state.prev_field != -1) {
-                fonts::Print(TITLE_X, FOOTER_Y, "Prev");
+                draw_action_button(TITLE_X, 74, "Prev");
             }
             if (g_state.next_field != -1) {
-                fonts::Print(110, FOOTER_Y, "Next");
+                draw_action_button(110, 74, "Next");
             }
-            fonts::Print(556, FOOTER_Y, "Done");
-            fonts::Print(456, FOOTER_Y, g_state.show_all ? "Show less" : "Show all");
+            draw_action_button(456, 88, g_state.show_all ? "Show less" : "Show all");
+            draw_action_button(556, 68, "Done");
             const char* footer_note = mods_tab
                 ? "Mod changes apply immediately"
                 : "* = takes effect after restart";
+            fonts::Set_Font_Style(4, &g_colony_dim_colors);
             fonts::Print((640 - fonts::Get_String_Width(footer_note)) / 2, FOOTER_Y,
                 footer_note);
 
