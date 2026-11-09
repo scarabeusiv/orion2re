@@ -94,18 +94,27 @@ namespace test_ui_kit_detail {
       public:
         Fake_Font font;
         ui_kit::Tab_Frames frames;
-        ui_kit::Window_Style window;
+        ui_kit::Frame_Style frame;
         ui_kit::Spacing spacing;
         ui_kit::List_Style list;
 
         Fake_Theme() {
-            window.frame_outer = 244;
-            window.frame_inner = 230;
-            window.title_font = &font;
-            window.title_y = 8;
+            frame.thickness_left = 3;
+            frame.thickness_right = 3;
+            frame.thickness_top = 3;
+            frame.thickness_bottom = 3;
+            frame.inset_left = 3;
+            frame.inset_right = 3;
+            frame.inset_top = 3;
+            frame.inset_bottom = 3;
+            frame.profile = {10, 11, 12};
+            frame.title_font = &font;
+            frame.title_y = 8;
+            frame.bottom_bar_h = 24;
             spacing.row_height = 30;
             spacing.row_gap = 1;
             spacing.header_to_first_row = 3;
+            spacing.list_footing = 4;
             spacing.list_to_info = 4;
             spacing.info_to_bar = 7;
             list.interior = 230;
@@ -115,6 +124,7 @@ namespace test_ui_kit_detail {
             list.divider_left = 233;
             list.divider_mid = 235;
             list.divider_right = 232;
+            list.plate_face = 233;
         }
 
         const ui_kit::Font& Tab_Font() const override {
@@ -125,8 +135,8 @@ namespace test_ui_kit_detail {
             return frames;
         }
 
-        ui_kit::Window_Style Window_Style() const override {
-            return window;
+        ui_kit::Frame_Style Frame_Style() const override {
+            return frame;
         }
 
         ui_kit::Spacing Spacing() const override {
@@ -161,18 +171,27 @@ namespace test_ui_kit_detail {
       public:
         Fake_Font font;
         ui_kit::Tab_Frames frames;
-        ui_kit::Window_Style window;
+        ui_kit::Frame_Style frame;
         ui_kit::Spacing spacing;
         ui_kit::List_Style list;
 
         Alt_Theme() {
-            window.frame_outer = 200;
-            window.frame_inner = 201;
-            window.title_font = &font;
-            window.title_y = 4;
+            frame.thickness_left = 4;
+            frame.thickness_right = 5;
+            frame.thickness_top = 4;
+            frame.thickness_bottom = 5;
+            frame.inset_left = 5;
+            frame.inset_right = 6;
+            frame.inset_top = 7;
+            frame.inset_bottom = 8;
+            frame.profile = {20, 21, 22, 23};
+            frame.title_font = &font;
+            frame.title_y = 4;
+            frame.bottom_bar_h = 30;
             spacing.row_height = 20;
             spacing.row_gap = 2;
             spacing.header_to_first_row = 5;
+            spacing.list_footing = 6;
             spacing.list_to_info = 6;
             spacing.info_to_bar = 8;
             list.interior = 10;
@@ -182,6 +201,7 @@ namespace test_ui_kit_detail {
             list.divider_left = 23;
             list.divider_mid = 24;
             list.divider_right = 25;
+            list.plate_face = 26;
         }
 
         const ui_kit::Font& Tab_Font() const override {
@@ -192,8 +212,8 @@ namespace test_ui_kit_detail {
             return frames;
         }
 
-        ui_kit::Window_Style Window_Style() const override {
-            return window;
+        ui_kit::Frame_Style Frame_Style() const override {
+            return frame;
         }
 
         ui_kit::Spacing Spacing() const override {
@@ -372,13 +392,31 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(theme.font.prints[0].y == 10);
         DOCTEST_CHECK(theme.font.prints[1].x == 21 + (28 - 20) / 2);
         DOCTEST_CHECK(theme.font.prints[1].y == 10);
-        // The window frame follows the alt chrome, not the colony's.
+        // The window frame follows the alt chrome, not the colony's:
+        // 4 + 5 + 4 + 5 band lines, and the 5th line of a 5 px side
+        // repeats the profile's last entry.
         test::fakes::Reset_All_();
-        ui_kit::Draw_Window_Frame(theme, 0, 0, 100, 50, "Alt");
-        DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 2);
-        DOCTEST_CHECK(test::fakes::g_box_calls[0].color == 200);
-        DOCTEST_CHECK(test::fakes::g_box_calls[1].color == 201);
-        DOCTEST_CHECK(test::fakes::g_box_calls[1].x == 1);
+        ui_kit::Window_Frame frame(0, 0, 100, 50, theme);
+        frame.Draw("Alt");
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 18);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 0);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 0);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x2 == 99);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 20);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].y1 == 3);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].color == 23);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[8].y1 == 45);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[8].color == 23);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[17].x1 == 95);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[17].y1 == 4);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[17].y2 == 45);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[17].color == 23);
+        DOCTEST_CHECK(test::fakes::g_box_calls.empty());
+        // The two tab labels printed above, plus the frame title.
+        DOCTEST_REQUIRE(theme.font.prints.size() == 3);
+        DOCTEST_CHECK(theme.font.prints[2].x == 35);
+        DOCTEST_CHECK(theme.font.prints[2].y == 4);
+        DOCTEST_CHECK(theme.font.prints[2].text == "Alt");
     }
 
     DOCTEST_TEST_CASE("colony theme falls back to a flat fill when its frames are missing") {
@@ -472,23 +510,57 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(theme.Tab_Height() == 24);
         DOCTEST_CHECK(theme.Tab_Label_Y_Offset() == 8);
 
-        // The window style is the colony frame: light outer line,
-        // dark inner line, style-4 title at y 8.
-        const ui_kit::Window_Style window = theme.Window_Style();
-        DOCTEST_CHECK(window.frame_outer == 244);
-        DOCTEST_CHECK(window.frame_inner == 230);
-        DOCTEST_CHECK(window.title_y == 8);
-        DOCTEST_REQUIRE(window.title_font != nullptr);
+        // The frame style is the colony frame: the bevelled metal
+        // band, 11/12/12/10 px per side, content inset the same,
+        // style-4 title at y 8, 24 px bottom bar.
+        const ui_kit::Frame_Style frame = theme.Frame_Style();
+        DOCTEST_CHECK(frame.thickness_left == 11);
+        DOCTEST_CHECK(frame.thickness_right == 12);
+        DOCTEST_CHECK(frame.thickness_top == 12);
+        DOCTEST_CHECK(frame.thickness_bottom == 10);
+        DOCTEST_CHECK(frame.inset_left == 11);
+        DOCTEST_CHECK(frame.inset_right == 12);
+        DOCTEST_CHECK(frame.inset_top == 12);
+        DOCTEST_CHECK(frame.inset_bottom == 10);
+        DOCTEST_REQUIRE(frame.profile.size() == 11);
+        DOCTEST_CHECK(frame.profile[0] == 234);
+        DOCTEST_CHECK(frame.profile[3] == 239);
+        DOCTEST_CHECK(frame.profile[9] == 236);
+        DOCTEST_CHECK(frame.title_y == 8);
+        DOCTEST_CHECK(frame.bottom_bar_h == 24);
+        DOCTEST_REQUIRE(frame.title_font != nullptr);
         test::fakes::Reset_All_();
         test::fakes::g_string_width = 70;
-        ui_kit::Draw_Window_Frame(theme, 0, 0, 640, 480, "Settings");
-        DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 2);
-        DOCTEST_CHECK(test::fakes::g_box_calls[0].x == 0);
-        DOCTEST_CHECK(test::fakes::g_box_calls[0].width == 640);
-        DOCTEST_CHECK(test::fakes::g_box_calls[0].color == 244);
-        DOCTEST_CHECK(test::fakes::g_box_calls[1].x == 1);
-        DOCTEST_CHECK(test::fakes::g_box_calls[1].width == 638);
-        DOCTEST_CHECK(test::fakes::g_box_calls[1].color == 230);
+        ui_kit::Window_Frame window(0, 0, 640, 480, theme);
+        window.Draw("Settings");
+        // 12 + 10 + 11 + 12 band lines; the top band's 12th line
+        // repeats the profile's last entry (its thickness exceeds
+        // the profile).
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 45);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 0);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 0);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x2 == 639);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 234);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[9].y1 == 9);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[9].x1 == 9);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[9].x2 == 630);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[9].color == 236);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[10].y1 == 10);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[10].color == 234);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[11].y1 == 11);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[11].x1 == 11);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[11].x2 == 628);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[11].color == 234);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[12].y1 == 479);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[12].color == 234);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[21].y1 == 470);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[21].color == 234);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[22].x1 == 0);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[22].y1 == 0);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[22].y2 == 479);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[33].x1 == 639);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[33].y1 == 0);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[33].y2 == 479);
         DOCTEST_CHECK(test::fakes::g_font_style == 4);
         DOCTEST_REQUIRE(test::fakes::g_print_calls.size() == 1);
         DOCTEST_CHECK(test::fakes::g_print_calls[0].x == (640 - 70) / 2);
@@ -507,6 +579,7 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(spacing.row_gap == 1);
         DOCTEST_CHECK(spacing.Row_Pitch() == 31);
         DOCTEST_CHECK(spacing.header_to_first_row == 3);
+        DOCTEST_CHECK(spacing.list_footing == 4);
         DOCTEST_CHECK(spacing.list_to_info == 4);
         DOCTEST_CHECK(spacing.info_to_bar == 7);
 
@@ -518,30 +591,34 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(style.divider_left == 233);
         DOCTEST_CHECK(style.divider_mid == 235);
         DOCTEST_CHECK(style.divider_right == 232);
+        DOCTEST_CHECK(style.plate_face == 233);
 
-        // The settings screen's panel and header position: header
-        // 32..53, so the first row starts 3 px below it at 57.
-        ui_kit::List_Layout layout(8, 30, 624, 619, 32, 22, 10, spacing);
+        // The settings screen's panel, positioned by its frame:
+        // the content starts at x 11, so the panel is 11..627;
+        // header 32..53, so the first row starts 3 px below it
+        // at 57.
+        ui_kit::List_Layout layout(11, 30, 617, 619, 32, 22, 10, spacing);
         DOCTEST_CHECK(layout.first_row_y() == 57);
         DOCTEST_CHECK(layout.row_y(0) == 57);
         DOCTEST_CHECK(layout.row_y(1) == 88);
         DOCTEST_CHECK(layout.row_y(9) == 336);
         DOCTEST_CHECK(layout.row_pitch() == 31);
         DOCTEST_CHECK(layout.row_height() == 30);
-        // The panel ends at the last row's bottom edge, 365.
-        DOCTEST_CHECK(layout.panel_h() == 336);
-        DOCTEST_CHECK(layout.panel_y() + layout.panel_h() - 1 == 365);
+        // The panel ends list_footing below the last row's bottom
+        // edge, 369.
+        DOCTEST_CHECK(layout.panel_h() == 340);
+        DOCTEST_CHECK(layout.panel_y() + layout.panel_h() - 1 == 369);
         // The scroll track spans the rows, first top to last bottom.
         DOCTEST_CHECK(layout.scroll_track_y() == 57);
         DOCTEST_CHECK(layout.scroll_track_h() == 309);
-        // The description box starts 4 px below the last row.
-        DOCTEST_CHECK(layout.info_y() == 370);
+        // The description box starts 4 px below the panel.
+        DOCTEST_CHECK(layout.info_y() == 374);
     }
 
     DOCTEST_TEST_CASE("list background frames every row and leaves the gap empty") {
         using namespace test_ui_kit_detail;
         Fake_Theme theme;
-        ui_kit::List_Layout layout(8, 30, 624, 619, 32, 22, 10,
+        ui_kit::List_Layout layout(11, 30, 617, 619, 32, 22, 10,
             theme.Spacing());
 
         test::fakes::Reset_All_();
@@ -549,20 +626,19 @@ DOCTEST_TEST_SUITE("ui kit") {
 
         // One panel fill, one panel border box.
         DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 1);
-        DOCTEST_CHECK(test::fakes::g_box_calls[0].x == 8);
+        DOCTEST_CHECK(test::fakes::g_box_calls[0].x == 11);
         DOCTEST_CHECK(test::fakes::g_box_calls[0].y == 30);
-        DOCTEST_CHECK(test::fakes::g_box_calls[0].width == 624);
-        DOCTEST_CHECK(test::fakes::g_box_calls[0].height == 336);
+        DOCTEST_CHECK(test::fakes::g_box_calls[0].width == 617);
+        DOCTEST_CHECK(test::fakes::g_box_calls[0].height == 340);
         DOCTEST_CHECK(test::fakes::g_box_calls[0].color == 234);
-        // Panel fill plus five frame lines per row, except the last
-        // row's trailing shade (the panel border is its bottom
-        // edge): 1 + 9 * 5 + 4 = 50 fills.
-        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 50);
+        // Panel fill plus five frame lines per row and the
+        // three-line footing: 1 + 10 * 5 + 3 = 54 fills.
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 54);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 230);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 8);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 11);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 30);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x2 == 631);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y2 == 365);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x2 == 627);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y2 == 369);
         // Row 0 is a framed cell: light lines at 57 and 85, shade
         // lines just inside at 58 and 84, and the trailing shade
         // at 86; row 1 starts at 88, so the 1 px gap at 87 is empty
@@ -572,7 +648,7 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(test::fakes::g_fill_calls[1].y1 == 57);
         DOCTEST_CHECK(test::fakes::g_fill_calls[1].y2 == 57);
         DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 241);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].x1 == 9);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].x1 == 12);
         DOCTEST_CHECK(test::fakes::g_fill_calls[1].x2 == 619);
         DOCTEST_CHECK(test::fakes::g_fill_calls[2].y1 == 58);
         DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 235);
@@ -586,8 +662,9 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(test::fakes::g_fill_calls[6].color == 241);
         DOCTEST_CHECK(test::fakes::g_fill_calls[6].x2 == 619);
         // Last row's top light line at 336, shade at 337, shade at
-        // 363, bottom light line at 364 -- and no trailing shade
-        // after it: the panel border at 365 is its bottom edge.
+        // 363, bottom light line at 364, trailing shade at 365 --
+        // and the footing below it: shade at 366, shade at 367,
+        // light at 368, the panel border at 369 its bottom edge.
         DOCTEST_CHECK(test::fakes::g_fill_calls[46].y1 == 336);
         DOCTEST_CHECK(test::fakes::g_fill_calls[46].color == 241);
         DOCTEST_CHECK(test::fakes::g_fill_calls[47].y1 == 337);
@@ -597,10 +674,18 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(test::fakes::g_fill_calls[49].y1 == 364);
         DOCTEST_CHECK(test::fakes::g_fill_calls[49].y2 == 364);
         DOCTEST_CHECK(test::fakes::g_fill_calls[49].color == 241);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[50].y1 == 365);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[50].color == 235);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[51].y1 == 366);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[51].color == 235);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[52].y1 == 367);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[52].color == 235);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[53].y1 == 368);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[53].color == 241);
         for (const test::fakes::Fill_Call& fill :
             test::fakes::g_fill_calls) {
             DOCTEST_CHECK(fill.y1 != 87);
-            DOCTEST_CHECK(fill.y1 != 365);
+            DOCTEST_CHECK(fill.y1 != 369);
         }
     }
 
@@ -701,19 +786,134 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(layout.first_row_y() == 59);
         DOCTEST_CHECK(layout.row_y(1) == 81);
         DOCTEST_CHECK(layout.row_y(9) == 257);
-        DOCTEST_CHECK(layout.panel_h() == 247);
+        DOCTEST_CHECK(layout.panel_h() == 253);
         DOCTEST_CHECK(layout.scroll_track_h() == 218);
-        DOCTEST_CHECK(layout.info_y() == 283);
+        DOCTEST_CHECK(layout.info_y() == 289);
 
-        // The background follows the alt colours, not the colony's.
+        // The background follows the alt colours, not the colony's:
+        // five frame lines per row including the last row's
+        // trailing shade, and the three-line footing against the
+        // border -- the taller footing leaves plain interior above
+        // it, so no fill covers 277 or 278.
         test::fakes::Reset_All_();
         ui_kit::Draw_List_Background(theme, layout);
-        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 50);
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 54);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 10);
         DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 21);
         DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 22);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[50].y1 == 276);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[50].color == 22);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[51].y1 == 279);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[51].color == 22);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[52].y1 == 280);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[52].color == 22);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[53].y1 == 281);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[53].color == 21);
+        for (const test::fakes::Fill_Call& fill :
+            test::fakes::g_fill_calls) {
+            DOCTEST_CHECK(fill.y1 != 277);
+            DOCTEST_CHECK(fill.y1 != 278);
+            DOCTEST_CHECK(fill.y1 != 282);
+        }
         DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 1);
         DOCTEST_CHECK(test::fakes::g_box_calls[0].color == 11);
-        DOCTEST_CHECK(test::fakes::g_box_calls[0].height == 247);
+        DOCTEST_CHECK(test::fakes::g_box_calls[0].height == 253);
+    }
+
+    DOCTEST_TEST_CASE("window frame derives the content rect from the theme") {
+        using namespace test_ui_kit_detail;
+        // The fake frame: 3 px on every side, so the content is the
+        // window shrunk by 3 on each side.
+        Fake_Theme fake;
+        ui_kit::Window_Frame fake_frame(0, 0, 100, 50, fake);
+        DOCTEST_CHECK(fake_frame.content_x() == 3);
+        DOCTEST_CHECK(fake_frame.content_y() == 3);
+        DOCTEST_CHECK(fake_frame.content_w() == 94);
+        DOCTEST_CHECK(fake_frame.content_h() == 44);
+        DOCTEST_CHECK(fake_frame.content_right() == 97);
+        DOCTEST_CHECK(fake_frame.content_bottom() == 47);
+        DOCTEST_CHECK(fake_frame.bottom_bar_y(24) == 23);
+        DOCTEST_CHECK(fake_frame.title_y() == 8);
+        // The alt frame: uneven insets, so each side derives
+        // separately; the bottom bar is 30 px tall.
+        Alt_Theme alt;
+        ui_kit::Window_Frame alt_frame(10, 20, 200, 100, alt);
+        DOCTEST_CHECK(alt_frame.content_x() == 15);
+        DOCTEST_CHECK(alt_frame.content_y() == 27);
+        DOCTEST_CHECK(alt_frame.content_w() == 189);
+        DOCTEST_CHECK(alt_frame.content_h() == 85);
+        DOCTEST_CHECK(alt_frame.content_right() == 204);
+        DOCTEST_CHECK(alt_frame.content_bottom() == 112);
+        DOCTEST_CHECK(alt_frame.bottom_bar_y(30) == 82);
+        DOCTEST_CHECK(alt_frame.title_y() == 24);
+        // The colony frame at dialog size: the home-star name dialog
+        // is 240x148 at (155, 146), so its content is 217x126 at
+        // (166, 158) and its 24 px bottom bar starts at y 260.
+        const s_colors title = {{234, 238, 240, 242, 243, 244, 246, 247}};
+        ui_kit::Colony_Theme colony(ui_kit::Frame(), ui_kit::Frame(),
+            title);
+        ui_kit::Window_Frame dialog(155, 146, 240, 148, colony);
+        DOCTEST_CHECK(dialog.content_x() == 166);
+        DOCTEST_CHECK(dialog.content_y() == 158);
+        DOCTEST_CHECK(dialog.content_w() == 217);
+        DOCTEST_CHECK(dialog.content_h() == 126);
+        DOCTEST_CHECK(dialog.content_right() == 383);
+        DOCTEST_CHECK(dialog.content_bottom() == 284);
+        DOCTEST_CHECK(dialog.bottom_bar_y(24) == 260);
+        DOCTEST_CHECK(dialog.title_y() == 154);
+    }
+
+    DOCTEST_TEST_CASE("window frame draws mitred bands and centres the title") {
+        using namespace test_ui_kit_detail;
+        Fake_Theme theme;
+        ui_kit::Window_Frame frame(0, 0, 100, 50, theme);
+
+        test::fakes::Reset_All_();
+        frame.Draw("Alt");
+
+        // 3 + 3 + 3 + 3 band lines, no boxes: the frame is fills.
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 12);
+        DOCTEST_CHECK(test::fakes::g_box_calls.empty());
+        // Top band: each line stops one pixel further in, so the
+        // corners meet on a 45-degree seam.
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 0);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 0);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x2 == 99);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 10);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].x1 == 2);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].y1 == 2);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].x2 == 97);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 12);
+        // Bottom band, same seam at the bottom corners.
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].x1 == 0);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].y1 == 49);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].x2 == 99);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].color == 10);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[5].x1 == 2);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[5].y1 == 47);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[5].x2 == 97);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[5].color == 12);
+        // Side bands run between the mitres, not past them.
+        DOCTEST_CHECK(test::fakes::g_fill_calls[6].x1 == 0);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[6].y1 == 0);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[6].y2 == 49);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[6].color == 10);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[8].x1 == 2);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[8].y1 == 2);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[8].y2 == 47);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[8].color == 12);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[9].x1 == 99);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[9].y1 == 0);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[9].y2 == 49);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[9].color == 10);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[11].x1 == 97);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[11].y1 == 2);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[11].y2 == 47);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[11].color == 12);
+        // The title is centred in the window, at the theme's title y.
+        DOCTEST_REQUIRE(theme.font.prints.size() == 1);
+        DOCTEST_CHECK(theme.font.prints[0].x == 35);
+        DOCTEST_CHECK(theme.font.prints[0].y == 8);
+        DOCTEST_CHECK(theme.font.prints[0].text == "Alt");
     }
 } // DOCTEST_TEST_SUITE("ui kit")
