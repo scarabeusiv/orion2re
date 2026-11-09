@@ -18,6 +18,8 @@
 #include "game/fonts.h"
 #include "game/graphics.h"
 #include "game/mox2.h"
+#include "game/palette.h"
+#include "game/platform.h"
 #include "game/russ.h"
 #include "game/settings_screen.h"
 #include "game/timer.h"
@@ -306,6 +308,19 @@ namespace SETTINGS_SCREEN {
             bool show_all = false;
             int16_t tab_fields[CATEGORY_COUNT];
             int16_t row_fields[ROWS_PER_PAGE];
+            // Resolution dropdown popup (fleet-popup shape): a small
+            // window over the screen, the values as rows, a blue bar
+            // on the selected one. Open while the popup is up.
+            bool resolution_popup_open = false;
+            std::vector<config::s_resolution_option> resolution_options;
+            int resolution_popup_selected = 0;
+            int16_t resolution_popup_x = 0;
+            int16_t resolution_popup_y = 0;
+            int16_t resolution_popup_w = 0;
+            int16_t resolution_popup_h = 0;
+            int16_t resolution_popup_first_row_y = 0;
+            int16_t resolution_popup_row_step = 0;
+            std::vector<int16_t> resolution_popup_fields;
         };
 
         s_settings_screen_state g_state;
@@ -611,6 +626,50 @@ namespace SETTINGS_SCREEN {
             return APPLY_LIVE;
         }
 
+        bool Is_Resolution_Row(const config::s_settings_row& row) {
+            return row.path == config::kResolutionRowPath;
+        }
+
+        // The Resolution row writes both window settings together,
+        // then reloads once, mirroring Apply_Row's save/reload/status
+        // shape. The width is written first; a failed height write
+        // after a saved width reports the partial save.
+        e_apply_result Apply_Resolution(int width, int height,
+            const std::string& display_text) {
+            if (!g_state.target_ready) {
+                g_state.status = "Settings cannot be saved: no configuration file target.";
+                return APPLY_FAILED;
+            }
+            std::string error;
+            if (!Ensure_User_Config(&error)) {
+                g_state.status = "Could not save 'Resolution': " + error + ".";
+                return APPLY_FAILED;
+            }
+            config::s_cfg_diagnostic diagnostic;
+            if (!config::Write_Setting(g_state.target_path,
+                    config::Split_Setting_Path("interface.window_width"),
+                    std::to_string(width), &diagnostic)) {
+                g_state.status = "Could not save 'Resolution': " + diagnostic.message;
+                return APPLY_FAILED;
+            }
+            if (!config::Write_Setting(g_state.target_path,
+                    config::Split_Setting_Path("interface.window_height"),
+                    std::to_string(height), &diagnostic)) {
+                g_state.status = "Saved the width, but could not save the height (" +
+                    diagnostic.message + ").";
+                return APPLY_SAVED;
+            }
+            if (!config::Reload_Active_Config_Groups(false, &diagnostic)) {
+                g_state.status = "Saved to orion2re.cfg, but the live reload failed (" +
+                    diagnostic.message +
+                    "). The new value takes effect after a restart.";
+                return APPLY_SAVED;
+            }
+            g_state.status = "'Resolution' set to " + display_text +
+                "; restart the game for it to take effect.";
+            return APPLY_LIVE;
+        }
+
         // Rebuilds the tab, row and navigation fields for the current
         // page. Only call when no edit field is open: the edit field is
         // added separately by Open_Edit and removed by Commit/Cancel_Edit.
@@ -842,6 +901,140 @@ namespace SETTINGS_SCREEN {
                 type->values[choice].name);
         }
 
+        // The Resolution dropdown opens as a small popup window, in
+        // the shape of the fleet-selection popup (fleetpop.cpp): a
+        // small window over the screen, the values as rows, a blue
+        // bar on the selected one. The fleet box's own frame cannot
+        // be reused as-is -- it is fixed-width BUFFER0.LBX bitmap
+        // art (top/middle/bottom caps sized to the fleet box), and
+        // its selection is a ship-icon sprite -- so the popup uses
+        // the settings screen's own colony chrome (thin border,
+        // dark interior) for the frame and a filled blue bar for the
+        // selection, the same blue as the active tab and Done button.
+        // The shared fields::Get_List_Field picker is not used here:
+        // it draws its own unframed list and cannot render this shape.
+        void Open_Resolution_Popup(int visible) {
+            int current_width = 0;
+            int current_height = 0;
+            if (!config::Get_Current_Resolution(&current_width, &current_height)) {
+                g_state.status = "Could not read the current window size.";
+                return;
+            }
+            g_state.resolution_options =
+                config::Resolution_Options(current_width, current_height);
+            int selected = 0;
+            for (size_t index = 0; index < g_state.resolution_options.size(); ++index) {
+                if (g_state.resolution_options[index].width == current_width &&
+                    g_state.resolution_options[index].height == current_height) {
+                    selected = (int)index;
+                }
+            }
+            g_state.resolution_popup_selected = selected;
+
+            // Geometry: anchored to the row's value area, sized to
+            // the longest label, clamped to the screen like the
+            // dropdown in Open_Dropdown.
+            const int16_t y_step = (int16_t)(fonts::Get_Font_Height() +
+                fonts::Get_Font_Vertical_Spacing());
+            int16_t content_w = 16;
+            for (const config::s_resolution_option& option :
+                g_state.resolution_options) {
+                content_w = (int16_t)std::max<int32_t>(content_w,
+                    fonts::Get_String_Width(option.label.c_str()));
+            }
+            const int16_t pad_x = 8;
+            const int16_t pad_top = 6;
+            const int16_t pad_bottom = 6;
+            const int16_t popup_w = (int16_t)(content_w + pad_x * 2 + 2);
+            const int16_t popup_h = (int16_t)(
+                (int16_t)g_state.resolution_options.size() * y_step +
+                pad_top + pad_bottom + 2);
+            int16_t x = VALUE_X;
+            if (x + popup_w > 632) {
+                x = 632 - popup_w;
+            }
+            int16_t y = FIRST_ROW_Y +
+                (int16_t)(visible - g_state.page * ROWS_PER_PAGE) * ROW_HEIGHT;
+            if (y + popup_h > 470) {
+                y = 470 - popup_h;
+            }
+            if (y < 30) {
+                y = 30;
+            }
+            g_state.resolution_popup_x = x;
+            g_state.resolution_popup_y = y;
+            g_state.resolution_popup_w = popup_w;
+            g_state.resolution_popup_h = popup_h;
+            g_state.resolution_popup_first_row_y = (int16_t)(y + 1 + pad_top);
+            g_state.resolution_popup_row_step = y_step;
+
+            // One hidden field per option row, so clicks land on rows
+            // and hover moves the blue bar. The screen's fields are
+            // stashed and restored around the popup, as in Open_Dropdown.
+            fields::Mark_Fields();
+            fields::Clear_Fields();
+            g_state.resolution_popup_fields.clear();
+            for (size_t index = 0; index < g_state.resolution_options.size(); ++index) {
+                const int16_t row_y = (int16_t)(
+                    g_state.resolution_popup_first_row_y + (int16_t)index * y_step);
+                g_state.resolution_popup_fields.push_back(
+                    fields::Add_Hidden_Field(x + 1, row_y,
+                        (int16_t)(x + popup_w - 2),
+                        (int16_t)(row_y + y_step - 1), "", 0));
+            }
+            g_state.resolution_popup_open = true;
+
+            // Modal loop, modelled on fields::Get_List_Field: hover
+            // moves the blue bar, a click chooses, Esc cancels.
+            int choice = -1;
+            while (true) {
+                platform::Check_Exit();
+                timer::Mark_Time();
+                const int16_t input = fields::Get_Input();
+                if (input == -1) {
+                    choice = -1;
+                    break;
+                }
+                if (input != 0) {
+                    for (size_t index = 0;
+                        index < g_state.resolution_popup_fields.size(); ++index) {
+                        if (input == g_state.resolution_popup_fields[index]) {
+                            choice = (int)index;
+                            break;
+                        }
+                    }
+                    if (choice >= 0) {
+                        break;
+                    }
+                }
+                const int16_t scan = fields::Scan_Input();
+                if (scan > 0) {
+                    for (size_t index = 0;
+                        index < g_state.resolution_popup_fields.size(); ++index) {
+                        if (scan == g_state.resolution_popup_fields[index]) {
+                            g_state.resolution_popup_selected = (int)index;
+                            break;
+                        }
+                    }
+                }
+                video::Set_Page_Off();
+                fields::Invoke_Auto_Function();
+                palette::Refresh_Palette();
+                platform::Toggle_Pages_Stub();
+                timer::Release_Time(3);
+            }
+            fields::Release_Fields();
+            g_state.resolution_popup_open = false;
+            g_state.resolution_popup_fields.clear();
+            Rebuild_Fields();
+            if (choice < 0) {
+                return;
+            }
+            const config::s_resolution_option& option =
+                g_state.resolution_options[(size_t)choice];
+            Apply_Resolution(option.width, option.height, option.label);
+        }
+
         void Handle_Row_Click(int visible) {
             g_state.selected = visible;
             const int row_index = Visible_Row_Index(visible);
@@ -859,7 +1052,11 @@ namespace SETTINGS_SCREEN {
                     return;
                 }
                 case config::SETTINGS_WIDGET_DROPDOWN:
-                    Open_Dropdown(visible);
+                    if (Is_Resolution_Row(row)) {
+                        Open_Resolution_Popup(visible);
+                    } else {
+                        Open_Dropdown(visible);
+                    }
                     return;
                 case config::SETTINGS_WIDGET_EDIT:
                     Open_Edit(visible);
@@ -1012,6 +1209,44 @@ namespace SETTINGS_SCREEN {
             return help + " | " + meta;
         }
 
+        // The Resolution dropdown popup, in the fleet-popup shape:
+        // a small window over the screen, the values as rows, a blue
+        // bar on the selected one. Drawn by Draw_Settings_Screen
+        // while the popup is open.
+        void Draw_Resolution_Popup() {
+            if (!g_state.resolution_popup_open) {
+                return;
+            }
+            const int16_t x = g_state.resolution_popup_x;
+            const int16_t y = g_state.resolution_popup_y;
+            const int16_t w = g_state.resolution_popup_w;
+            const int16_t h = g_state.resolution_popup_h;
+            graphics::Fill(x, y, (int16_t)(x + w - 1), (int16_t)(y + h - 1),
+                PANEL_INTERIOR);
+            graphics::Box(x, y, w, h, 1, PANEL_BORDER);
+            const int16_t text_x = (int16_t)(x + 1 + 8);
+            const int16_t text_dy = (int16_t)(
+                (g_state.resolution_popup_row_step - fonts::Get_Font_Height()) / 2);
+            for (size_t index = 0; index < g_state.resolution_options.size(); ++index) {
+                const int16_t row_y = (int16_t)(
+                    g_state.resolution_popup_first_row_y +
+                    (int16_t)index * g_state.resolution_popup_row_step);
+                const int16_t row_end = (int16_t)(row_y +
+                    g_state.resolution_popup_row_step - 1);
+                if ((int)index == g_state.resolution_popup_selected) {
+                    // Blue bar around the selected value, the same blue
+                    // as the active tab and the Done button.
+                    graphics::Fill(x + 1, row_y, (int16_t)(x + w - 2), row_end,
+                        PRIMARY_FACE);
+                    fonts::Set_Font_Style(4, &g_light_text_colors);
+                } else {
+                    fonts::Set_Font_Style(4, &g_colony_colors);
+                }
+                fonts::Print(text_x, (int16_t)(row_y + text_dy),
+                    g_state.resolution_options[index].label.c_str());
+            }
+        }
+
         void Draw_Settings_Screen() {
             video::Set_Page_Off();
             graphics::Fill(0, 0, 639, 479, 0);
@@ -1135,10 +1370,19 @@ namespace SETTINGS_SCREEN {
                     // buttons. The list itself is the shared
                     // fields::Get_List_Field picker; its frame is
                     // that picker's, not the settings screen's.
-                    config::s_typed_value value;
-                    std::string value_text = config::Get_Settings_Row_Value(row, &value)
-                        ? config::Format_Leaf_Value(row.variable_id, value)
-                        : "?";
+                    std::string value_text;
+                    if (Is_Resolution_Row(row)) {
+                        int width = 0;
+                        int height = 0;
+                        value_text = config::Get_Current_Resolution(&width, &height)
+                            ? config::Format_Resolution(width, height)
+                            : "?";
+                    } else {
+                        config::s_typed_value value;
+                        value_text = config::Get_Settings_Row_Value(row, &value)
+                            ? config::Format_Leaf_Value(row.variable_id, value)
+                            : "?";
+                    }
                     value_text = Truncate_To_Width(value_text, VALUE_WIDTH - 16);
                     const int16_t text_w = fonts::Get_String_Width(value_text.c_str());
                     int16_t box_w = (int16_t)(text_w + 24);
@@ -1219,6 +1463,8 @@ namespace SETTINGS_SCREEN {
             fonts::Set_Font_Style(4, &g_colony_dim_colors);
             fonts::Print((640 - fonts::Get_String_Width(footer_note)) / 2, FOOTER_Y,
                 footer_note);
+
+            Draw_Resolution_Popup();
 
             fields::Draw_Visible_Fields();
         }
