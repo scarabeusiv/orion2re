@@ -1101,6 +1101,111 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(pressed_font.prints.size() == 1);
     }
 
+    DOCTEST_TEST_CASE("metal button draws the RETURN frame as three slices when frames are loaded") {
+        using namespace test_ui_kit_detail;
+        // A fake RETURN: 85x26, one value per column (x+1 in the
+        // rest frame, 100+x in the pressed frame), so the caps and
+        // the middle column are all distinguishable.
+        std::vector<uint8_t> normal_pixels;
+        std::vector<uint8_t> pressed_pixels;
+        for (int16_t y = 0; y < 26; ++y) {
+            for (int16_t x = 0; x < 85; ++x) {
+                normal_pixels.push_back((uint8_t)(x + 1));
+                pressed_pixels.push_back((uint8_t)(100 + x));
+            }
+        }
+        const std::string normal =
+            Make_Frame_Pixels(85, 26, normal_pixels);
+        const std::string pressed =
+            Make_Frame_Pixels(85, 26, pressed_pixels);
+        Fake_Theme theme;
+        theme.return_frames.normal =
+            ui_kit::Frame((const s_animation_header*)normal.data());
+        theme.return_frames.pressed =
+            ui_kit::Frame((const s_animation_header*)pressed.data());
+        Fake_Font pressed_font;
+        theme.buttons.label_pressed_font = &pressed_font;
+
+        Scoped_Video_Page page;
+        // A 69 px button: left dome (17), tiled middle (27),
+        // right dome (25). The caps are the frame's own pixels;
+        // the middle is column 58 of the rest frame (value 59)
+        // tiled across.
+        ui_kit::Button rest(5, 7, 69, 26, ui_kit::Button_Kind::Metal,
+            theme);
+        rest.Set_Label("MORE");
+        rest.Draw();
+        DOCTEST_CHECK(page.At(5, 7) == 1);
+        DOCTEST_CHECK(page.At(5 + 16, 7) == 17);
+        DOCTEST_CHECK(page.At(5 + 17, 7) == 59);
+        DOCTEST_CHECK(page.At(5 + 30, 7) == 59);
+        DOCTEST_CHECK(page.At(5 + 43, 7) == 59);
+        DOCTEST_CHECK(page.At(5 + 44, 7) == 61);
+        DOCTEST_CHECK(page.At(5 + 68, 7) == 85);
+        // The label is centred on the frame's height (26), through
+        // the plain label font at rest.
+        DOCTEST_REQUIRE(theme.font.prints.size() == 1);
+        DOCTEST_CHECK(theme.font.prints[0].text == "MORE");
+        DOCTEST_CHECK(theme.font.prints[0].x == 5 + (69 - 40) / 2);
+        DOCTEST_CHECK(theme.font.prints[0].y == 7 + 26 / 2 - (12 - 1) / 2);
+        DOCTEST_CHECK_FALSE(theme.font.prints[0].active);
+
+        // Pressed: the pressed frame, middle column 59 (value
+        // 159), label through the pressed font.
+        ui_kit::Button held(5, 7, 69, 26, ui_kit::Button_Kind::Metal,
+            theme);
+        held.Set_Label("MORE");
+        held.Set_State(ui_kit::Button_State::Pressed);
+        held.Draw();
+        DOCTEST_CHECK(page.At(5, 7) == 100);
+        DOCTEST_CHECK(page.At(5 + 16, 7) == 116);
+        DOCTEST_CHECK(page.At(5 + 17, 7) == 159);
+        DOCTEST_CHECK(page.At(5 + 30, 7) == 159);
+        DOCTEST_CHECK(page.At(5 + 43, 7) == 159);
+        DOCTEST_CHECK(page.At(5 + 44, 7) == 160);
+        DOCTEST_CHECK(page.At(5 + 68, 7) == 184);
+        DOCTEST_REQUIRE(pressed_font.prints.size() == 1);
+        DOCTEST_CHECK(pressed_font.prints[0].text == "MORE");
+        DOCTEST_CHECK(theme.font.prints.size() == 1);
+
+        // A missing pressed frame falls back to the rest frame.
+        theme.return_frames.pressed = ui_kit::Frame();
+        ui_kit::Button held2(5, 7, 69, 26, ui_kit::Button_Kind::Metal,
+            theme);
+        held2.Set_Label("MORE");
+        held2.Set_State(ui_kit::Button_State::Pressed);
+        held2.Draw();
+        DOCTEST_CHECK(page.At(5 + 17, 7) == 59);
+        DOCTEST_CHECK(page.At(5 + 68, 7) == 85);
+    }
+
+    DOCTEST_TEST_CASE("metal button crops the slices when narrower than the caps") {
+        using namespace test_ui_kit_detail;
+        std::vector<uint8_t> normal_pixels;
+        for (int16_t y = 0; y < 26; ++y) {
+            for (int16_t x = 0; x < 85; ++x) {
+                normal_pixels.push_back((uint8_t)(x + 1));
+            }
+        }
+        const std::string normal =
+            Make_Frame_Pixels(85, 26, normal_pixels);
+        Fake_Theme theme;
+        theme.return_frames.normal =
+            ui_kit::Frame((const s_animation_header*)normal.data());
+
+        // 30 px wide: narrower than the two caps (17 + 25), so
+        // the left dome draws whole and the right dome is cropped
+        // to 13 columns, with no middle at all.
+        Scoped_Video_Page page;
+        ui_kit::Button narrow(5, 7, 30, 26, ui_kit::Button_Kind::Metal,
+            theme);
+        narrow.Draw();
+        DOCTEST_CHECK(page.At(5, 7) == 1);
+        DOCTEST_CHECK(page.At(5 + 16, 7) == 17);
+        DOCTEST_CHECK(page.At(5 + 17, 7) == 61);
+        DOCTEST_CHECK(page.At(5 + 29, 7) == 73);
+    }
+
     DOCTEST_TEST_CASE("metal button follows a second theme's colours without component changes") {
         using namespace test_ui_kit_detail;
         Alt_Theme theme;

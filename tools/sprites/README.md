@@ -35,7 +35,27 @@ Contents:
   screen wants. The button's right edge is flat black as authored
   (it blends into the colony background there); the derived frame
   keeps it, and the settings screen's black background behind the
-  button renders it the same way.
+  button renders it the same way. The same frame also serves
+  every metal button at any width, cut into three slices at
+  runtime (sprite_art::Draw_Sprite_Frame_Three_Slice, via
+  ui_kit::Button): the left dome (columns 0..16) and the right
+  dome (columns 60..84) as-is, and a single text-free face column
+  tiled across the middle -- column 58 for the rest frame, column
+  59 for the pressed frame -- with the label rendered at runtime
+  in the game font. Column 58 is the only column that is the flat
+  face (238) for the whole text body (rows 8..16) in the rest
+  frame; column 59 is the same for the pressed frame, and column
+  58 in the pressed frame catches the orange text's fringe
+  (221/223) and must not be used there. The caps are copied
+  exactly, so a metal button's chrome is pixel-identical to the
+  RETURN's; the middle differs from the RETURN's middle only
+  where the RETURN has text (correctly omitted) and in the face's
+  dithered bands (rows 1, 7, 17, 20 rest; row 17 pressed), where
+  the tiled column holds one shade of the dither. Face-match of
+  the tiled middle against the RETURN's non-text face pixels:
+  622/897 (69.3%) rest, 710/731 (97.1%) pressed -- the rest
+  mismatches are mostly text-antialiasing pixels that a blank
+  button must not have.
 
 - `selector-frame` — COLSUM.LBX entry 4, the colony sort button
   ("Name"), 50x24, colony palette -> menu palette. The baked label

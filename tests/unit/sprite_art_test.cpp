@@ -277,6 +277,44 @@ DOCTEST_TEST_SUITE("sprite art") {
         DOCTEST_CHECK(page.At(0, 3) == 0xFF);
     }
 
+    DOCTEST_TEST_CASE("three-slice draw tiles one middle column between the caps") {
+        using namespace test_sprite_art_detail;
+        // 10x1 frame: left slice [1, 2], middle column 5 (value 6),
+        // right [9, 10].
+        const std::string frame = Make_Frame_Pixels(10, 1, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+        const auto* header = (const s_animation_header*)frame.data();
+
+        Scoped_Video_Page page;
+        sprite_art::Draw_Sprite_Frame_Three_Slice(header, 0, 0, 16, 2, 5, 2);
+        const uint8_t wide[16] = {1, 2, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 9, 10};
+        for (int16_t x = 0; x < 16; ++x) {
+            DOCTEST_CHECK(page.At(x, 0) == wide[x]);
+        }
+
+        // Same width as the source: the three slices are the frame,
+        // with the middle column tiled over the frame's own middle.
+        sprite_art::Draw_Sprite_Frame_Three_Slice(header, 0, 1, 10, 2, 5, 2);
+        const uint8_t same[10] = {1, 2, 6, 6, 6, 6, 6, 6, 9, 10};
+        for (int16_t x = 0; x < 10; ++x) {
+            DOCTEST_CHECK(page.At(x, 1) == same[x]);
+        }
+
+        // Narrower than the two caps: the left slice draws whole
+        // and the right slice is cropped, with no middle at all.
+        sprite_art::Draw_Sprite_Frame_Three_Slice(header, 0, 2, 3, 2, 5, 2);
+        const uint8_t narrow[3] = {1, 2, 9};
+        for (int16_t x = 0; x < 3; ++x) {
+            DOCTEST_CHECK(page.At(x, 2) == narrow[x]);
+        }
+
+        // A null frame, a middle column outside the frame, or
+        // slices that do not fit draw nothing.
+        sprite_art::Draw_Sprite_Frame_Three_Slice(nullptr, 0, 3, 16, 2, 5, 2);
+        sprite_art::Draw_Sprite_Frame_Three_Slice(header, 0, 3, 16, 2, 10, 2);
+        sprite_art::Draw_Sprite_Frame_Three_Slice(header, 0, 3, 16, 5, 5, 5);
+        DOCTEST_CHECK(page.At(0, 3) == 0xFF);
+    }
+
     DOCTEST_TEST_CASE("draw honours the animate clip window when clipping is on") {
         using namespace test_sprite_art_detail;
         const std::string frame = Make_Frame(4, 2, 7);
