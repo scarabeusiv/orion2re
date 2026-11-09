@@ -313,15 +313,20 @@ namespace SETTINGS_SCREEN {
         constexpr uint8_t PRIMARY_HIGHLIGHT = 154;
 
         void Draw_Metal_Button(int16_t x, int16_t y, int16_t w, int16_t h,
-            bool primary) {
+            bool primary, bool pressed) {
             const uint8_t face = primary ? PRIMARY_FACE : METAL_FACE;
             const uint8_t highlight =
                 primary ? PRIMARY_HIGHLIGHT : METAL_HIGHLIGHT;
+            // Pressed inverts the bevel (dark top/left, light
+            // bottom/right), like the colony RETURN's pressed frame:
+            // a latched toggle stays lit in this state.
+            const uint8_t top = pressed ? METAL_SHADOW : highlight;
+            const uint8_t bottom = pressed ? highlight : METAL_SHADOW;
             graphics::Fill(x, y, x + w - 1, y + h - 1, face);
-            graphics::Fill(x, y, x + w - 1, y, highlight);
-            graphics::Fill(x, y, x, y + h - 1, highlight);
-            graphics::Fill(x, y + h - 1, x + w - 1, y + h - 1, METAL_SHADOW);
-            graphics::Fill(x + w - 1, y, x + w - 1, y + h - 1, METAL_SHADOW);
+            graphics::Fill(x, y, x + w - 1, y, top);
+            graphics::Fill(x, y, x, y + h - 1, top);
+            graphics::Fill(x, y + h - 1, x + w - 1, y + h - 1, bottom);
+            graphics::Fill(x + w - 1, y, x + w - 1, y + h - 1, bottom);
         }
 
         enum e_apply_result {
@@ -1754,28 +1759,34 @@ namespace SETTINGS_SCREEN {
             // Bottom bar: the category selectors on the left, like
             // the colony summary's sort buttons (Name / Population
             // / Food ...); Show more and RETURN side by side on
-            // the right, on the same line, never wrapping. Show
-            // more is a blue selector button, like the colony
-            // screen's "No Enemy Presence" selector; RETURN is a
-            // raised metallic button, like the colony RETURN.
+            // the right, on the same line, never wrapping. Both
+            // are raised metallic buttons, like the colony RETURN;
+            // Show more is a toggle that stays pressed while the
+            // secondary rows are shown.
             Make_Tab_Bar().Draw();
             const auto draw_action_button = [](int16_t x, int16_t w, const char* label,
-                bool primary) {
-                Draw_Metal_Button(x, NAV_Y, w, NAV_Y_END - NAV_Y, primary);
+                bool primary, bool pressed) {
+                Draw_Metal_Button(x, NAV_Y, w, NAV_Y_END - NAV_Y, primary, pressed);
                 fonts::Set_Font_Style(4,
                     primary ? &g_light_text_colors : &g_dark_text_colors);
                 const int16_t label_x = (int16_t)(x +
                     (w - fonts::Get_String_Width(label)) / 2);
                 fonts::Print(label_x, FOOTER_Y, label);
             };
+            // Show more is a RETURN-style metal toggle: the metal
+            // face (not the blue primary face), latched pressed
+            // while the secondary rows are shown, so it stays lit
+            // like RETURN before it closes. Clicking it again
+            // turns it off.
             draw_action_button(SHOW_MORE_X, SHOW_MORE_W,
-                g_state.show_all ? "Show less" : "Show more", true);
+                g_state.show_all ? "Show less" : "Show more", false,
+                g_state.show_all);
             const s_animation_header* return_frame = Return_Frame();
             if (return_frame != nullptr) {
                 sprite_art::Draw_Sprite_Frame(return_frame, RETURN_X,
                     Return_Button_Y());
             } else {
-                draw_action_button(RETURN_X, RETURN_W, "RETURN", false);
+                draw_action_button(RETURN_X, RETURN_W, "RETURN", false, false);
             }
 
             Draw_Resolution_Popup();
