@@ -95,12 +95,22 @@ namespace test_ui_kit_detail {
         Fake_Font font;
         ui_kit::Tab_Frames frames;
         ui_kit::Window_Style window;
+        ui_kit::Spacing spacing;
+        ui_kit::List_Style list;
 
         Fake_Theme() {
             window.frame_outer = 244;
             window.frame_inner = 230;
             window.title_font = &font;
             window.title_y = 8;
+            spacing.row_height = 30;
+            spacing.row_gap = 1;
+            spacing.header_to_first_row = 3;
+            spacing.list_to_info = 4;
+            spacing.info_to_bar = 7;
+            list.interior = 230;
+            list.border = 234;
+            list.separator = 229;
         }
 
         const ui_kit::Font& Tab_Font() const override {
@@ -113,6 +123,14 @@ namespace test_ui_kit_detail {
 
         ui_kit::Window_Style Window_Style() const override {
             return window;
+        }
+
+        ui_kit::Spacing Spacing() const override {
+            return spacing;
+        }
+
+        ui_kit::List_Style List_Style() const override {
+            return list;
         }
 
         int16_t Tab_Padding() const override {
@@ -140,12 +158,22 @@ namespace test_ui_kit_detail {
         Fake_Font font;
         ui_kit::Tab_Frames frames;
         ui_kit::Window_Style window;
+        ui_kit::Spacing spacing;
+        ui_kit::List_Style list;
 
         Alt_Theme() {
             window.frame_outer = 200;
             window.frame_inner = 201;
             window.title_font = &font;
             window.title_y = 4;
+            spacing.row_height = 20;
+            spacing.row_gap = 2;
+            spacing.header_to_first_row = 5;
+            spacing.list_to_info = 6;
+            spacing.info_to_bar = 8;
+            list.interior = 10;
+            list.border = 11;
+            list.separator = 12;
         }
 
         const ui_kit::Font& Tab_Font() const override {
@@ -158,6 +186,14 @@ namespace test_ui_kit_detail {
 
         ui_kit::Window_Style Window_Style() const override {
             return window;
+        }
+
+        ui_kit::Spacing Spacing() const override {
+            return spacing;
+        }
+
+        ui_kit::List_Style List_Style() const override {
+            return list;
         }
 
         int16_t Tab_Padding() const override {
@@ -450,5 +486,114 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(test::fakes::g_print_calls[0].x == (640 - 70) / 2);
         DOCTEST_CHECK(test::fakes::g_print_calls[0].y == 8);
         DOCTEST_CHECK(test::fakes::g_print_calls[0].text_copy == "Settings");
+    }
+    DOCTEST_TEST_CASE("colony spacing lays list rows out on a 31 px pitch with a 1 px gap") {
+        using namespace test_ui_kit_detail;
+        const s_colors title = {{234, 238, 240, 242, 243, 244, 246, 247}};
+        ui_kit::Colony_Theme theme(ui_kit::Frame(), ui_kit::Frame(), title);
+
+        // Measured from the colony summary screen (colsum.cpp):
+        // 30 px rows, y_row_end advancing 31 px per row.
+        const ui_kit::Spacing spacing = theme.Spacing();
+        DOCTEST_CHECK(spacing.row_height == 30);
+        DOCTEST_CHECK(spacing.row_gap == 1);
+        DOCTEST_CHECK(spacing.Row_Pitch() == 31);
+        DOCTEST_CHECK(spacing.header_to_first_row == 3);
+        DOCTEST_CHECK(spacing.list_to_info == 4);
+        DOCTEST_CHECK(spacing.info_to_bar == 7);
+
+        const ui_kit::List_Style style = theme.List_Style();
+        DOCTEST_CHECK(style.interior == 230);
+        DOCTEST_CHECK(style.border == 234);
+        DOCTEST_CHECK(style.separator == 229);
+
+        // The settings screen's panel and header position: header
+        // 32..53, so the first row starts 3 px below it at 57.
+        ui_kit::List_Layout layout(8, 30, 624, 619, 32, 22, 10, spacing);
+        DOCTEST_CHECK(layout.first_row_y() == 57);
+        DOCTEST_CHECK(layout.row_y(0) == 57);
+        DOCTEST_CHECK(layout.row_y(1) == 88);
+        DOCTEST_CHECK(layout.row_y(9) == 336);
+        DOCTEST_CHECK(layout.row_pitch() == 31);
+        DOCTEST_CHECK(layout.row_height() == 30);
+        // The panel ends at the last row's bottom edge, 365.
+        DOCTEST_CHECK(layout.panel_h() == 336);
+        DOCTEST_CHECK(layout.panel_y() + layout.panel_h() - 1 == 365);
+        // The scroll track spans the rows, first top to last bottom.
+        DOCTEST_CHECK(layout.scroll_track_y() == 57);
+        DOCTEST_CHECK(layout.scroll_track_h() == 309);
+        // The description box starts 4 px below the last row.
+        DOCTEST_CHECK(layout.info_y() == 370);
+    }
+
+    DOCTEST_TEST_CASE("list background frames every row and leaves the gap empty") {
+        using namespace test_ui_kit_detail;
+        Fake_Theme theme;
+        ui_kit::List_Layout layout(8, 30, 624, 619, 32, 22, 10,
+            theme.Spacing());
+
+        test::fakes::Reset_All_();
+        ui_kit::Draw_List_Background(theme, layout);
+
+        // One panel fill, one panel border box.
+        DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 1);
+        DOCTEST_CHECK(test::fakes::g_box_calls[0].x == 8);
+        DOCTEST_CHECK(test::fakes::g_box_calls[0].y == 30);
+        DOCTEST_CHECK(test::fakes::g_box_calls[0].width == 624);
+        DOCTEST_CHECK(test::fakes::g_box_calls[0].height == 336);
+        DOCTEST_CHECK(test::fakes::g_box_calls[0].color == 234);
+        // Panel fill plus two frame lines per row, except the last
+        // row's bottom line (the panel border is its bottom edge):
+        // 1 + 10 + 9 = 20 fills.
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 20);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 230);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 8);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 30);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x2 == 631);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y2 == 365);
+        // Row 0 is framed at 57 and 86; row 1 starts at 88, so the
+        // 1 px gap at 87 is empty panel background -- no fill
+        // covers it, and no line crosses the scrollbar strip: the
+        // frame lines stop at the list edge, x 619.
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].y1 == 57);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].y2 == 57);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 229);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].x1 == 9);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].x2 == 619);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].y1 == 86);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].y2 == 86);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].y1 == 88);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].x2 == 619);
+        // Last row's top line at 336, no bottom line after it.
+        DOCTEST_CHECK(test::fakes::g_fill_calls[19].y1 == 336);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[19].y2 == 336);
+    }
+
+    DOCTEST_TEST_CASE("list layout follows a second theme's spacing without component changes") {
+        using namespace test_ui_kit_detail;
+        Alt_Theme theme;
+        const ui_kit::Spacing spacing = theme.Spacing();
+        DOCTEST_CHECK(spacing.row_height == 20);
+        DOCTEST_CHECK(spacing.row_gap == 2);
+        DOCTEST_CHECK(spacing.Row_Pitch() == 22);
+
+        // Alt metrics: header 32..53, first row 5 px below it.
+        ui_kit::List_Layout layout(8, 30, 624, 619, 32, 22, 10, spacing);
+        DOCTEST_CHECK(layout.first_row_y() == 59);
+        DOCTEST_CHECK(layout.row_y(1) == 81);
+        DOCTEST_CHECK(layout.row_y(9) == 257);
+        DOCTEST_CHECK(layout.panel_h() == 247);
+        DOCTEST_CHECK(layout.scroll_track_h() == 218);
+        DOCTEST_CHECK(layout.info_y() == 283);
+
+        // The background follows the alt colours, not the colony's.
+        test::fakes::Reset_All_();
+        ui_kit::Draw_List_Background(theme, layout);
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 20);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 10);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 12);
+        DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 1);
+        DOCTEST_CHECK(test::fakes::g_box_calls[0].color == 11);
+        DOCTEST_CHECK(test::fakes::g_box_calls[0].height == 247);
     }
 } // DOCTEST_TEST_SUITE("ui kit")
