@@ -193,8 +193,9 @@ namespace SETTINGS_SCREEN {
         // Colony chrome, in menu-palette indices (MAINMENU.LBX
         // entries 1/2 palette: 230-249 is a blue-grey ramp).
         // 230 is the dark panel interior, 234 the mid-grey panel
-        // border. The window frame colours and the row separator
-        // live in the theme (ui_kit::Colony_Theme).
+        // border. The window frame colours and the list line
+        // colours (row frames, column dividers) live in the theme
+        // (ui_kit::Colony_Theme).
         constexpr uint8_t PANEL_INTERIOR = 230;
         constexpr uint8_t PANEL_BORDER = 234;
 
@@ -216,7 +217,7 @@ namespace SETTINGS_SCREEN {
         // cyan (150-155, the old row color) as the colony-blue
         // equivalent, with the orange highlight for the selected
         // row and a bright white for secondary info. The colony
-        // look is carried by the list structure (separators,
+        // look is carried by the list structure (frame lines,
         // buttons) as much as by the hue.
         s_colors g_colony_colors = {{150, 154, 155, 151, 152, 153, 154, 155}};
         s_colors g_colony_highlight_colors = {{150, 155, 155, 152, 153, 155, 155, 155}};
@@ -458,6 +459,21 @@ namespace SETTINGS_SCREEN {
             return ui_kit::List_Layout(LIST_PANEL_X, LIST_PANEL_Y,
                 LIST_PANEL_W, ROW_FIELD_X_END, HEADER_Y, HEADER_HEIGHT,
                 ROWS_PER_PAGE, g_theme->Spacing());
+        }
+
+        // The list's columns, from the header plates: SETTING /
+        // VALUE, like the colony list's NAME / FARMERS / ... The
+        // divider between them follows the SETTING plate's right
+        // edge, like the colony's dividers follow their columns.
+        // Only call once g_theme is built (Settings_Screen builds
+        // it before any field rebuild or draw).
+        ui_kit::Column_Layout Make_List_Columns(
+            const ui_kit::List_Layout& layout) {
+            return ui_kit::Column_Layout(
+                {ui_kit::Column{HEADER_SETTING_X, HEADER_SETTING_W},
+                 ui_kit::Column{HEADER_VALUE_X, HEADER_VALUE_W}},
+                layout.first_row_y(),
+                (int16_t)(layout.panel_y() + layout.panel_h() - 1));
         }
 
         // RETURN button geometry follows the derived frame when it
@@ -1541,10 +1557,13 @@ namespace SETTINGS_SCREEN {
 
             // List panel, like the colony list: the kit draws the
             // dark interior, the thin grey border and the framed
-            // row slots -- empty rows still read as framed cells,
-            // with 1 px of empty background between them.
+            // row slots -- light bevel lines, like the colony's
+            // cells -- with 1 px of empty background between them,
+            // and the column divider between SETTING and VALUE,
+            // like the colony list's grooves between its columns.
             const ui_kit::List_Layout layout = Make_List_Layout();
             ui_kit::Draw_List_Background(*g_theme, layout);
+            ui_kit::Draw_List_Columns(*g_theme, Make_List_Columns(layout));
 
             // Header plates, like the colony list's header boxes
             // (NAME, FARMERS, WORKERS, ...): bordered boxes over
