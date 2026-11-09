@@ -47,9 +47,26 @@ namespace SETTINGS_SCREEN {
         constexpr int16_t NAV_Y_END = 452;
         constexpr int16_t TEXT_WIDTH = 608;
 
+        // Frame for the screen, like the original GAME SETTINGS dialog's
+        // baked panel: dark interior with a double-bevel border (outer
+        // light, inner dark). Content spans x 16-632, y 8-452, so this
+        // frame encloses everything with no coordinate changes.
+        constexpr int16_t FRAME_X = 8;
+        constexpr int16_t FRAME_Y = 4;
+        constexpr int16_t FRAME_W = 624;
+        constexpr int16_t FRAME_H = 456;
+        constexpr uint8_t PANEL_INTERIOR = 230;
+        constexpr uint8_t PANEL_BEVEL_LIGHT = 234;
+        constexpr uint8_t PANEL_BEVEL_DARK = 229;
+
         // The standard UI text palette, as used by the council screen.
         s_colors g_normal_colors = {{150, 154, 155, 151, 152, 153, 154, 155}};
         s_colors g_highlight_colors = {{150, 155, 155, 152, 153, 155, 155, 155}};
+
+        // Light-grey title palette: glyph pixel value v maps to
+        // colors[v], so colors[7] is the bright face and colors[0]
+        // the darker outline (same shape as science_high_color).
+        s_colors g_title_colors = {{234, 238, 240, 242, 243, 244, 246, 247}};
 
         enum e_apply_result {
             APPLY_LIVE,
@@ -826,9 +843,16 @@ namespace SETTINGS_SCREEN {
             video::Set_Page_Off();
             graphics::Fill(0, 0, 639, 479, 0);
 
-            fonts::Set_Font_Style(4, &g_normal_colors);
+            // Frame the screen like the original GAME SETTINGS dialog: a dark
+            // panel with a double-bevel border (outer light, inner dark).
+            graphics::Fill(FRAME_X, FRAME_Y, FRAME_X + FRAME_W - 1, FRAME_Y + FRAME_H - 1, PANEL_INTERIOR);
+            graphics::Box(FRAME_X, FRAME_Y, FRAME_W, FRAME_H, 1, PANEL_BEVEL_LIGHT);
+            graphics::Box(FRAME_X + 1, FRAME_Y + 1, FRAME_W - 2, FRAME_H - 2, 1, PANEL_BEVEL_DARK);
+
+            fonts::Set_Font_Style(4, &g_title_colors);
             const char* title = "Settings";
             fonts::Print((640 - fonts::Get_String_Width(title)) / 2, TITLE_Y, title);
+            fonts::Set_Font_Style(4, &g_normal_colors);
             char page_text[32];
             snprintf(page_text, sizeof(page_text), "Page %d of %d",
                 g_state.page + 1, Page_Count());
