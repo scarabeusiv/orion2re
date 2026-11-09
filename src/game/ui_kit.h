@@ -151,13 +151,36 @@ namespace ui_kit {
         }
     };
 
-    // List background colours: panel interior, panel border, row
-    // frame lines -- the colony list's dark interior and grey frame,
-    // in the theme's palette.
+    // List line colours: the colony list's framed cells, in the
+    // theme's palette. Measured from the colony summary screen
+    // (the baked COLSUM background, 640x480 game pixels, rendered
+    // with COLSUM.LBX entry 0's embedded palette): each 30 px row
+    // is a raised cell -- a light line at its top and bottom
+    // edges, a shade line just inside each, and a shade line just
+    // below its bottom edge (the cell's drop shadow) -- and the
+    // columns are divided by 3 px vertical grooves, a mid line
+    // with darker flanks. Colony greys, against its interior (20):
+    // frame light 112/120 (dithered, avg 116), shade 60/68 (avg
+    // 64), divider 44/68/36. The settings screen renders in the
+    // menu palette, whose list interior is brighter (36, index
+    // 230), so the values below are the colony's steps ABOVE its
+    // interior, re-anchored above the menu interior and taken to
+    // the nearest menu index (the same nearest-RGB remap
+    // tools/extract_sprite.py uses): light +96 -> 241, shade
+    // +44 -> 235, divider +24/+48/+16 -> 233/235/232. All in the
+    // menu's blue-grey ramp (230-249), the family the panel, the
+    // window frame and the derived tab bevels already use. The
+    // dark row separator (229) the settings rows used before is
+    // retired: on the dark panel (230) it read as a subtle dark
+    // divider, the inverse of the colony's light bevel lines.
     struct List_Style {
         uint8_t interior = 0;
         uint8_t border = 0;
-        uint8_t separator = 0;
+        uint8_t frame_light = 0;
+        uint8_t frame_shade = 0;
+        uint8_t divider_left = 0;
+        uint8_t divider_mid = 0;
+        uint8_t divider_right = 0;
     };
 
     // A theme is everything about a window's look that varies with
@@ -306,15 +329,63 @@ namespace ui_kit {
         Spacing spacing_;
     };
 
-    // List empty space: panel fill and border, plus one frame line
-    // at the top and bottom of every row, like the colony's cells --
-    // so an empty row still reads as a framed cell, and the row_gap
-    // between two frame lines is empty panel background. The last
-    // row's bottom line is the panel border itself. Row frame lines
+    // One column of a list: the x-range its cells occupy. The
+    // settings list's columns are its header plates (SETTING /
+    // VALUE); the colony list's are the column interiors (NAME
+    // 11..97, FARMERS 101..232, WORKERS 236..374, SCIENTISTS
+    // 378..508, BUILDING 512..598).
+    struct Column {
+        int16_t x = 0;
+        int16_t width = 0;
+    };
+
+    // Column geometry for a list: the vertical dividers between
+    // adjacent columns, derived from the column rects. The divider
+    // between two columns is a 3 px band starting right after the
+    // left column's right edge, like the colony's (NAME ends at
+    // 97, the divider runs 98..100, FARMERS starts at 101); any
+    // leftover gap stays panel interior. The dividers run the
+    // rows' height only, from the first row top to the last row
+    // bottom -- the header plates carry their own frames above
+    // them.
+    class Column_Layout {
+      public:
+        Column_Layout(const std::vector<Column>& columns, int16_t top,
+            int16_t bottom);
+        const std::vector<Column>& columns() const;
+        int16_t top() const { return top_; }
+        int16_t bottom() const { return bottom_; }
+        int divider_count() const {
+            return columns_.empty() ? 0 : (int)columns_.size() - 1;
+        }
+        // Left x of the divider between column index and index+1.
+        int16_t divider_x(int index) const;
+
+      private:
+        std::vector<Column> columns_;
+        int16_t top_;
+        int16_t bottom_;
+    };
+
+    // List empty space: panel fill and border, plus the framed row
+    // slots, like the colony's cells -- so an empty row still
+    // reads as a framed cell, and the row_gap between two frame
+    // lines is empty panel background. Each row gets a light line
+    // at its top and bottom edges, a shade line just inside each,
+    // and a shade line just below its bottom edge; the last row's
+    // trailing shade is the panel border itself. Row frame lines
     // stop at content_right (the list edge), short of the scrollbar
     // strip, like the colony list's cells stop short of its bar.
     void Draw_List_Background(const Theme& theme,
         const List_Layout& layout);
+
+    // Column dividers over a list: the 3 px vertical grooves
+    // between adjacent columns, from the first row top to the last
+    // row bottom. Drawn after the background, so the dividers
+    // cross the row frame lines the way the colony's grooves cut
+    // through its horizontal lines.
+    void Draw_List_Columns(const Theme& theme,
+        const Column_Layout& columns);
 
     // Full-window frame: thin light outer line, dark inner line,
     // centred title -- the frame baked into the colony screens'

@@ -64,12 +64,23 @@ namespace ui_kit {
         constexpr int16_t kInfo_To_Bar = 7;
 
         // List background colours, in menu-palette indices: the
-        // colony list's dark panel interior, mid-grey border and
-        // dark row separator -- the same indices the settings
-        // screen's own panels use.
+        // colony list's dark panel interior and mid-grey border --
+        // the same indices the settings screen's own panels use.
         constexpr uint8_t kList_Interior = 230;
         constexpr uint8_t kList_Border = 234;
-        constexpr uint8_t kList_Separator = 229;
+
+        // List line colours, in menu-palette indices: the colony
+        // list's framed cells, re-anchored above the menu
+        // interior (see List_Style in ui_kit.h for the
+        // measurement). The dark row separator (229) the settings
+        // rows used before is retired: on the dark panel (230) it
+        // read as a subtle dark divider, the inverse of the
+        // colony's light bevel lines.
+        constexpr uint8_t kList_Frame_Light = 241;
+        constexpr uint8_t kList_Frame_Shade = 235;
+        constexpr uint8_t kList_Divider_Left = 233;
+        constexpr uint8_t kList_Divider_Mid = 235;
+        constexpr uint8_t kList_Divider_Right = 232;
     } // namespace
 
     Engine_Font::Engine_Font(int16_t style, const s_colors& normal_colors,
@@ -165,7 +176,11 @@ namespace ui_kit {
         ui_kit::List_Style style;
         style.interior = kList_Interior;
         style.border = kList_Border;
-        style.separator = kList_Separator;
+        style.frame_light = kList_Frame_Light;
+        style.frame_shade = kList_Frame_Shade;
+        style.divider_left = kList_Divider_Left;
+        style.divider_mid = kList_Divider_Mid;
+        style.divider_right = kList_Divider_Right;
         return style;
     }
 
@@ -300,14 +315,56 @@ namespace ui_kit {
             style.border);
         for (int index = 0; index < layout.rows(); ++index) {
             const int16_t row_y = layout.row_y(index);
+            const int16_t bottom =
+                (int16_t)(row_y + layout.row_height() - 1);
+            // A framed cell: light lines at the top and bottom
+            // edges, shade lines just inside each. The bottom
+            // light line sits one pixel above the cell's last row:
+            // that last pixel is the shade below the light line
+            // (the cell's drop shadow), except on the last row,
+            // where it is the panel border itself.
             graphics::Fill((int16_t)(x + 1), row_y,
-                layout.content_right(), row_y, style.separator);
+                layout.content_right(), row_y, style.frame_light);
+            graphics::Fill((int16_t)(x + 1), (int16_t)(row_y + 1),
+                layout.content_right(), (int16_t)(row_y + 1),
+                style.frame_shade);
+            graphics::Fill((int16_t)(x + 1), (int16_t)(bottom - 2),
+                layout.content_right(), (int16_t)(bottom - 2),
+                style.frame_shade);
+            graphics::Fill((int16_t)(x + 1), (int16_t)(bottom - 1),
+                layout.content_right(), (int16_t)(bottom - 1),
+                style.frame_light);
             if (index + 1 < layout.rows()) {
-                const int16_t bottom =
-                    (int16_t)(row_y + layout.row_height() - 1);
                 graphics::Fill((int16_t)(x + 1), bottom,
-                    layout.content_right(), bottom, style.separator);
+                    layout.content_right(), bottom, style.frame_shade);
             }
+        }
+    }
+
+    Column_Layout::Column_Layout(const std::vector<Column>& columns,
+        int16_t top, int16_t bottom)
+        : columns_(columns), top_(top), bottom_(bottom) {}
+
+    const std::vector<Column>& Column_Layout::columns() const {
+        return columns_;
+    }
+
+    int16_t Column_Layout::divider_x(int index) const {
+        const Column& left = columns_[(size_t)index];
+        return (int16_t)(left.x + left.width);
+    }
+
+    void Draw_List_Columns(const Theme& theme,
+        const Column_Layout& columns) {
+        const List_Style style = theme.List_Style();
+        for (int index = 0; index < columns.divider_count(); ++index) {
+            const int16_t x = columns.divider_x(index);
+            graphics::Fill(x, columns.top(), x, columns.bottom(),
+                style.divider_left);
+            graphics::Fill((int16_t)(x + 1), columns.top(),
+                (int16_t)(x + 1), columns.bottom(), style.divider_mid);
+            graphics::Fill((int16_t)(x + 2), columns.top(),
+                (int16_t)(x + 2), columns.bottom(), style.divider_right);
         }
     }
 } // namespace ui_kit

@@ -110,7 +110,11 @@ namespace test_ui_kit_detail {
             spacing.info_to_bar = 7;
             list.interior = 230;
             list.border = 234;
-            list.separator = 229;
+            list.frame_light = 241;
+            list.frame_shade = 235;
+            list.divider_left = 233;
+            list.divider_mid = 235;
+            list.divider_right = 232;
         }
 
         const ui_kit::Font& Tab_Font() const override {
@@ -173,7 +177,11 @@ namespace test_ui_kit_detail {
             spacing.info_to_bar = 8;
             list.interior = 10;
             list.border = 11;
-            list.separator = 12;
+            list.frame_light = 21;
+            list.frame_shade = 22;
+            list.divider_left = 23;
+            list.divider_mid = 24;
+            list.divider_right = 25;
         }
 
         const ui_kit::Font& Tab_Font() const override {
@@ -505,7 +513,11 @@ DOCTEST_TEST_SUITE("ui kit") {
         const ui_kit::List_Style style = theme.List_Style();
         DOCTEST_CHECK(style.interior == 230);
         DOCTEST_CHECK(style.border == 234);
-        DOCTEST_CHECK(style.separator == 229);
+        DOCTEST_CHECK(style.frame_light == 241);
+        DOCTEST_CHECK(style.frame_shade == 235);
+        DOCTEST_CHECK(style.divider_left == 233);
+        DOCTEST_CHECK(style.divider_mid == 235);
+        DOCTEST_CHECK(style.divider_right == 232);
 
         // The settings screen's panel and header position: header
         // 32..53, so the first row starts 3 px below it at 57.
@@ -542,31 +554,138 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(test::fakes::g_box_calls[0].width == 624);
         DOCTEST_CHECK(test::fakes::g_box_calls[0].height == 336);
         DOCTEST_CHECK(test::fakes::g_box_calls[0].color == 234);
-        // Panel fill plus two frame lines per row, except the last
-        // row's bottom line (the panel border is its bottom edge):
-        // 1 + 10 + 9 = 20 fills.
-        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 20);
+        // Panel fill plus five frame lines per row, except the last
+        // row's trailing shade (the panel border is its bottom
+        // edge): 1 + 9 * 5 + 4 = 50 fills.
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 50);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 230);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 8);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 30);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].x2 == 631);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].y2 == 365);
-        // Row 0 is framed at 57 and 86; row 1 starts at 88, so the
-        // 1 px gap at 87 is empty panel background -- no fill
-        // covers it, and no line crosses the scrollbar strip: the
-        // frame lines stop at the list edge, x 619.
+        // Row 0 is a framed cell: light lines at 57 and 85, shade
+        // lines just inside at 58 and 84, and the trailing shade
+        // at 86; row 1 starts at 88, so the 1 px gap at 87 is empty
+        // panel background -- no fill covers it -- and no line
+        // crosses the scrollbar strip: the frame lines stop at the
+        // list edge, x 619.
         DOCTEST_CHECK(test::fakes::g_fill_calls[1].y1 == 57);
         DOCTEST_CHECK(test::fakes::g_fill_calls[1].y2 == 57);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 229);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 241);
         DOCTEST_CHECK(test::fakes::g_fill_calls[1].x1 == 9);
         DOCTEST_CHECK(test::fakes::g_fill_calls[1].x2 == 619);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[2].y1 == 86);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[2].y2 == 86);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[3].y1 == 88);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[3].x2 == 619);
-        // Last row's top line at 336, no bottom line after it.
-        DOCTEST_CHECK(test::fakes::g_fill_calls[19].y1 == 336);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[19].y2 == 336);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].y1 == 58);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 235);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].y1 == 84);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].color == 235);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[4].y1 == 85);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[4].color == 241);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[5].y1 == 86);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[5].color == 235);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[6].y1 == 88);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[6].color == 241);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[6].x2 == 619);
+        // Last row's top light line at 336, shade at 337, shade at
+        // 363, bottom light line at 364 -- and no trailing shade
+        // after it: the panel border at 365 is its bottom edge.
+        DOCTEST_CHECK(test::fakes::g_fill_calls[46].y1 == 336);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[46].color == 241);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[47].y1 == 337);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[47].color == 235);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[48].y1 == 363);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[48].color == 235);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[49].y1 == 364);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[49].y2 == 364);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[49].color == 241);
+        for (const test::fakes::Fill_Call& fill :
+            test::fakes::g_fill_calls) {
+            DOCTEST_CHECK(fill.y1 != 87);
+            DOCTEST_CHECK(fill.y1 != 365);
+        }
+    }
+
+    DOCTEST_TEST_CASE("column layout puts the 3 px divider right after the left column") {
+        using namespace test_ui_kit_detail;
+        // The colony list's columns, measured from the colony
+        // summary screen: NAME 11..97, FARMERS 101..232, WORKERS
+        // 236..374, SCIENTISTS 378..508, BUILDING 512..598 -- the
+        // dividers land exactly on the baked grooves (98..100,
+        // 233..235, 375..377, 509..511).
+        ui_kit::Column_Layout colony(
+            {{11, 87}, {101, 132}, {236, 139}, {378, 131}, {512, 87}},
+            35, 343);
+        DOCTEST_CHECK(colony.divider_count() == 4);
+        DOCTEST_CHECK(colony.divider_x(0) == 98);
+        DOCTEST_CHECK(colony.divider_x(1) == 233);
+        DOCTEST_CHECK(colony.divider_x(2) == 375);
+        DOCTEST_CHECK(colony.divider_x(3) == 509);
+        DOCTEST_CHECK(colony.top() == 35);
+        DOCTEST_CHECK(colony.bottom() == 343);
+
+        // The settings list's columns: the SETTING / VALUE header
+        // plates, 10..363 and 368..615 -- one divider, at 364,
+        // leaving the last gap pixel (367) panel interior.
+        ui_kit::Column_Layout settings(
+            {{10, 354}, {368, 248}}, 57, 365);
+        DOCTEST_CHECK(settings.divider_count() == 1);
+        DOCTEST_CHECK(settings.divider_x(0) == 364);
+        DOCTEST_CHECK(settings.top() == 57);
+        DOCTEST_CHECK(settings.bottom() == 365);
+
+        // A single column has no divider.
+        ui_kit::Column_Layout single({{10, 354}}, 57, 365);
+        DOCTEST_CHECK(single.divider_count() == 0);
+        // And no columns at all is not a divider either.
+        ui_kit::Column_Layout none({}, 57, 365);
+        DOCTEST_CHECK(none.divider_count() == 0);
+    }
+
+    DOCTEST_TEST_CASE("list columns draw the divider triple over the rows") {
+        using namespace test_ui_kit_detail;
+        Fake_Theme theme;
+        ui_kit::Column_Layout columns({{10, 354}, {368, 248}}, 57, 365);
+
+        test::fakes::Reset_All_();
+        ui_kit::Draw_List_Columns(theme, columns);
+
+        // One 3 px divider: left/mid/right in the theme's colours,
+        // running the rows' height, first row top to last row bottom.
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 3);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 364);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x2 == 364);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 57);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y2 == 365);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 233);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].x1 == 365);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].x2 == 365);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].y1 == 57);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].y2 == 365);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 235);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].x1 == 366);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].x2 == 366);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 232);
+
+        // The colony's four dividers, in a second theme's colours:
+        // the divider geometry follows the columns, the colours
+        // follow the theme.
+        Alt_Theme alt;
+        ui_kit::Column_Layout colony(
+            {{11, 87}, {101, 132}, {236, 139}, {378, 131}, {512, 87}},
+            35, 343);
+        test::fakes::Reset_All_();
+        ui_kit::Draw_List_Columns(alt, colony);
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 12);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 98);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 23);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].x1 == 99);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 24);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].x1 == 100);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 25);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[11].x1 == 511);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[11].x2 == 511);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[11].y1 == 35);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[11].y2 == 343);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[11].color == 25);
     }
 
     DOCTEST_TEST_CASE("list layout follows a second theme's spacing without component changes") {
@@ -589,9 +708,10 @@ DOCTEST_TEST_SUITE("ui kit") {
         // The background follows the alt colours, not the colony's.
         test::fakes::Reset_All_();
         ui_kit::Draw_List_Background(theme, layout);
-        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 20);
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 50);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 10);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 12);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 21);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 22);
         DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 1);
         DOCTEST_CHECK(test::fakes::g_box_calls[0].color == 11);
         DOCTEST_CHECK(test::fakes::g_box_calls[0].height == 247);
