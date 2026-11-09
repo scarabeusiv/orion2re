@@ -131,6 +131,51 @@ namespace test_ui_kit_detail {
             return 8;
         }
     };
+
+    // A second asset set: different metrics, different frames, a
+    // different font. The bar and the window frame must follow it
+    // with no changes to the components -- this is the plug.
+    class Alt_Theme : public ui_kit::Theme {
+      public:
+        Fake_Font font;
+        ui_kit::Tab_Frames frames;
+        ui_kit::Window_Style window;
+
+        Alt_Theme() {
+            window.frame_outer = 200;
+            window.frame_inner = 201;
+            window.title_font = &font;
+            window.title_y = 4;
+        }
+
+        const ui_kit::Font& Tab_Font() const override {
+            return font;
+        }
+
+        ui_kit::Tab_Frames Tab_Frames() const override {
+            return frames;
+        }
+
+        ui_kit::Window_Style Window_Style() const override {
+            return window;
+        }
+
+        int16_t Tab_Padding() const override {
+            return 4;
+        }
+
+        int16_t Tab_Gap() const override {
+            return 3;
+        }
+
+        int16_t Tab_Height() const override {
+            return 30;
+        }
+
+        int16_t Tab_Label_Y_Offset() const override {
+            return 10;
+        }
+    };
 } // namespace test_ui_kit_detail
 
 DOCTEST_TEST_SUITE("ui kit") {
@@ -161,8 +206,10 @@ DOCTEST_TEST_SUITE("ui kit") {
         const std::string normal = Make_Frame_Pixels(10, 1, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
         const std::string active = Make_Frame_Pixels(10, 1, {11, 12, 13, 14, 15, 16, 17, 18, 19, 20});
         Fake_Theme theme;
-        theme.frames.normal.frame = (const s_animation_header*)normal.data();
-        theme.frames.active.frame = (const s_animation_header*)active.data();
+        theme.frames.normal.frame =
+            ui_kit::Frame((const s_animation_header*)normal.data());
+        theme.frames.active.frame =
+            ui_kit::Frame((const s_animation_header*)active.data());
         theme.frames.left_slice = 2;
         theme.frames.right_slice = 2;
 
@@ -197,7 +244,8 @@ DOCTEST_TEST_SUITE("ui kit") {
         // 10x1 active frame, middle a rising gradient [13..18].
         const std::string active = Make_Frame_Pixels(10, 1, {11, 12, 13, 14, 15, 16, 17, 18, 19, 20});
         Fake_Theme theme;
-        theme.frames.active.frame = (const s_animation_header*)active.data();
+        theme.frames.active.frame =
+            ui_kit::Frame((const s_animation_header*)active.data());
         theme.frames.active.resample_middle = true;
         theme.frames.left_slice = 2;
         theme.frames.right_slice = 2;
@@ -221,8 +269,8 @@ DOCTEST_TEST_SUITE("ui kit") {
     DOCTEST_TEST_CASE("tab bar falls back to a flat fill when a frame is missing") {
         using namespace test_ui_kit_detail;
         Fake_Theme theme;
-        theme.frames.normal.frame = nullptr;
-        theme.frames.active.frame = nullptr;
+        theme.frames.normal.frame = ui_kit::Frame();
+        theme.frames.active.frame = ui_kit::Frame();
         theme.frames.fallback_fill_normal = 50;
         theme.frames.fallback_fill_active = 138;
         theme.frames.fallback_border = 234;
@@ -243,6 +291,80 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(test::fakes::g_box_calls[0].color == 234);
         DOCTEST_CHECK(test::fakes::g_box_calls[1].color == 234);
         DOCTEST_REQUIRE(theme.font.prints.size() == 2);
+    }
+
+    DOCTEST_TEST_CASE("tab bar follows a second theme without component changes") {
+        using namespace test_ui_kit_detail;
+        // 10x1 frames: active middle a rising gradient [13..18].
+        const std::string normal = Make_Frame_Pixels(10, 1, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+        const std::string active = Make_Frame_Pixels(10, 1, {11, 12, 13, 14, 15, 16, 17, 18, 19, 20});
+        Alt_Theme theme;
+        theme.frames.normal.frame =
+            ui_kit::Frame((const s_animation_header*)normal.data());
+        theme.frames.active.frame =
+            ui_kit::Frame((const s_animation_header*)active.data());
+        theme.frames.active.resample_middle = true;
+        theme.frames.left_slice = 2;
+        theme.frames.right_slice = 2;
+
+        Scoped_Video_Page page;
+        ui_kit::Tab_Bar bar(0, 0, theme);
+        bar.Add_Tab("A", true);
+        bar.Add_Tab("BB", false);
+        // Alt metrics: padding 4, gap 3, height 30, label offset 10.
+        DOCTEST_REQUIRE(bar.tabs().size() == 2);
+        DOCTEST_CHECK(bar.tabs()[0].width == 10 + 8);
+        DOCTEST_CHECK(bar.tabs()[1].x == 18 + 3);
+        DOCTEST_CHECK(bar.tabs()[1].width == 20 + 8);
+        DOCTEST_CHECK(bar.height() == 30);
+        bar.Draw();
+        // The active tab's resampled gradient starts at 13 and ends
+        // at 18 at the alt tab's own x; the rest tab's left slice
+        // lands at its x.
+        DOCTEST_CHECK(page.At(2, 0) == 13);
+        DOCTEST_CHECK(page.At(15, 0) == 18);
+        DOCTEST_CHECK(page.At(21, 0) == 1);
+        DOCTEST_REQUIRE(theme.font.prints.size() == 2);
+        DOCTEST_CHECK(theme.font.prints[0].y == 10);
+        DOCTEST_CHECK(theme.font.prints[1].x == 21 + (28 - 20) / 2);
+        DOCTEST_CHECK(theme.font.prints[1].y == 10);
+        // The window frame follows the alt chrome, not the colony's.
+        test::fakes::Reset_All_();
+        ui_kit::Draw_Window_Frame(theme, 0, 0, 100, 50, "Alt");
+        DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 2);
+        DOCTEST_CHECK(test::fakes::g_box_calls[0].color == 200);
+        DOCTEST_CHECK(test::fakes::g_box_calls[1].color == 201);
+        DOCTEST_CHECK(test::fakes::g_box_calls[1].x == 1);
+    }
+
+    DOCTEST_TEST_CASE("colony theme falls back to a flat fill when its frames are missing") {
+        using namespace test_ui_kit_detail;
+        const s_colors title = {{234, 238, 240, 242, 243, 244, 246, 247}};
+        ui_kit::Colony_Theme theme(ui_kit::Frame(), ui_kit::Frame(), title);
+
+        const ui_kit::Tab_Frames frames = theme.Tab_Frames();
+        DOCTEST_CHECK(frames.normal.frame.Is_Null());
+        DOCTEST_CHECK(frames.active.frame.Is_Null());
+
+        test::fakes::Reset_All_();
+        Scoped_Video_Page page;
+        ui_kit::Tab_Bar bar(0, 0, theme);
+        bar.Add_Tab("A", true);
+        bar.Add_Tab("BB", false);
+        bar.Draw();
+
+        // The colony fallback fills: active menu blue, rest dark
+        // navy, both bordered in the panel border colour -- and the
+        // labels still print.
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 2);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 138);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 50);
+        DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 2);
+        DOCTEST_CHECK(test::fakes::g_box_calls[0].color == 234);
+        DOCTEST_CHECK(test::fakes::g_box_calls[1].color == 234);
+        DOCTEST_REQUIRE(test::fakes::g_print_calls.size() == 2);
+        DOCTEST_CHECK(test::fakes::g_print_calls[0].text_copy == "A");
+        DOCTEST_CHECK(test::fakes::g_print_calls[1].text_copy == "BB");
     }
 
     DOCTEST_TEST_CASE("engine font delegates width and print to the engine font") {
@@ -277,8 +399,9 @@ DOCTEST_TEST_SUITE("ui kit") {
         const std::string normal = Make_Frame(50, 24, 50);
         const std::string active = Make_Frame(50, 24, 138);
         const s_colors title = {{234, 238, 240, 242, 243, 244, 246, 247}};
-        ui_kit::Colony_Theme theme((const s_animation_header*)normal.data(),
-            (const s_animation_header*)active.data(), title);
+        ui_kit::Colony_Theme theme(
+            ui_kit::Frame((const s_animation_header*)normal.data()),
+            ui_kit::Frame((const s_animation_header*)active.data()), title);
 
         // The tab font is engine font style 2 with the measured
         // colony label ramps: white face / dark edge at rest,
@@ -293,8 +416,8 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(test::fakes::g_font_color.colors[1] == 250);
 
         const ui_kit::Tab_Frames frames = theme.Tab_Frames();
-        DOCTEST_CHECK(frames.normal.frame == (const s_animation_header*)normal.data());
-        DOCTEST_CHECK(frames.active.frame == (const s_animation_header*)active.data());
+        DOCTEST_CHECK_FALSE(frames.normal.frame.Is_Null());
+        DOCTEST_CHECK_FALSE(frames.active.frame.Is_Null());
         DOCTEST_CHECK_FALSE(frames.normal.resample_middle);
         DOCTEST_CHECK(frames.active.resample_middle);
         DOCTEST_CHECK(frames.left_slice == 4);
