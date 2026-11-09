@@ -82,4 +82,24 @@ namespace sprite_art {
     void Draw_Sprite_Frame_Stretched_Resampled(
         const s_animation_header* frame, int16_t x, int16_t y,
         int16_t width, int16_t left_slice, int16_t right_slice);
+
+    /**
+     * Draws a frame as three slices at (x, y), at its native
+     * height: the left_slice columns are drawn as-is, a single
+     * middle_column is tiled across the remaining width, and the
+     * right_slice columns close the frame. For a frame whose
+     * middle is a flat face with a label baked in (the colony
+     * RETURN), the middle column is a text-free column of that
+     * face, so one derived frame serves any button width with
+     * the label rendered at runtime -- the caps are the real
+     * frame's pixels, and every middle pixel is a real pixel of
+     * the frame's face. A width at or below left_slice +
+     * right_slice draws the two slices cropped to it, with no
+     * middle. Returns silently when the frame is null, the
+     * slices do not fit inside it, or the middle column is
+     * outside the frame.
+     */
+    void Draw_Sprite_Frame_Three_Slice(const s_animation_header* frame,
+        int16_t x, int16_t y, int16_t width, int16_t left_slice,
+        int16_t middle_column, int16_t right_slice);
 } // namespace sprite_art

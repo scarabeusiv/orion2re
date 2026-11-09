@@ -128,6 +128,27 @@ namespace ui_kit {
         constexpr uint8_t kMetal_Face = 238;
         constexpr uint8_t kMetal_Highlight = 243;
         constexpr uint8_t kMetal_Shadow = 232;
+        // The metal button's three slices, cut from the derived
+        // RETURN frame (COLSUM entry 1, 85x26): the left dome
+        // (columns 0..16) and the right dome (columns 60..84) are
+        // drawn as-is, and a single text-free face column is tiled
+        // across the middle. Column 58 is the only column that is
+        // the flat face (238) for the whole text body (rows 8..16)
+        // in the rest frame -- every other candidate carries a text
+        // pixel or an antialiasing shade there. Column 59 is the
+        // same for the pressed frame (25/26 rows match the face
+        // profile, no orange text pixel); column 58 in the pressed
+        // frame catches the orange text's fringe (221/223) and must
+        // not be used there. The caps are copied exactly, so the
+        // button's chrome is pixel-identical to the RETURN's; the
+        // middle differs from the RETURN's middle only where the
+        // RETURN has text (correctly omitted) and in the face's
+        // dithered bands (rows 1, 7, 17, 20 rest; row 17 pressed),
+        // where the tiled column holds one shade of the dither.
+        constexpr int16_t kMetal_Left_Slice = 17;
+        constexpr int16_t kMetal_Right_Slice = 25;
+        constexpr int16_t kMetal_Middle_Column_Normal = 58;
+        constexpr int16_t kMetal_Middle_Column_Pressed = 59;
         constexpr uint8_t kPrimary_Face = 138;
         constexpr uint8_t kPrimary_Highlight = 154;
         constexpr uint8_t kButton_Disabled_Face = 234;
@@ -210,6 +231,16 @@ namespace ui_kit {
         }
         sprite_art::Draw_Sprite_Frame_Stretched_Resampled(frame_, x, y,
             width, left_slice, right_slice);
+    }
+
+    void Frame::Draw_Three_Slice(int16_t x, int16_t y, int16_t width,
+        int16_t left_slice, int16_t middle_column,
+        int16_t right_slice) const {
+        if (frame_ == nullptr) {
+            return;
+        }
+        sprite_art::Draw_Sprite_Frame_Three_Slice(frame_, x, y, width,
+            left_slice, middle_column, right_slice);
     }
 
     Colony_Theme::Colony_Theme(Frame tab_normal, Frame tab_active,
@@ -392,7 +423,8 @@ namespace ui_kit {
         }
     }
 
-    void Button::Print_Centred_Label(const Font& font, bool active) const {
+    void Button::Print_Centred_Label(const Font& font, bool active,
+        int16_t height) const {
         if (label_ == nullptr) {
             return;
         }
@@ -403,7 +435,7 @@ namespace ui_kit {
         // the font height rounded down. Not (h - fh)/2: that sits
         // 1 px high (measured: the Show more label inked at y+4,
         // the pre-kit code and the engine both put it at y+5).
-        const int16_t label_y = (int16_t)(y_ + height_ / 2 -
+        const int16_t label_y = (int16_t)(y_ + height / 2 -
             (font.Height() - 1) / 2);
         font.Print(label_x, label_y, label_, active);
     }
@@ -413,6 +445,42 @@ namespace ui_kit {
         // Blue face for a primary action or a latched-active
         // button; the flat mid-grey face when disabled.
         const bool blue = primary_ || state_ == Button_State::Active;
+        // A metal button is a RETURN cut into three slices: the
+        // derived frame's domes as-is, one text-free face column
+        // tiled across the middle, the label rendered at runtime.
+        // One frame serves any metal button at any width, and the
+        // button's chrome is pixel-identical to the RETURN's. Blue,
+        // disabled and missing-frame buttons keep the engine-drawn
+        // form below: there is no blue or disabled RETURN frame to
+        // cut. The label centres on the frame's height: a metal
+        // button is sized from its frame, like an Image button.
+        const Image_Button_Frames frames = theme_.Return_Frames();
+        if (!blue && state_ != Button_State::Disabled
+            && !frames.normal.Is_Null()) {
+            const bool pressed = state_ == Button_State::Pressed
+                && !frames.pressed.Is_Null();
+            const Frame& frame = pressed ? frames.pressed : frames.normal;
+            const int16_t middle = pressed
+                ? kMetal_Middle_Column_Pressed
+                : kMetal_Middle_Column_Normal;
+            frame.Draw_Three_Slice(x_, y_, width_, kMetal_Left_Slice,
+                middle, kMetal_Right_Slice);
+            // A pressed metal button's label lights up orange, like
+            // the real RETURN's pressed text; every other state keeps
+            // the dark/light label. A null pressed font falls back to
+            // the plain label font.
+            const Font* label_font = style.label_font;
+            if (state_ == Button_State::Pressed
+                && style.label_pressed_font != nullptr) {
+                label_font = style.label_pressed_font;
+            }
+            if (label_font != nullptr) {
+                Print_Centred_Label(*label_font,
+                    blue && state_ != Button_State::Disabled,
+                    frame.Height());
+            }
+            return;
+        }
         const uint8_t face = state_ == Button_State::Disabled
             ? style.disabled_face
             : (blue ? style.primary_face : style.face);
@@ -453,7 +521,7 @@ namespace ui_kit {
         }
         if (label_font != nullptr) {
             Print_Centred_Label(*label_font,
-                blue && state_ != Button_State::Disabled);
+                blue && state_ != Button_State::Disabled, height_);
         }
     }
 

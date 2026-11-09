@@ -451,6 +451,28 @@ namespace SETTINGS_SCREEN {
                 (int16_t)(layout.panel_y() + layout.panel_h() - 1));
         }
 
+        // MORE button geometry follows the theme's derived frame
+        // like RETURN's: a metal button is a RETURN cut into three
+        // slices, so it is the frame's height (26) and
+        // bottom-aligned with the bar, like RETURN -- never the
+        // 24 px tab height, or the frame would overhang the field
+        // by 2 px and the label would centre 1 px high. With no
+        // frame it falls back to the tab-height engine button.
+        int16_t More_Button_Y() {
+            const ui_kit::Frame frame =
+                g_theme->Return_Frames().normal;
+            return !frame.Is_Null()
+                ? (int16_t)(Bottom_Bar_End() - frame.Height() + 1)
+                : Bottom_Bar_Y();
+        }
+
+        int16_t More_Button_H() {
+            const ui_kit::Frame frame =
+                g_theme->Return_Frames().normal;
+            return !frame.Is_Null() ? frame.Height()
+                                    : g_theme->Tab_Height();
+        }
+
         // RETURN button geometry follows the theme's derived frame
         // when it loaded (85x26, bottom-aligned with the bar),
         // else the engine-drawn button's 76x24.
@@ -951,7 +973,7 @@ namespace SETTINGS_SCREEN {
             // every category. They share the bar's single line and
             // never wrap.
             g_state.show_all_field = fields::Add_Hidden_Field(
-                SHOW_MORE_X, Bottom_Bar_Y(), SHOW_MORE_X + SHOW_MORE_W - 1,
+                SHOW_MORE_X, More_Button_Y(), SHOW_MORE_X + SHOW_MORE_W - 1,
                 Bottom_Bar_End(), "", 0);
             g_state.done_field = fields::Add_Hidden_Field(
                 RETURN_X, Return_Button_Y(),
@@ -1778,8 +1800,9 @@ namespace SETTINGS_SCREEN {
             // inverse activity, no second button). Clicking it
             // again turns it off. Held down it draws pressed too,
             // like any held button.
-            ui_kit::Button show_more(SHOW_MORE_X, bar_y, SHOW_MORE_W,
-                bar_h, ui_kit::Button_Kind::Metal, *g_theme);
+            ui_kit::Button show_more(SHOW_MORE_X, More_Button_Y(),
+                SHOW_MORE_W, More_Button_H(),
+                ui_kit::Button_Kind::Metal, *g_theme);
             show_more.Set_Label("MORE");
             show_more.Set_State(Field_Held(g_state.show_all_field) ||
                     g_state.show_all
