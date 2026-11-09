@@ -409,8 +409,12 @@ namespace SETTINGS_SCREEN {
         // or a keyboard press); the field build passes false, so a
         // rebuild never flashes a stale hold.
         ui_kit::Tab_Bar Make_Tab_Bar(bool with_pressed = false) {
+            // The strip fills the bottom bar from the content edge
+            // to MORE, like the colony summary's sort buttons fill
+            // their bar to RETURN: 8 px clear of MORE, the same gap
+            // MORE keeps from RETURN.
             ui_kit::Tab_Bar bar(Make_Window_Frame().content_x(),
-                Bottom_Bar_Y(), *g_theme);
+                Bottom_Bar_Y(), (int16_t)(SHOW_MORE_X - 8), *g_theme);
             for (int category = 0; category < CATEGORY_COUNT; ++category) {
                 bar.Add_Tab(CATEGORY_LABELS[category],
                     category == g_state.category,
@@ -1546,11 +1550,13 @@ namespace SETTINGS_SCREEN {
 
             // Full-window colony chrome (game/ui_kit.h): the
             // bevelled metal frame baked into the colony screens'
-            // backgrounds, drawn by the kit's Window_Frame, with
-            // the centred title. The frame positions everything
-            // inside it: the list panel, the tab bar, the help box.
+            // backgrounds, drawn by the kit's Window_Frame. No
+            // title: the colony screens carry no dialog title, and
+            // the category tabs in the bottom bar say what this
+            // screen is. The frame positions everything inside it:
+            // the list panel, the tab bar, the help box.
             const ui_kit::Window_Frame frame = Make_Window_Frame();
-            frame.Draw("Settings");
+            frame.Draw(nullptr);
             fonts::Set_Font_Style(4, &g_normal_colors);
 
             // List panel, like the colony list: the kit draws the
