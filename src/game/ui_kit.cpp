@@ -1463,7 +1463,8 @@ namespace ui_kit {
     }
 
     void Draw_List_Background(const Theme& theme,
-        const List_Layout& layout, bool fill_interior) {
+        const List_Layout& layout, bool fill_interior,
+        bool draw_row_frames) {
         const List_Style style = theme.List_Style();
         const int16_t x = layout.panel_x();
         const int16_t y = layout.panel_y();
@@ -1473,6 +1474,7 @@ namespace ui_kit {
         }
         graphics::Box(x, y, layout.panel_w(), layout.panel_h(), 1,
             style.border);
+        if (draw_row_frames) {
         for (int index = 0; index < layout.rows(); ++index) {
             const int16_t row_y = layout.row_y(index);
             const int16_t bottom =
@@ -1498,11 +1500,13 @@ namespace ui_kit {
             graphics::Fill((int16_t)(x + 1), bottom,
                 layout.content_right(), bottom, style.frame_shade);
         }
+        } // draw_row_frames
         // The panel footing: the colony's shade band and bevel
         // below the last row -- two shade lines and a light line;
         // the panel border box above is the fourth, dark line. The
         // band sits against the border, so a taller footing leaves
-        // plain panel interior above it.
+        // plain panel interior above it. It draws in both modes:
+        // a frameless list still keeps the panel's bottom chrome.
         const int16_t panel_bottom = (int16_t)(y + layout.panel_h());
         graphics::Fill((int16_t)(x + 1), (int16_t)(panel_bottom - 4),
             layout.content_right(), (int16_t)(panel_bottom - 4),
