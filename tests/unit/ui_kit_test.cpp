@@ -1058,9 +1058,10 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(test::fakes::g_box_calls[0].width == 617);
         DOCTEST_CHECK(test::fakes::g_box_calls[0].height == 340);
         DOCTEST_CHECK(test::fakes::g_box_calls[0].color == 234);
-        // Panel fill plus five frame lines per row and the
-        // three-line footing: 1 + 10 * 5 + 3 = 54 fills.
-        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 54);
+        // Panel fill plus five frame lines per row, the
+        // three-line footing and the right-edge bevel line:
+        // 1 + 10 * 5 + 3 + 1 = 55 fills.
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 55);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 230);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 11);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 30);
@@ -1098,6 +1099,13 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(test::fakes::g_fill_calls[47].color == 235);
         DOCTEST_CHECK(test::fakes::g_fill_calls[48].y1 == 363);
         DOCTEST_CHECK(test::fakes::g_fill_calls[48].color == 235);
+        // The right-edge bevel: a frame-light vertical line one
+        // pixel inside the panel's right edge, full panel height.
+        DOCTEST_CHECK(test::fakes::g_fill_calls[54].color == 241);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[54].x1 == 626);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[54].x2 == 626);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[54].y1 == 30);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[54].y2 == 369);
         DOCTEST_CHECK(test::fakes::g_fill_calls[49].y1 == 364);
         DOCTEST_CHECK(test::fakes::g_fill_calls[49].y2 == 364);
         DOCTEST_CHECK(test::fakes::g_fill_calls[49].color == 241);
@@ -1224,8 +1232,16 @@ DOCTEST_TEST_SUITE("ui kit") {
         // it, so no fill covers 277 or 278.
         test::fakes::Reset_All_();
         ui_kit::Draw_List_Background(theme, layout);
-        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 54);
+        // 1 panel fill + 10 * 5 row lines + 3 footing + 1 bevel = 55.
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 55);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 10);
+        // The right-edge bevel: the alt theme's frame light (21),
+        // one pixel inside the panel's right edge (x 630), full height.
+        DOCTEST_CHECK(test::fakes::g_fill_calls[54].color == 21);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[54].x1 == 630);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[54].x2 == 630);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[54].y1 == 30);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[54].y2 == 282);
         DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 21);
         DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 22);
         DOCTEST_CHECK(test::fakes::g_fill_calls[50].y1 == 276);
@@ -2279,10 +2295,18 @@ DOCTEST_TEST_SUITE("ui kit") {
         Fake_Theme fake;
         test::fakes::Reset_All_();
         ui_kit::Draw_List_Background(fake, layout);
-        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 54);
+        // 1 panel fill + 10 * 5 row lines + 3 footing + 1 bevel = 55.
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 55);
         // The panel fill and border stop at the content edge, 619:
         // the scrollbar strip beyond it stays black.
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].x2 == 619);
+        // The right-edge bevel: frame-light, one pixel inside the
+        // panel's right edge (x 618), full panel height.
+        DOCTEST_CHECK(test::fakes::g_fill_calls[54].color == 241);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[54].x1 == 618);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[54].x2 == 618);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[54].y1 == 4);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[54].y2 == 347);
         DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 1);
         DOCTEST_CHECK(test::fakes::g_box_calls[0].width == 609);
         DOCTEST_CHECK(test::fakes::g_fill_calls[1].y1 == 35);
