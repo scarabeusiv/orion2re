@@ -1764,14 +1764,18 @@ namespace SETTINGS_SCREEN {
                             ? config::Format_Leaf_Value(row.variable_id, value)
                             : "?";
                     }
-                    value_text = Truncate_To_Width(value_text,
-                        VALUE_WIDTH - fonts::Get_String_Width(" v"));
-                    value_text += " v";
-                    fonts::Set_Font_Style(4,
+                    // Style 1, the colony BUILDING name's font:
+                    // style 4's "overview v" is ~90 px and truncates
+                    // in the 86 px BUILDING column, while style 1
+                    // fits it like the colony's building names.
+                    fonts::Set_Font_Style(1,
                         (Is_Resolution_Row(row) &&
                             g_state.resolution_popup_open)
                             ? &g_colony_highlight_colors
                             : &g_colony_dim_colors);
+                    value_text = Truncate_To_Width(value_text,
+                        VALUE_WIDTH - fonts::Get_String_Width(" v"));
+                    value_text += " v";
                     fonts::Print(VALUE_X, text_y, value_text.c_str());
                 } else {
                     // Info and edit values: text in the colony dim
@@ -1786,8 +1790,9 @@ namespace SETTINGS_SCREEN {
                             ? config::Format_Leaf_Value(row.variable_id, value)
                             : "?";
                     }
+                    // Style 1, the colony BUILDING name's font.
+                    fonts::Set_Font_Style(1, &g_colony_dim_colors);
                     value_text = Truncate_To_Width(value_text, VALUE_WIDTH);
-                    fonts::Set_Font_Style(4, &g_colony_dim_colors);
                     fonts::Print(VALUE_X, text_y, value_text.c_str());
                 }
             }
