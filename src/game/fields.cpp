@@ -2733,16 +2733,29 @@ namespace fields {
             return 0;
         }
 
+        // The wheel scrolls along its own axis: a vertical wheel steps a
+        // vertical scroll field, a horizontal wheel a horizontal one. The
+        // colonies screen has both -- the list scrollbar is vertical while
+        // the per-row population sliders are horizontal scroll fields -- so
+        // a vertical wheel over a row must reach the list scrollbar, not
+        // the population slider under the cursor.
+        const int16_t abs_steps_x = steps_x < 0 ? -steps_x : steps_x;
+        const int16_t abs_steps_y = steps_y < 0 ? -steps_y : steps_y;
+        const int16_t wheel_is_vertical = (abs_steps_y >= abs_steps_x) ? 1 : 0;
+        const int16_t wheel_steps = (wheel_is_vertical != 0) ? steps_y : steps_x;
+
         const int16_t hovered = Scan_Field();
         if (hovered != 0) {
             const int16_t field_type = fields[hovered].field_type;
             if (field_type == FIELD_TYPE_SCROLL || field_type == FIELD_TYPE_SCROLL_RETURN) {
                 s_field_scroll* scroll = Field_Data_Scroll(&fields[hovered]);
-                const int16_t steps = (scroll->is_vertical != 0)
-                    ? (steps_y != 0 ? steps_y : steps_x)
-                    : (steps_x != 0 ? steps_x : steps_y);
-                Step_Scroll_Bar(hovered, steps);
-                return hovered;
+                if ((scroll->is_vertical != 0) == (wheel_is_vertical != 0)) {
+                    Step_Scroll_Bar(hovered, wheel_steps);
+                    return hovered;
+                }
+                // Axis mismatch (a vertical wheel over a horizontal
+                // population slider): fall through and look for a scroll
+                // field on the wheel's axis instead of stepping this one.
             }
             if (list_field_on != 0 && field_type == FIELD_TYPE_STRING_LIST) {
                 const int16_t steps = (steps_y != 0) ? steps_y : steps_x;
@@ -2754,8 +2767,13 @@ namespace fields {
             }
         }
 
-        // No scrollbar under the cursor: a lone scrollbar on this screen
-        // follows the wheel, so hovering the list it controls still scrolls.
+        // A scroll field on the wheel's axis follows the wheel even when the
+        // cursor is not over it, so hovering the list still scrolls it.
+        // (The lone-scrollbar rule below would never fire on the colonies
+        // screen: it has thirty-one scroll fields, thirty of them the
+        // horizontal population sliders.)
+        int16_t only_axis_scroll = -1;
+        int16_t axis_scroll_count = 0;
         int16_t only_scroll = -1;
         int16_t scroll_count = 0;
         for (int16_t i = 1; i < fields_count; ++i) {
@@ -2763,8 +2781,20 @@ namespace fields {
                 fields[i].field_type == FIELD_TYPE_SCROLL_RETURN) {
                 only_scroll = i;
                 ++scroll_count;
+                s_field_scroll* scroll = Field_Data_Scroll(&fields[i]);
+                if ((scroll->is_vertical != 0) == (wheel_is_vertical != 0)) {
+                    only_axis_scroll = i;
+                    ++axis_scroll_count;
+                }
             }
         }
+        if (axis_scroll_count == 1) {
+            Step_Scroll_Bar(only_axis_scroll, wheel_steps);
+            return only_axis_scroll;
+        }
+
+        // No scrollbar under the cursor: a lone scrollbar on this screen
+        // follows the wheel, so hovering the list it controls still scrolls.
         if (scroll_count == 1) {
             s_field_scroll* scroll = Field_Data_Scroll(&fields[only_scroll]);
             const int16_t steps = (scroll->is_vertical != 0)
