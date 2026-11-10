@@ -415,6 +415,16 @@ namespace ui_kit {
         Frame pressed;
     };
 
+    // The colony BUILDING toggle's derived frames: off is the grey
+    // toggle (frame 0), on the blue toggle with its white starburst
+    // (frame 1). Both null falls back to the engine-drawn toggle;
+    // a missing on frame falls back to the off frame, like the
+    // sprite's own single-frame case.
+    struct Toggle_Frames {
+        Frame off;
+        Frame on;
+    };
+
     // A theme is everything about a window's look that varies with
     // the art set: fonts, tab frames, window chrome, tab metrics.
     // Screens take a const Theme&; a hi-res asset set is a second
@@ -479,6 +489,21 @@ namespace ui_kit {
         // The RETURN button's derived frames (see
         // Image_Button_Frames).
         virtual ui_kit::Image_Button_Frames Return_Frames() const = 0;
+        // The colony BUILDING toggle's derived frames (see
+        // Toggle_Frames). Both null when the theme carries none:
+        // the toggle falls back to the engine-drawn one.
+        virtual ui_kit::Toggle_Frames Toggle_Frames() const {
+            // Qualified: the member function name hides the
+            // same-named struct, so an unqualified Toggle_Frames()
+            // would recurse into this method.
+            return ui_kit::Toggle_Frames();
+        }
+        // The bottom band's label font: the colony's SORT label font
+        // (style 2, grey), for the label at the start of the band
+        // (SETTINGS on the settings screen, SORT on the colony
+        // screen). Defaults to the tab font; a theme that carries
+        // the grey label font overrides it.
+        virtual const Font& Band_Label_Font() const { return Tab_Font(); }
         // The colony screen's baked background (640x480), for
         // screens that render on it instead of the kit's drawn
         // frame: the colony background is the base, the screen's
@@ -513,9 +538,11 @@ namespace ui_kit {
             Frame food_normal, Frame food_active,
             Frame return_normal, Frame return_pressed,
             const s_colors& title_colors,
-            Frame background = Frame());
+            Frame background = Frame(),
+            Frame toggle_off = Frame(), Frame toggle_on = Frame());
         const Font& Tab_Font() const override;
         const Font& Header_Font() const override;
+        const Font& Band_Label_Font() const override;
         ui_kit::Tab_Frames Tab_Frames() const override;
         ui_kit::Tab_Frames Tab_Frames_For_Tab(
             int16_t tab_index) const override;
@@ -526,6 +553,7 @@ namespace ui_kit {
         ui_kit::List_Style List_Style() const override;
         ui_kit::Button_Style Button_Style() const override;
         ui_kit::Image_Button_Frames Return_Frames() const override;
+        ui_kit::Toggle_Frames Toggle_Frames() const override;
         ui_kit::Frame Background() const override;
         int16_t Tab_Padding() const override;
         int16_t Tab_Gap() const override;
@@ -561,6 +589,11 @@ namespace ui_kit {
         Frame tab_active_[3];
         Frame return_normal_;
         Frame return_pressed_;
+        Frame toggle_off_;
+        Frame toggle_on_;
+        // The bottom band's label font (style 2, grey): the colony's
+        // SORT label renders in the tab font's grey, not its white.
+        Engine_Font band_label_font_;
         // The colony screen's baked background (COLSUM.LBX entry 0,
         // remapped to the menu palette at run time). Null when it
         // failed to load; the screen falls back to the kit frame.
@@ -659,6 +692,12 @@ namespace ui_kit {
         };
 
         Tab_Bar(int16_t x, int16_t y, int16_t right, const Theme& theme);
+        // The label at the start of the band (SETTINGS on the
+        // settings screen, like SORT on the colony's sort band):
+        // drawn in the theme's band-label font at the bar's x, and
+        // the tabs lay out after it. Null (the default) means no
+        // label: the tabs fill the whole strip, as before.
+        void Set_Label(const char* label);
         void Add_Tab(const char* label, bool active,
             bool pressed = false);
         // A fixed-size tab: the colony's sort buttons are
@@ -687,6 +726,10 @@ namespace ui_kit {
         int16_t right_; // exclusive end of the strip
         const Theme& theme_;
         std::vector<Tab> tabs_;
+        const char* label_ = nullptr;
+        // The label's width plus the gap to the first tab; 0 when
+        // there is no label.
+        int16_t label_width_ = 0;
     };
 
     // A window's frame: the border that contains everything, drawn
@@ -885,8 +928,13 @@ namespace ui_kit {
     // trailing shade is the panel border itself. Row frame lines
     // stop at content_right (the list edge), short of the scrollbar
     // strip, like the colony list's cells stop short of its bar.
+    // fill_interior false skips the panel's flat interior fill:
+    // a screen rendering on its baked background leaves the
+    // background's own panel texture showing and draws only the
+    // border and the row frame lines on top of it. True (the
+    // default) fills the panel, as before.
     void Draw_List_Background(const Theme& theme,
-        const List_Layout& layout);
+        const List_Layout& layout, bool fill_interior = true);
 
     // Column dividers over a list: the 3 px vertical grooves
     // between adjacent columns, from the first row top to the last

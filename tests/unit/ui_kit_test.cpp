@@ -371,6 +371,30 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(bar.height() == 24);
     }
 
+    DOCTEST_TEST_CASE("tab bar label takes the start of the strip and the tabs follow it") {
+        using namespace test_ui_kit_detail;
+        Fake_Theme theme;
+        ui_kit::Tab_Bar bar(16, 446, 126, theme);
+        bar.Set_Label("SETTINGS");
+        bar.Add_Tab("A", true);
+        bar.Add_Tab("BB", false);
+
+        // The label is the band-label font's width plus the 12 px
+        // gap to the first tab; the tabs start after it and still
+        // fill the strip to its right edge.
+        const int16_t label_width = (int16_t)(
+            theme.Band_Label_Font().Width("SETTINGS") + 12);
+        DOCTEST_REQUIRE(bar.tabs().size() == 2);
+        DOCTEST_CHECK(bar.tabs()[0].x == 16 + label_width);
+        DOCTEST_CHECK(bar.End_X() == 126);
+        // No label: the tabs fill the whole strip, as before.
+        ui_kit::Tab_Bar bare(16, 446, 126, theme);
+        bare.Add_Tab("A", true);
+        bare.Add_Tab("BB", false);
+        DOCTEST_CHECK(bare.tabs()[0].x == 16);
+        DOCTEST_CHECK(bare.End_X() == 126);
+    }
+
     DOCTEST_TEST_CASE("tab bar fills the strip to its right edge in proportion to label widths") {
         using namespace test_ui_kit_detail;
         Fake_Theme theme;
@@ -562,20 +586,27 @@ DOCTEST_TEST_SUITE("ui kit") {
         const ui_kit::Tab_Frames frames = theme.Tab_Frames();
         DOCTEST_CHECK(frames.normal.frame.Is_Null());
         DOCTEST_CHECK(frames.active.frame.Is_Null());
-        // Every frame three-slices on its flat face column, both
-        // states, with 20 px fixed ramps: the selected frame's
-        // field is flat in the middle once the ramps are fixed
-        // slices, so nothing resamples. The middle column is per
-        // tab: Name 26, Population 38, Food 21.
+        // Every frame three-slices on its flat face column, with
+        // 20 px fixed ramps: the selected frame's field is flat in
+        // the middle once the ramps are fixed slices, so nothing
+        // resamples. The middle column is per tab AND per state:
+        // the normal frame's gradient runs bright at the ramps to
+        // dark navy in the middle (Name 26, Population 38, Food 21),
+        // the active frame's runs the other way, bright blue in the
+        // middle (Name 7, Population 4, Food 3), so a wide active
+        // tab reads bright blue instead of dark navy.
         DOCTEST_CHECK(frames.normal.middle_column == 26);
-        DOCTEST_CHECK(frames.active.middle_column == 26);
+        DOCTEST_CHECK(frames.active.middle_column == 7);
         DOCTEST_CHECK_FALSE(frames.normal.resample_middle);
         DOCTEST_CHECK_FALSE(frames.active.resample_middle);
         DOCTEST_CHECK(frames.left_slice == 20);
         DOCTEST_CHECK(frames.right_slice == 20);
         DOCTEST_CHECK(theme.Tab_Frames_For_Tab(1).normal.middle_column == 38);
+        DOCTEST_CHECK(theme.Tab_Frames_For_Tab(1).active.middle_column == 4);
         DOCTEST_CHECK(theme.Tab_Frames_For_Tab(2).normal.middle_column == 21);
+        DOCTEST_CHECK(theme.Tab_Frames_For_Tab(2).active.middle_column == 3);
         DOCTEST_CHECK(theme.Tab_Frames_For_Tab(9).normal.middle_column == 21);
+        DOCTEST_CHECK(theme.Tab_Frames_For_Tab(9).active.middle_column == 3);
         // The gap profile is the band's recessed channel, one
         // entry per tab row; row 0 follows the arch, so it differs
         // per gap.
@@ -1145,6 +1176,20 @@ DOCTEST_TEST_SUITE("ui kit") {
             DOCTEST_CHECK(fill.y1 != 87);
             DOCTEST_CHECK(fill.y1 != 369);
         }
+
+        // Without the interior fill (a screen on its baked
+        // background) the panel fill is gone but the border, the
+        // row frame lines, the footing and the right bevel stay:
+        // one fewer fill, and the first fill is row 0's top light
+        // line, not the panel interior.
+        test::fakes::Reset_All_();
+        ui_kit::Draw_List_Background(theme, layout, false);
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 54);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 57);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y2 == 57);
+        DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 1);
+        DOCTEST_CHECK(test::fakes::g_box_calls[0].x == 11);
+        DOCTEST_CHECK(test::fakes::g_box_calls[0].y == 30);
     }
 
     DOCTEST_TEST_CASE("column layout puts the 3 px divider right after the left column") {

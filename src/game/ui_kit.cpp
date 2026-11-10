@@ -41,12 +41,26 @@ namespace ui_kit {
         constexpr int16_t kSort_Right_Slice = 20;
         // Middle columns, by tab index (0 Name, 1 Population,
         // 2 Food): the middle of each tab's flat run on the
-        // label-free row 5, the same column for both states -- the
-        // column is the flat face (menu 50) on every row of both
-        // derived frames, including the groove row, where the
-        // ramp tails remap onto the same index.
+        // label-free row 5. The two states differ: the normal
+        // frame's gradient runs bright blue at the ramps to dark
+        // navy (menu 50) in the middle, so the normal middle is the
+        // dark-navy centre; the active frame's gradient runs the
+        // other way (bright blue in the middle), so the active
+        // middle is the bright-blue (menu 138) centre. The dark
+        // column is right for the colony's narrow tabs (the bright
+        // ramps dominate) but wrong for the settings' wide tabs
+        // (the dark centre would dominate and the active tab would
+        // read dark navy instead of bright blue).
         constexpr int16_t kSort_Middle_Columns[] = {26, 38, 21};
+        constexpr int16_t kSort_Middle_Columns_Active[] = {7, 4, 3};
         constexpr int16_t kSort_Tab_Count = 3;
+
+        // The bottom band's label colours (style 2, grey): the
+        // colony's SORT label is menu 243 (152,152,160), the grey
+        // of the colony's (152,152,152), with the tab font's dark
+        // shadow (29). The tab labels stay white (248); the band
+        // label is the grey.
+        const s_colors kBand_Label = {{29, 243, 243, 243, 243, 243, 243, 243}};
 
         // The window-band background the gaps between tabs show,
         // in menu-palette indices, one per tab row (top -> bottom):
@@ -580,7 +594,8 @@ namespace ui_kit {
         Frame population_normal, Frame population_active,
         Frame food_normal, Frame food_active,
         Frame return_normal, Frame return_pressed,
-        const s_colors& title_colors, Frame background)
+        const s_colors& title_colors, Frame background,
+        Frame toggle_off, Frame toggle_on)
         // Tab labels are engine font style 2: the baked colony
         // labels measure as style 2 (widths within 1-2 px per
         // label, ink 8-9 rows tall). Button labels are the
@@ -604,6 +619,9 @@ namespace ui_kit {
           tab_active_{name_active, population_active, food_active},
           return_normal_(return_normal),
           return_pressed_(return_pressed),
+          toggle_off_(toggle_off),
+          toggle_on_(toggle_on),
+          band_label_font_(2, kBand_Label, kBand_Label),
           background_(background) {
         // Loading is soft: a missing or malformed file leaves the
         // bitmap fonts unloaded and the engine fonts above render
@@ -622,19 +640,31 @@ namespace ui_kit {
         return header_font_;
     }
 
+    const Font& Colony_Theme::Band_Label_Font() const {
+        return band_label_font_;
+    }
+
+    ui_kit::Toggle_Frames Colony_Theme::Toggle_Frames() const {
+        ui_kit::Toggle_Frames frames;
+        frames.off = toggle_off_;
+        frames.on = toggle_on_;
+        return frames;
+    }
+
     namespace {
         // One tab's frames: the tab's own sort frame in both
         // states, three-sliced with the fixed 20 px ramps and that
         // tab's flat middle column.
         ui_kit::Tab_Frames Make_Tab_Frames(const Frame& normal,
-            const Frame& active, int16_t middle_column) {
+            const Frame& active, int16_t middle_column,
+            int16_t middle_column_active) {
             ui_kit::Tab_Frames frames;
             frames.normal.frame = normal;
             frames.normal.resample_middle = false;
             frames.normal.middle_column = middle_column;
             frames.active.frame = active;
             frames.active.resample_middle = false;
-            frames.active.middle_column = middle_column;
+            frames.active.middle_column = middle_column_active;
             frames.left_slice = kSort_Left_Slice;
             frames.right_slice = kSort_Right_Slice;
             frames.fallback_fill_normal = kTab_Fallback_Fill_Normal;
@@ -658,7 +688,8 @@ namespace ui_kit {
         }
         return Make_Tab_Frames(tab_normal_[(size_t)tab_index],
             tab_active_[(size_t)tab_index],
-            kSort_Middle_Columns[(size_t)tab_index]);
+            kSort_Middle_Columns[(size_t)tab_index],
+            kSort_Middle_Columns_Active[(size_t)tab_index]);
     }
 
     std::vector<uint8_t> Colony_Theme::Tab_Gap_Profile(
@@ -779,6 +810,12 @@ namespace ui_kit {
             background = Frame(sprite_art::Load_Sprite_Frame(
                 "colony-background", "normal", allocation_base));
         }
+        // The colony BUILDING toggle, extracted at run time from
+        // the user's own game data (COLSUM entry 11). Both null when
+        // the entry is missing: the toggle falls back to the
+        // engine-drawn one.
+        const sprite_art::Buy_Button_Frames toggle =
+            sprite_art::Load_Buy_Button_Frames(allocation_base);
         return std::make_unique<Colony_Theme>(
             Frame(sprite_art::Load_Sprite_Frame("sort-name", "normal",
                 allocation_base)),
@@ -796,7 +833,8 @@ namespace ui_kit {
                 allocation_base)),
             Frame(sprite_art::Load_Sprite_Frame("return", "pressed",
                 allocation_base)),
-            title_colors, background);
+            title_colors, background,
+            Frame(toggle.off), Frame(toggle.on));
     }
 
     Button::Button(int16_t x, int16_t y, int16_t w, int16_t h,
@@ -1010,6 +1048,23 @@ namespace ui_kit {
 
     void Button::Draw_Toggle() const {
         const Button_Style style = theme_.Button_Style();
+        // The derived toggle frames, when the theme carries them:
+        // the colony's BUILDING toggle (grey off, blue on), drawn
+        // at its native 19x29. Pressed renders as rest: the
+        // colony's toggle has no pressed frame (its two-frame buy
+        // button's frame 1 means "bought", not "held"). Disabled
+        // stays the bare cell: the colony's no-button state.
+        const Toggle_Frames frames = theme_.Toggle_Frames();
+        if (state_ != Button_State::Disabled &&
+            (!frames.off.Is_Null() || !frames.on.Is_Null())) {
+            const bool on = state_ == Button_State::Active;
+            const Frame& frame = on && !frames.on.Is_Null()
+                ? frames.on : frames.off;
+            if (!frame.Is_Null()) {
+                frame.Draw(x_, y_);
+                return;
+            }
+        }
         graphics::Fill(x_, y_, (int16_t)(x_ + width_ - 1),
             (int16_t)(y_ + height_ - 1), style.cell_interior);
         graphics::Box(x_, y_, width_, height_, 1, style.cell_border);
@@ -1086,14 +1141,26 @@ namespace ui_kit {
         Relayout();
     }
 
+    void Tab_Bar::Set_Label(const char* label) {
+        label_ = label;
+        // The label plus the gap to the first tab: the colony's
+        // SORT label ends ~15 px before its first tab (the sort
+        // icon takes ~12 px of that; the settings label has no
+        // icon, so 12 px of gap).
+        label_width_ = label_ == nullptr ? 0
+            : (int16_t)(theme_.Band_Label_Font().Width(label_) + 12);
+        Relayout();
+    }
+
     void Tab_Bar::Relayout() {
-        // The strip fills [x_, right_): the tabs divide the width
-        // in proportion to their natural widths (label + padding,
-        // like the colony's sort buttons), with the theme's gap
-        // between them, so the strip reads as one continuous row
-        // ending exactly at right_. The last tab absorbs the
-        // rounding remainder; a strip narrower than the natural
-        // widths shrinks the tabs proportionally, never below 1 px.
+        // The strip fills [x_, right_): the label (when set) takes
+        // the start, and the tabs divide the rest in proportion to
+        // their natural widths (label + padding, like the colony's
+        // sort buttons), with the theme's gap between them, so the
+        // strip reads as one continuous row ending exactly at
+        // right_. The last tab absorbs the rounding remainder; a
+        // strip narrower than the natural widths shrinks the tabs
+        // proportionally, never below 1 px.
         const int16_t count = (int16_t)tabs_.size();
         if (count == 0) {
             return;
@@ -1104,8 +1171,8 @@ namespace ui_kit {
             total_natural += tab.natural_width;
         }
         const int16_t available =
-            (int16_t)(right_ - x_ - (count - 1) * gap);
-        int16_t x = x_;
+            (int16_t)(right_ - x_ - label_width_ - (count - 1) * gap);
+        int16_t x = (int16_t)(x_ + label_width_);
         int32_t used = 0;
         for (int16_t index = 0; index < count; ++index) {
             int16_t width;
@@ -1150,6 +1217,13 @@ namespace ui_kit {
     }
 
     void Tab_Bar::Draw() const {
+        // The band label first, at the bar's start, in the theme's
+        // band-label font (the colony's SORT label position).
+        if (label_ != nullptr) {
+            theme_.Band_Label_Font().Print(x_,
+                (int16_t)(y_ + theme_.Tab_Label_Y_Offset()), label_,
+                false);
+        }
         // The band first: the gaps between adjacent tabs show the
         // window band's recessed channel, one profile entry per row,
         // coalesced into one fill per run of equal colour. A theme
@@ -1389,12 +1463,14 @@ namespace ui_kit {
     }
 
     void Draw_List_Background(const Theme& theme,
-        const List_Layout& layout) {
+        const List_Layout& layout, bool fill_interior) {
         const List_Style style = theme.List_Style();
         const int16_t x = layout.panel_x();
         const int16_t y = layout.panel_y();
-        graphics::Fill(x, y, (int16_t)(x + layout.panel_w() - 1),
-            (int16_t)(y + layout.panel_h() - 1), style.interior);
+        if (fill_interior) {
+            graphics::Fill(x, y, (int16_t)(x + layout.panel_w() - 1),
+                (int16_t)(y + layout.panel_h() - 1), style.interior);
+        }
         graphics::Box(x, y, layout.panel_w(), layout.panel_h(), 1,
             style.border);
         for (int index = 0; index < layout.rows(); ++index) {
