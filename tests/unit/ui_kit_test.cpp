@@ -460,6 +460,33 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK_FALSE(theme.font.prints[1].active);
     }
 
+    DOCTEST_TEST_CASE("list background dithers the panel interior over the flat fill") {
+        using namespace test_ui_kit_detail;
+        Fake_Theme theme;
+        ui_kit::List_Layout layout(11, 30, 617, 619, 32, 22, 10,
+            theme.Spacing());
+
+        test::fakes::Reset_All_();
+        ui_kit::Draw_List_Background(theme, layout, true, false);
+
+        // The panel interior is a sparse Bayer speckle (~13% of
+        // the plate-face grey) over the flat dark interior, so the
+        // rows carry the colony's texture and the bevelled toggle
+        // circles read as part of the surface.
+        DOCTEST_REQUIRE(test::fakes::g_dithered_fill_calls.size() == 1);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].x1 == 11);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].y1 == 30);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].x2 == 627);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].y2 == 369);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].base == 230);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].speckle == 233);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].density == 2);
+        // The flat fill count is unchanged: the dither is recorded
+        // separately, so the existing fill assertions still hold.
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 5);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 230);
+    }
+
     DOCTEST_TEST_CASE("tab bar resamples the active frame's gradient middle instead of tiling it") {
         using namespace test_ui_kit_detail;
         // 10x1 active frame, middle a rising gradient [13..18].
@@ -487,7 +514,7 @@ DOCTEST_TEST_SUITE("ui kit") {
         }
     }
 
-    DOCTEST_TEST_CASE("tab bar falls back to a flat fill when a frame is missing") {
+    DOCTEST_TEST_CASE("tab bar falls back to a dithered gradient for the active tab and a flat fill for the rest") {
         using namespace test_ui_kit_detail;
         Fake_Theme theme;
         theme.frames.normal.frame = ui_kit::Frame();
@@ -503,11 +530,38 @@ DOCTEST_TEST_SUITE("ui kit") {
         bar.Add_Tab("BB", false);
         bar.Draw();
 
-        // One fill per tab in the fallback colour, one border box
-        // each, and the labels still print.
-        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 2);
+        // The active tab's face is a Bayer dither of the brightest
+        // blue over dark navy at 5/16 (~31%, the colony's own
+        // bright fraction), with bright left/right edge columns
+        // and dark top/bottom edge rows; the inactive tab is a
+        // flat dark-navy fill. One border box each, and the labels
+        // still print.
+        DOCTEST_REQUIRE(test::fakes::g_dithered_fill_calls.size() == 1);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].x1 == 1);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].y1 == 1);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].x2 == 24);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].y2 == 22);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].base == 50);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].speckle == 138);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].density == 5);
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 5);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 1);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x2 == 2);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 1);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y2 == 22);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 138);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 50);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].x1 == 23);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].x2 == 24);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 138);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].y1 == 1);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].y2 == 1);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 50);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].y1 == 22);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].y2 == 22);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].color == 50);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[4].x1 == 27);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[4].x2 == 62);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[4].color == 50);
         DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 2);
         DOCTEST_CHECK(test::fakes::g_box_calls[0].color == 234);
         DOCTEST_CHECK(test::fakes::g_box_calls[1].color == 234);
@@ -628,14 +682,26 @@ DOCTEST_TEST_SUITE("ui kit") {
         bar.Add_Tab("BB", false);
         bar.Draw();
 
-        // The colony fallback fills: active menu blue, rest dark
-        // navy, both bordered in the panel border colour -- and the
-        // labels still print. The gap between the tabs (x 31, 1 px
-        // wide -- the fake engine font measures every label as 6 px,
-        // so the 63-wide bar lays out 31/31) fills first, one fill
-        // per run of the profile: 239, 234, 15, 84, 50 x16, 84, 94,
-        // 29, 239 -- nine fills before the two tab fills.
-        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 11);
+        // The colony fallback fills: the active tab is a dithered
+        // gradient (bright blue over dark navy) with bright edge
+        // columns and dark top/bottom rows, the rest tab is flat
+        // dark navy, both bordered in the panel border colour --
+        // and the labels still print. The gap between the tabs
+        // (x 31, 1 px wide -- the fake engine font measures every
+        // label as 6 px, so the 63-wide bar lays out 31/31) fills
+        // first, one fill per run of the profile: 239, 234, 15, 84,
+        // 50 x16, 84, 94, 29, 239 -- nine fills before the five tab
+        // fills (four edge fills for the active tab, one flat fill
+        // for the rest).
+        DOCTEST_REQUIRE(test::fakes::g_dithered_fill_calls.size() == 1);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].x1 == 1);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].y1 == 1);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].x2 == 29);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].y2 == 22);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].base == 50);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].speckle == 138);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].density == 5);
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 14);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 31);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].x2 == 31);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 0);
@@ -647,7 +713,10 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(test::fakes::g_fill_calls[8].y1 == 23);
         DOCTEST_CHECK(test::fakes::g_fill_calls[8].color == 239);
         DOCTEST_CHECK(test::fakes::g_fill_calls[9].color == 138);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[10].color == 50);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[10].color == 138);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[11].color == 50);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[12].color == 50);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[13].color == 50);
         DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 2);
         DOCTEST_CHECK(test::fakes::g_box_calls[0].color == 234);
         DOCTEST_CHECK(test::fakes::g_box_calls[1].color == 234);

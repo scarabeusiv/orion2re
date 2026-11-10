@@ -1021,10 +1021,44 @@ namespace ui_kit {
                     frames.left_slice, frames.right_slice);
             }
         } else {
-            graphics::Fill(x_, y_, (int16_t)(x_ + width_ - 1),
-                (int16_t)(y_ + height_ - 1),
-                selected ? frames.fallback_fill_active
-                         : frames.fallback_fill_normal);
+            // Fallback when the derived frames are missing
+            // (stale base.zip): fill the tab's own rect with the
+            // frame's interior colour and draw a 1 px border in
+            // the frame's border colour, like a colony tab. The
+            // active tab is a dithered gradient, not a flat fill:
+            // the colony's active tab is a bevel -- bright at the
+            // left and right edges, dark navy in the centre, dark
+            // at the top and bottom edges -- and a flat fill can
+            // never read as that, whatever colour it is. The face
+            // is a Bayer dither of the brightest blue over dark
+            // navy at ~31%, the colony's own bright fraction.
+            if (selected) {
+                graphics::Dithered_Fill(x_ + 1, y_ + 1,
+                    (int16_t)(x_ + width_ - 2),
+                    (int16_t)(y_ + height_ - 2),
+                    frames.fallback_fill_normal,
+                    frames.fallback_fill_active, 5);
+                // Bright left and right edge columns, dark top
+                // and bottom edge rows, like the colony's tab.
+                graphics::Fill(x_ + 1, y_ + 1, x_ + 2,
+                    (int16_t)(y_ + height_ - 2),
+                    frames.fallback_fill_active);
+                graphics::Fill((int16_t)(x_ + width_ - 3), y_ + 1,
+                    (int16_t)(x_ + width_ - 2),
+                    (int16_t)(y_ + height_ - 2),
+                    frames.fallback_fill_active);
+                graphics::Fill(x_ + 1, y_ + 1,
+                    (int16_t)(x_ + width_ - 2), y_ + 1,
+                    frames.fallback_fill_normal);
+                graphics::Fill(x_ + 1, (int16_t)(y_ + height_ - 2),
+                    (int16_t)(x_ + width_ - 2),
+                    (int16_t)(y_ + height_ - 2),
+                    frames.fallback_fill_normal);
+            } else {
+                graphics::Fill(x_, y_, (int16_t)(x_ + width_ - 1),
+                    (int16_t)(y_ + height_ - 1),
+                    frames.fallback_fill_normal);
+            }
             graphics::Box(x_, y_, width_, height_, 1,
                 frames.fallback_border);
         }
@@ -1528,6 +1562,16 @@ namespace ui_kit {
         if (fill_interior) {
             graphics::Fill(x, y, (int16_t)(x + layout.panel_w() - 1),
                 (int16_t)(y + layout.panel_h() - 1), style.interior);
+            // The colony's panel is a speckle dither, not a flat
+            // fill: a sparse Bayer speckle (~13% of the plate-face
+            // grey) gives the rows the same texture as the colony's
+            // and lets the bevelled toggle circles read as part of
+            // the surface instead of a textured control pasted on
+            // a plain row.
+            graphics::Dithered_Fill(x, y,
+                (int16_t)(x + layout.panel_w() - 1),
+                (int16_t)(y + layout.panel_h() - 1), style.interior,
+                style.plate_face, 2);
         }
         graphics::Box(x, y, layout.panel_w(), layout.panel_h(), 1,
             style.border);
