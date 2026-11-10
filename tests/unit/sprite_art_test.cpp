@@ -522,6 +522,25 @@ DOCTEST_TEST_SUITE("sprite art") {
             sprite_art::Load_Colony_Background(nullptr) == nullptr);
     }
 
+    DOCTEST_TEST_CASE("scroll-arrow frames fail soft when the LBX is absent") {
+        using namespace test_sprite_art_detail;
+        // Same empty test VFS as the background case: no COLSUM.LBX,
+        // so both arrow frames come back null and the bar keeps its
+        // code-drawn triangles instead of terminating.
+        Scoped_Test_Directory test_dir;
+        DOCTEST_REQUIRE(vfs::Init(test_dir.root_path().string().c_str()) == 1);
+
+        Scoped_Buffer_Pool pool(1024 * 1024);
+        const sprite_art::Scroll_Arrow_Frames frames =
+            sprite_art::Load_Scroll_Arrow_Frames(pool.payload);
+        DOCTEST_CHECK(frames.up == nullptr);
+        DOCTEST_CHECK(frames.down == nullptr);
+        const sprite_art::Scroll_Arrow_Frames null_frames =
+            sprite_art::Load_Scroll_Arrow_Frames(nullptr);
+        DOCTEST_CHECK(null_frames.up == nullptr);
+        DOCTEST_CHECK(null_frames.down == nullptr);
+    }
+
     DOCTEST_TEST_CASE("buy-button frames fail soft when the LBX is absent") {
         using namespace test_sprite_art_detail;
         // Same empty test VFS as the background case: no COLSUM.LBX,

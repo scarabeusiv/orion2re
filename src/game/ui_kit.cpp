@@ -614,7 +614,8 @@ namespace ui_kit {
         Frame food_normal, Frame food_active,
         Frame return_normal, Frame return_pressed,
         const s_colors& title_colors, Frame background,
-        Frame toggle_off, Frame toggle_on)
+        Frame toggle_off, Frame toggle_on,
+        Frame scroll_arrow_up, Frame scroll_arrow_down)
         // Tab labels are engine font style 2: the baked colony
         // labels measure as style 2 (widths within 1-2 px per
         // label, ink 8-9 rows tall). Button labels are the
@@ -640,6 +641,8 @@ namespace ui_kit {
           return_pressed_(return_pressed),
           toggle_off_(toggle_off),
           toggle_on_(toggle_on),
+          scroll_arrow_up_(scroll_arrow_up),
+          scroll_arrow_down_(scroll_arrow_down),
           band_label_font_(2, kBand_Label, kBand_Label),
           background_(background) {
         // Loading is soft: a missing or malformed file leaves the
@@ -667,6 +670,13 @@ namespace ui_kit {
         ui_kit::Toggle_Frames frames;
         frames.off = toggle_off_;
         frames.on = toggle_on_;
+        return frames;
+    }
+
+    ui_kit::Scroll_Arrow_Frames Colony_Theme::Scroll_Arrow_Frames() const {
+        ui_kit::Scroll_Arrow_Frames frames;
+        frames.up = scroll_arrow_up_;
+        frames.down = scroll_arrow_down_;
         return frames;
     }
 
@@ -844,6 +854,12 @@ namespace ui_kit {
         // engine-drawn one.
         const sprite_art::Buy_Button_Frames toggle =
             sprite_art::Load_Buy_Button_Frames(allocation_base);
+        // The colony scrollbar arrows, extracted at run time from
+        // the user's own game data (COLSUM entries 2/3, rest state).
+        // Both null when an entry is missing: the bar falls back to
+        // its code-drawn triangles.
+        const sprite_art::Scroll_Arrow_Frames arrows =
+            sprite_art::Load_Scroll_Arrow_Frames(allocation_base);
         return std::make_unique<Colony_Theme>(
             Frame(), Frame(), Frame(), Frame(), Frame(), Frame(),
             Frame(sprite_art::Load_Sprite_Frame("return", "normal",
@@ -851,7 +867,8 @@ namespace ui_kit {
             Frame(sprite_art::Load_Sprite_Frame("return", "pressed",
                 allocation_base)),
             title_colors, Frame(),
-            Frame(toggle.off), Frame(toggle.on));
+            Frame(toggle.off), Frame(toggle.on),
+            Frame(arrows.up), Frame(arrows.down));
     }
 
     Button::Button(int16_t x, int16_t y, int16_t w, int16_t h,
@@ -1527,25 +1544,41 @@ namespace ui_kit {
     }
 
     void Scroll_Bar::Draw_Arrows() const {
-        // The arrows are triangles, 10 px wide, in the colony's
-        // positions: the up-arrow's tip at the track's top minus
-        // 25 (y 15 for the colony's track), widening to the
-        // strip's width at its base (y 34); the down-arrow mirrors
-        // it, its base at the track's bottom plus 5 (y 316)
-        // narrowing to its tip at y 337. Both start 2 px left of
-        // the strip, so the triangle is centred on it. The
-        // half-width runs 0 at the tip to 4 at the base,
-        // proportionally over the arrow's height. The triangle's
-        // face is a dithered bright (bright over the metal face
-        // grey, density 5), so it carries the colony's metal
-        // texture instead of reading as a flat triangle; its edge
-        // is a bevel -- the lighter edge (111) on the top and
-        // left, the darker edge (84) on the bottom and right,
-        // light from the top-left -- like the colony's baked
-        // arrows, not a uniform hard outline.
+        // The colony's arrow sprites, verbatim, when the theme
+        // carries them: the up-arrow (COLSUM entry 2, 10x20) at
+        // the track's top minus 25 (y 15 for the colony's track),
+        // the down-arrow (entry 3, 11x22) 5 px below the track's
+        // bottom (y 316 for the colony's track). Both start 2 px
+        // left of the strip, like the triangles below, so the
+        // sprites land in the colony's positions. The sprites are
+        // framed arrow buttons on a dark field, not bare
+        // triangles -- that is the colony's own art, and the
+        // frames draw it exactly. Without the frames, the arrows
+        // are triangles, 10 px wide, in the same positions: the
+        // up-arrow's tip at the track's top minus 25 (y 15 for
+        // the colony's track), widening to the strip's width at
+        // its base (y 34); the down-arrow mirrors it, its base at
+        // the track's bottom plus 5 (y 316) narrowing to its tip
+        // at y 337. Both start 2 px left of the strip, so the
+        // triangle is centred on it. The half-width runs 0 at the
+        // tip to 4 at the base, proportionally over the arrow's
+        // height. The triangle's face is a dithered bright (bright
+        // over the metal face grey, density 5), so it carries the
+        // colony's metal texture instead of reading as a flat
+        // triangle; its edge is a bevel -- the lighter edge (111)
+        // on the top and left, the darker edge (84) on the bottom
+        // and right, light from the top-left -- like the colony's
+        // baked arrows, not a uniform hard outline.
         const int16_t ax = (int16_t)(x_ - 2);
         const int16_t up_tip = (int16_t)(track_y_ - 25);
         const int16_t up_base = (int16_t)(track_y_ - 6);
+        const ui_kit::Scroll_Arrow_Frames frames =
+            theme_.Scroll_Arrow_Frames();
+        if (!frames.up.Is_Null() && !frames.down.Is_Null()) {
+            frames.up.Draw(ax, up_tip);
+            frames.down.Draw(ax, (int16_t)(track_bottom() + 5));
+            return;
+        }
         for (int16_t row = up_tip; row <= up_base; ++row) {
             const int16_t half = (int16_t)((row - up_tip) * 4 /
                 (up_base - up_tip));

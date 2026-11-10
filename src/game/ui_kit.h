@@ -425,6 +425,15 @@ namespace ui_kit {
         Frame on;
     };
 
+    // The colony scrollbar's arrow frames (COLSUM.LBX entries 2/3,
+    // rest state): up is 10x20, down is 11x22. Both null when the
+    // theme carries none: the bar falls back to its code-drawn
+    // triangles.
+    struct Scroll_Arrow_Frames {
+        Frame up;
+        Frame down;
+    };
+
     // A theme is everything about a window's look that varies with
     // the art set: fonts, tab frames, window chrome, tab metrics.
     // Screens take a const Theme&; a hi-res asset set is a second
@@ -498,6 +507,12 @@ namespace ui_kit {
             // would recurse into this method.
             return ui_kit::Toggle_Frames();
         }
+        // The scrollbar's arrow frames (see Scroll_Arrow_Frames).
+        // Both null when the theme carries none: the bar falls back
+        // to its code-drawn triangles.
+        virtual ui_kit::Scroll_Arrow_Frames Scroll_Arrow_Frames() const {
+            return ui_kit::Scroll_Arrow_Frames();
+        }
         // The bottom band's label font: the colony's SORT label font
         // (style 2, grey), for the label at the start of the band
         // (SETTINGS on the settings screen, SORT on the colony
@@ -539,7 +554,9 @@ namespace ui_kit {
             Frame return_normal, Frame return_pressed,
             const s_colors& title_colors,
             Frame background = Frame(),
-            Frame toggle_off = Frame(), Frame toggle_on = Frame());
+            Frame toggle_off = Frame(), Frame toggle_on = Frame(),
+            Frame scroll_arrow_up = Frame(),
+            Frame scroll_arrow_down = Frame());
         const Font& Tab_Font() const override;
         const Font& Header_Font() const override;
         const Font& Band_Label_Font() const override;
@@ -554,6 +571,7 @@ namespace ui_kit {
         ui_kit::Button_Style Button_Style() const override;
         ui_kit::Image_Button_Frames Return_Frames() const override;
         ui_kit::Toggle_Frames Toggle_Frames() const override;
+        ui_kit::Scroll_Arrow_Frames Scroll_Arrow_Frames() const override;
         ui_kit::Frame Background() const override;
         int16_t Tab_Padding() const override;
         int16_t Tab_Gap() const override;
@@ -591,6 +609,8 @@ namespace ui_kit {
         Frame return_pressed_;
         Frame toggle_off_;
         Frame toggle_on_;
+        Frame scroll_arrow_up_;
+        Frame scroll_arrow_down_;
         // The bottom band's label font (style 2, grey): the colony's
         // SORT label renders in the tab font's grey, not its white.
         Engine_Font band_label_font_;
@@ -912,13 +932,14 @@ namespace ui_kit {
         void Draw(int top, int total, int visible) const;
         // The scroll arrows at the track's ends, like COLSUM's
         // (anims[2]/[3]): the up-arrow above the track, the
-        // down-arrow below it. The arrows are code-drawn triangles
-        // in the theme's colours, not the baked sprites: the
-        // sprites' pressed frames carry a vivid colony blue with
-        // no close hue in the menu palette, and the baked arrows
-        // leave wrong pixels against a kit-drawn strip. The
-        // up-arrow sits 25 px above the track (y 15..34 for the
-        // colony's track), the down-arrow 5 px below its bottom
+        // down-arrow below it. When the theme carries the colony's
+        // arrow frames (Scroll_Arrow_Frames, COLSUM entries 2/3
+        // rest state, loaded at run time from the user's game
+        // data), the baked sprites draw verbatim at the arrow
+        // positions; otherwise the arrows are code-drawn triangles
+        // in the theme's colours (the fallback the tests pin).
+        // The up-arrow sits 25 px above the track (y 15..34 for
+        // the colony's track), the down-arrow 5 px below its bottom
         // (y 316..337); both are 10 px wide, starting 2 px left
         // of the strip. The arrows always draw, even when the
         // list fits: the colony shows both arrows with a single

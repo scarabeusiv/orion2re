@@ -201,13 +201,17 @@ namespace SETTINGS_SCREEN {
         constexpr int16_t SCROLL_W = 5;
         // Colony-list scrollbar track, like COLSUM's: the strip
         // between the scroll arrows (up y 15..34, down y 316..337),
-        // y 40..311 (272 tall). The kit layout's scroll track spans
-        // the rows (y 38..346), but the colony's thumb slides in
-        // the shorter track, with the down-arrow and the footing
-        // below it -- the settings bar uses the colony's track, so
-        // the thumb, the drag field and the arrows agree.
+        // y 40..311. The kit layout's scroll track spans the rows
+        // (y 38..346), but the colony's thumb slides in the shorter
+        // track, with the down-arrow and the footing below it -- the
+        // settings bar uses the colony's track, so the thumb, the
+        // drag field and the arrows agree. The height is 271, not
+        // 272: the colony's bottom dots sit at y311 (colsum.cpp),
+        // and track_bottom() is track_y + height, so 40 + 271 =
+        // 311 -- 272 would put the dots and the down-arrow 1 px
+        // too low (y312 / y317 instead of y311 / y316).
         constexpr int16_t COLONY_TRACK_Y = 40;
-        constexpr int16_t COLONY_TRACK_H = 272;
+        constexpr int16_t COLONY_TRACK_H = 271;
         constexpr int16_t ROW_FIELD_X_END = SCROLL_X - 2;
 
         // The bool toggle: 19x29, the colony BUILDING toggle's

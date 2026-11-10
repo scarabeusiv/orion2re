@@ -688,6 +688,83 @@ namespace sprite_art {
         return result;
     }
 
+    Scroll_Arrow_Frames Load_Scroll_Arrow_Frames(void* allocation_base) {
+        Scroll_Arrow_Frames result;
+        if (allocation_base == nullptr) {
+            return result;
+        }
+        // The colony palette comes from entry 0, like
+        // tools/extract_sprite.py does (entries 2/3 carry no
+        // embedded palette of their own).
+        int32_t palette_size = 0;
+        uint8_t* palette_payload = Load_LBX_Entry_Payload(allocation_base,
+            "COLSUM.LBX", 0, &palette_size);
+        if (palette_payload == nullptr || palette_size < 12) {
+            return result;
+        }
+        const int16_t palette_frame_count = Read_I16(palette_payload + 6);
+        uint8_t colony_palette[256][3];
+        if (!Read_Embedded_Palette(palette_payload, palette_size,
+                palette_frame_count, colony_palette)) {
+            return result;
+        }
+        uint8_t menu_palette[256][3];
+        Build_Menu_Palette(menu_palette);
+        // One entry per arrow: up is COLSUM entry 2 (10x20), down is
+        // entry 3 (11x22). Frame 0 is the rest state; frame 1 (the
+        // pressed state, vivid colony blue 38) is not loaded -- the
+        // arrows have no pressed state on this screen, and 38 has no
+        // close hue in the menu palette. A failure anywhere returns
+        // both null, so the caller never draws one real arrow and one
+        // triangle.
+        s_animation_header* up = nullptr;
+        s_animation_header* down = nullptr;
+        const struct Arrow_Spec {
+            int entry;
+            int16_t width;
+            int16_t height;
+            s_animation_header** out;
+        } specs[] = {
+            {2, 10, 20, &up},
+            {3, 11, 22, &down},
+        };
+        for (const Arrow_Spec& spec : specs) {
+            int32_t entry_size = 0;
+            uint8_t* payload = Load_LBX_Entry_Payload(allocation_base,
+                "COLSUM.LBX", spec.entry, &entry_size);
+            if (payload == nullptr || entry_size < 12) {
+                return result;
+            }
+            const int16_t width = Read_I16(payload + 0);
+            const int16_t height = Read_I16(payload + 2);
+            const int16_t frame_count = Read_I16(payload + 6);
+            if (width != spec.width || height != spec.height ||
+                frame_count < 1 ||
+                entry_size < 12 + (frame_count + 1) * 4) {
+                return result;
+            }
+            const uint32_t frame_offset = Read_U32(payload + 12);
+            if (frame_offset >= (uint32_t)entry_size) {
+                return result;
+            }
+            s_animation_header* frame = Alloc_Bitmap_Frame(allocation_base,
+                width, height);
+            if (frame == nullptr) {
+                return result;
+            }
+            Remapper remap(colony_palette, menu_palette);
+            if (!Decode_RLE_Frame(payload, entry_size, frame_offset,
+                    width, height,
+                    (uint8_t*)frame + kBitmapFrameDataOffset, remap)) {
+                return result;
+            }
+            *spec.out = frame;
+        }
+        result.up = up;
+        result.down = down;
+        return result;
+    }
+
     void Draw_Sprite_Frame_Region(const s_animation_header* frame,
         int16_t src_x, int16_t src_y, int16_t width, int16_t height,
         int16_t dst_x, int16_t dst_y) {

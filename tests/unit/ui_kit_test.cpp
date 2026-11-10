@@ -105,6 +105,7 @@ namespace test_ui_kit_detail {
         ui_kit::List_Style list;
         ui_kit::Button_Style buttons;
         ui_kit::Image_Button_Frames return_frames;
+        ui_kit::Scroll_Arrow_Frames scroll_arrow_frames;
 
         Fake_Theme() {
             frame.thickness_left = 3;
@@ -198,6 +199,10 @@ namespace test_ui_kit_detail {
 
         ui_kit::Image_Button_Frames Return_Frames() const override {
             return return_frames;
+        }
+
+        ui_kit::Scroll_Arrow_Frames Scroll_Arrow_Frames() const override {
+            return scroll_arrow_frames;
         }
 
         int16_t Tab_Padding() const override {
@@ -2569,6 +2574,45 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(test::fakes::g_fill_calls[87].x1 == 623);
         DOCTEST_CHECK(test::fakes::g_fill_calls[87].x2 == 624);
         DOCTEST_CHECK(test::fakes::g_fill_calls[87].color == 84);
+    }
+
+    DOCTEST_TEST_CASE("scroll bar draws the colony's arrow frames when the theme provides them") {
+        using namespace test_ui_kit_detail;
+        // The colony's arrows, verbatim: up 10x20 (fill 7), down
+        // 11x22 (fill 9). The bar draws them at the colony's
+        // positions -- up at (619, 15), down at (619, 316) -- and
+        // draws no triangles at all.
+        const std::string up = Make_Frame(10, 20, 7);
+        const std::string down = Make_Frame(11, 22, 9);
+        Fake_Theme theme;
+        theme.scroll_arrow_frames.up =
+            ui_kit::Frame((const s_animation_header*)up.data());
+        theme.scroll_arrow_frames.down =
+            ui_kit::Frame((const s_animation_header*)down.data());
+        const ui_kit::Scroll_Bar bar(621, 6, 40, 271, theme);
+        test::fakes::Reset_All_();
+        Scoped_Video_Page page;
+        bar.Draw_Arrows();
+        // No triangle: no fills and no dithered fills.
+        DOCTEST_CHECK(test::fakes::g_fill_calls.empty());
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls.empty());
+        // The up frame lands at (619, 15)..(628, 34): its corners
+        // and centre are the up fill.
+        DOCTEST_CHECK(page.At(619, 15) == 7);
+        DOCTEST_CHECK(page.At(628, 34) == 7);
+        DOCTEST_CHECK(page.At(623, 24) == 7);
+        // Nothing beside the up frame: the pixel left of it and the
+        // pixel right of it are untouched (0xFF).
+        DOCTEST_CHECK(page.At(618, 15) == 0xFF);
+        DOCTEST_CHECK(page.At(629, 15) == 0xFF);
+        // The down frame lands at (619, 316)..(629, 337): its
+        // corners and centre are the down fill. It is 11 wide, one
+        // wider than the up frame, like the colony's.
+        DOCTEST_CHECK(page.At(619, 316) == 9);
+        DOCTEST_CHECK(page.At(629, 337) == 9);
+        DOCTEST_CHECK(page.At(624, 326) == 9);
+        DOCTEST_CHECK(page.At(618, 316) == 0xFF);
+        DOCTEST_CHECK(page.At(630, 316) == 0xFF);
     }
 
     DOCTEST_TEST_CASE("tab bar places fixed-size sort tabs at the colony's positions") {
