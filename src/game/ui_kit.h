@@ -296,10 +296,16 @@ namespace ui_kit {
     };
 
     // Button colours and label fonts, in the theme's palette. The
-    // metal face/highlight/shadow are the scrollbar thumb's bevel
-    // remapped to the menu palette (238/243/232 -- the derived
-    // RETURN's modal face grey, its brightest grey, its dark
-    // edge); the primary (blue) face is the active selector's blue
+    // metal face/highlight/shadow are the derived RETURN's greys
+    // (238/243/232 -- its modal face grey, its brightest grey, its
+    // dark edge), which the scrollbar thumb shares: the colony
+    // thumb itself is blue (229/230/228 in the colony palette),
+    // and the menu palette has no close blue, so the kit's metal
+    // is grey by design -- a colony-palette theme would supply
+    // the blue instead. The corner dots are the colony's index 80
+    // (black in the colony palette; the menu remap is 0), single
+    // pixels at the scroll track's ends. The primary (blue) face
+    // is the active selector's blue
     // (138, highlight 154), the same blue the colony's "No Enemy
     // Presence" selector and the settings' Show more already use.
     // The toggle fills are the settings squares' own colours (on:
@@ -318,6 +324,9 @@ namespace ui_kit {
         uint8_t toggle_on_bright = 0;
         uint8_t toggle_off_base = 0;
         uint8_t toggle_off_bright = 0;
+        // Scrollbar corner dots (see Scroll_Bar): the colony's
+        // index 80, black in the colony palette, remapped to 0.
+        uint8_t scroll_corner = 0;
         // Metal labels: dark text on the metal face, light text on
         // the blue face. Value-cell labels: the colony cyan row
         // text at rest, light text on the blue active fill. Both
@@ -548,6 +557,18 @@ namespace ui_kit {
         Tab_Bar(int16_t x, int16_t y, int16_t right, const Theme& theme);
         void Add_Tab(const char* label, bool active,
             bool pressed = false);
+        // A fixed-size tab: the colony's sort buttons are
+        // fixed-size sprites (Name 50, Population 78, Food 42,
+        // Industry 63, Science 66, Producing 86, BC 50), so the
+        // bar places them at their own widths instead of dividing
+        // the strip by label widths -- the last of them, BC, is
+        // wider than its label plus padding, and the proportional
+        // fill would shrink it and drift every tab after Name.
+        // The widths plus the gaps must fill [x, right), like the
+        // colony's strip (89..530); otherwise the bar still fills
+        // the strip proportionally from these widths.
+        void Add_Fixed_Tab(const char* label, int16_t width,
+            bool active, bool pressed = false);
         const std::vector<Tab>& tabs() const;
         int16_t y() const;
         int16_t height() const;
@@ -689,6 +710,66 @@ namespace ui_kit {
         std::vector<Column> columns_;
         int16_t top_;
         int16_t bottom_;
+    };
+
+    // A colony-list scrollbar: the drag thumb in its track, like
+    // COLSUM's Draw_Bar_Indicator (colsum.cpp) -- a filled bar
+    // with a bright top/left edge and a dark bottom/right edge,
+    // and single dots marking the track ends. The thumb spans the
+    // fraction of the list that is visible: y1 = track_y +
+    // track_h * top / total, y2 = track_y + track_h *
+    // (top + visible) / total, colsum's own formula, with no
+    // minimum height (the thumb can be tiny with many rows). The
+    // track is the caller's: the colony's is y 40..311 (271, the
+    // strip between the scroll arrows at y 15..34 and y 316..337),
+    // the settings screen's is the layout's scroll track (first
+    // row top to last row bottom), so the fields, the drawing and
+    // the scrolling never drift apart per screen. The scroll
+    // model is the colony's inverted slider (COLSUM::Update_First):
+    // slider at max shows the first rows, slider at 0 the last.
+    // Colours come from the theme's Button_Style (the metal face /
+    // highlight / shadow and the corner dots); the track itself
+    // has no background -- the panel shows through, like the
+    // colony's black strip.
+    class Scroll_Bar {
+      public:
+        // x / width: the strip the thumb fills (the colony's is
+        // 621..626, 6 wide; the settings screen's 621..625, 5
+        // wide). track_y / track_h: the track's endpoint span.
+        Scroll_Bar(int16_t x, int16_t width, int16_t track_y,
+            int16_t track_h, const Theme& theme);
+        // True while the list is at least as long as the window,
+        // colsum's rule (num_colonies >= 10): at exactly visible
+        // the thumb spans the whole track.
+        static bool Visible(int total, int visible);
+        // Maximum first-visible-row index: 0 when everything
+        // fits, otherwise the top row of the last window.
+        static int Max_Scroll(int total, int visible);
+        // The inverted slider for a scroll top, and the scroll
+        // top for a slider (clamped into range). Round-trips:
+        // Top_From_Slider(Slider_From_Top(t)) == t.
+        static int Slider_From_Top(int top, int total, int visible);
+        static int Top_From_Slider(int slider, int total,
+            int visible);
+        // Thumb endpoints for a scroll top, colsum's formula.
+        int16_t Thumb_Top(int top, int total, int visible) const;
+        int16_t Thumb_Bottom(int top, int total, int visible) const;
+        int16_t track_y() const { return track_y_; }
+        // Track bottom endpoint (track_y + track_h): the last
+        // pixel the thumb can reach, and the bottom dots' row.
+        int16_t track_bottom() const {
+            return (int16_t)(track_y_ + track_h_);
+        }
+        // Draws the thumb and the corner dots; nothing when the
+        // list fits (see Visible).
+        void Draw(int top, int total, int visible) const;
+
+      private:
+        int16_t x_;
+        int16_t width_;
+        int16_t track_y_;
+        int16_t track_h_;
+        const Theme& theme_;
     };
 
     // List empty space: panel fill and border, plus the framed row

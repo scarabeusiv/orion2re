@@ -162,6 +162,11 @@ namespace ui_kit {
         constexpr uint8_t kMetal_Face = 238;
         constexpr uint8_t kMetal_Highlight = 243;
         constexpr uint8_t kMetal_Shadow = 232;
+        // Scrollbar corner dots: the colony's index 80 is black
+        // in the colony palette (COLSUM.LBX entry 0's embedded
+        // palette), so the dots are black-on-black on the colony's
+        // own black track; the nearest menu index is 0, exact.
+        constexpr uint8_t kScroll_Corner = 0;
         // The metal button's three slices, cut from the derived
         // RETURN frame (COLSUM entry 1, 85x26): the left dome
         // (columns 0..16) and the right dome (columns 60..84) are
@@ -420,6 +425,7 @@ namespace ui_kit {
         style.toggle_on_bright = kToggle_On_Bright;
         style.toggle_off_base = kToggle_Off_Base;
         style.toggle_off_bright = kToggle_Off_Bright;
+        style.scroll_corner = kScroll_Corner;
         style.label_font = &button_font_;
         style.label_pressed_font = &button_pressed_font_;
         style.cell_font = &cell_font_;
@@ -747,6 +753,17 @@ namespace ui_kit {
         Relayout();
     }
 
+    void Tab_Bar::Add_Fixed_Tab(const char* label, int16_t width,
+        bool active, bool pressed) {
+        Tab tab;
+        tab.label = label;
+        tab.active = active;
+        tab.pressed = pressed;
+        tab.natural_width = width;
+        tabs_.push_back(tab);
+        Relayout();
+    }
+
     void Tab_Bar::Relayout() {
         // The strip fills [x_, right_): the tabs divide the width
         // in proportion to their natural widths (label + padding,
@@ -970,6 +987,83 @@ namespace ui_kit {
         scroll_track_h_ = (int16_t)(rows * spacing.Row_Pitch() -
             spacing.row_gap);
         info_y_ = (int16_t)(panel_y + panel_h_ + spacing.list_to_info);
+    }
+
+    Scroll_Bar::Scroll_Bar(int16_t x, int16_t width, int16_t track_y,
+        int16_t track_h, const Theme& theme)
+        : x_(x), width_(width), track_y_(track_y), track_h_(track_h),
+          theme_(theme) {}
+
+    bool Scroll_Bar::Visible(int total, int visible) {
+        return total >= visible;
+    }
+
+    int Scroll_Bar::Max_Scroll(int total, int visible) {
+        if (total <= visible) {
+            return 0;
+        }
+        return total - visible;
+    }
+
+    int Scroll_Bar::Slider_From_Top(int top, int total, int visible) {
+        return Max_Scroll(total, visible) - top;
+    }
+
+    int Scroll_Bar::Top_From_Slider(int slider, int total,
+        int visible) {
+        const int max_scroll = Max_Scroll(total, visible);
+        if (slider < 0) {
+            slider = 0;
+        }
+        if (slider > max_scroll) {
+            slider = max_scroll;
+        }
+        return max_scroll - slider;
+    }
+
+    int16_t Scroll_Bar::Thumb_Top(int top, int total, int visible) const {
+        return (int16_t)(track_y_ +
+            (int32_t)track_h_ * (int32_t)top / (int32_t)total);
+    }
+
+    int16_t Scroll_Bar::Thumb_Bottom(int top, int total, int visible) const {
+        return (int16_t)(track_y_ +
+            (int32_t)track_h_ * (int32_t)(top + visible) /
+                (int32_t)total);
+    }
+
+    void Scroll_Bar::Draw(int top, int total, int visible) const {
+        if (!Visible(total, visible)) {
+            return;
+        }
+        const int16_t y1 = Thumb_Top(top, total, visible);
+        const int16_t y2 = Thumb_Bottom(top, total, visible);
+        const Button_Style style = theme_.Button_Style();
+        // The thumb body, then its bevel: bright top/left, dark
+        // bottom/right -- colsum's Fill plus its four line::Line
+        // edges, the axis-aligned lines drawn as fills like the
+        // settings screen already did.
+        graphics::Fill(x_, y1, (int16_t)(x_ + width_ - 1), y2,
+            style.face);
+        graphics::Fill(x_, y1, (int16_t)(x_ + width_ - 1), y1,
+            style.highlight);
+        graphics::Fill(x_, y1, x_, y2, style.highlight);
+        graphics::Fill(x_, y2, (int16_t)(x_ + width_ - 1), y2,
+            style.shadow);
+        graphics::Fill((int16_t)(x_ + width_ - 1), y1,
+            (int16_t)(x_ + width_ - 1), y2, style.shadow);
+        // Corner dots marking the track ends, single pixels at
+        // the track's corners -- not full rows across the strip.
+        // 1x1 fills, the same pixels colsum's Dot calls draw.
+        const int16_t right = (int16_t)(x_ + width_ - 1);
+        const int16_t bottom = track_bottom();
+        graphics::Fill(x_, track_y_, x_, track_y_,
+            style.scroll_corner);
+        graphics::Fill(right, track_y_, right, track_y_,
+            style.scroll_corner);
+        graphics::Fill(x_, bottom, x_, bottom, style.scroll_corner);
+        graphics::Fill(right, bottom, right, bottom,
+            style.scroll_corner);
     }
 
     void Draw_List_Background(const Theme& theme,
