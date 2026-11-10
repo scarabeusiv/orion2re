@@ -145,8 +145,15 @@ namespace SETTINGS_SCREEN {
         // The SETTING plate starts at the panel's left edge plus 2
         // and ends 4 px before the VALUE plate, like the colony's
         // plates (its face is lighter than the list interior).
-        constexpr int16_t HEADER_Y = 32;
-        constexpr int16_t HEADER_HEIGHT = 22;
+        // On the baked background the plates sit at the colony
+        // plates' own position (y 4..34, the baked plates' full
+        // extent including their bottom bevel), so they replace
+        // them: the colony plates would otherwise show above the
+        // settings plates. The list rows, panel and description
+        // cascade from these via List_Layout, so they shift up to
+        // match the colony's rows (first row 57 -> 38).
+        constexpr int16_t HEADER_Y = 4;
+        constexpr int16_t HEADER_HEIGHT = 31;
         constexpr int16_t HEADER_SETTING_X = 13;
         constexpr int16_t HEADER_SETTING_W = 351;
         constexpr int16_t HEADER_VALUE_X = 368;
@@ -1525,17 +1532,26 @@ namespace SETTINGS_SCREEN {
 
         void Draw_Settings_Screen() {
             video::Set_Page_Off();
-            graphics::Fill(0, 0, 639, 479, 0);
 
-            // Full-window colony chrome (game/ui_kit.h): the
-            // bevelled metal frame baked into the colony screens'
-            // backgrounds, drawn by the kit's Window_Frame. No
-            // title: the colony screens carry no dialog title, and
-            // the category tabs in the bottom bar say what this
-            // screen is. The frame positions everything inside it:
-            // the list panel, the tab bar, the help box.
+            // The colony screen's baked background is the base for
+            // this screen too (the colony background, 640x480, is
+            // the only baked background the game has): the settings
+            // content draws on top of it, covering the
+            // colony-specific parts where the two differ. The kit's
+            // drawn frame and the black fill are only the fallback,
+            // when the background failed to load. The background
+            // already carries the frame, the header plates, the list
+            // panel and the SORT band. The frame still positions
+            // everything inside it: the list panel, the tab bar,
+            // the help box.
             const ui_kit::Window_Frame frame = Make_Window_Frame();
-            frame.Draw(nullptr);
+            const ui_kit::Frame background = g_theme->Background();
+            if (background.Is_Null()) {
+                graphics::Fill(0, 0, 639, 479, 0);
+                frame.Draw(nullptr);
+            } else {
+                background.Draw(0, 0);
+            }
             fonts::Set_Font_Style(4, &g_normal_colors);
 
             // List panel, like the colony list: the kit draws the
@@ -1547,13 +1563,62 @@ namespace SETTINGS_SCREEN {
             const ui_kit::List_Layout layout = Make_List_Layout();
             ui_kit::Draw_List_Background(*g_theme, layout);
             ui_kit::Draw_List_Columns(*g_theme, Make_List_Columns(layout));
+            // The panel fill above covers the scrollbar strip with
+            // the panel interior. On the baked background the strip
+            // is the colony's scrollbar track (a black channel with
+            // the footing lines at its foot), so restore it from the
+            // background: the kit's Scroll_Bar draws only the thumb
+            // and the corner dots on top of it.
+            // Restore only the colony's own track (y 40..311, the
+            // scroll field's black channel): below it the background
+            // holds the colony's down-arrow (y 317..336) and the
+            // panel footing (y 337..347), which must not show on
+            // the settings screen. Fill the rest of the settings
+            // track (above y 40 and below y 311) with black, so
+            // the track is a continuous black channel.
+            if (!background.Is_Null()) {
+                constexpr int16_t kColony_Track_Y = 40;
+                constexpr int16_t kColony_Track_H = 272;
+                const int16_t track_top = layout.scroll_track_y();
+                const int16_t track_bottom =
+                    (int16_t)(track_top + layout.scroll_track_h() - 1);
+                const int16_t restore_top =
+                    std::max(track_top, kColony_Track_Y);
+                const int16_t restore_bottom = std::min(track_bottom,
+                    (int16_t)(kColony_Track_Y + kColony_Track_H - 1));
+                if (restore_bottom >= restore_top) {
+                    background.Draw_Region(SCROLL_X, restore_top,
+                        SCROLL_W,
+                        (int16_t)(restore_bottom - restore_top + 1),
+                        SCROLL_X, restore_top);
+                }
+                if (track_top < restore_top) {
+                    graphics::Fill(SCROLL_X, track_top,
+                        SCROLL_X + SCROLL_W - 1, restore_top - 1, 0);
+                }
+                if (track_bottom > restore_bottom) {
+                    graphics::Fill(SCROLL_X, restore_bottom + 1,
+                        SCROLL_X + SCROLL_W - 1, track_bottom, 0);
+                }
+            }
 
             // Header plates, like the colony list's raised header
             // boxes (NAME, FARMERS, WORKERS, ...): bevelled plates
             // over the name and value columns at the top of the list
             // panel, their face lighter than the list interior.
             // Drawn after the panel fill, so the fill does not cover them.
+            // On the baked background, first fill the whole plates'
+            // band with the panel interior: the two settings plates
+            // leave the colony plates' side slivers (x 11..12,
+            // 616..619) and the gap between them (x 364..367)
+            // uncovered, and the baked plates would show through
+            // there as thin mid-grey strips.
             const ui_kit::List_Style list_style = g_theme->List_Style();
+            if (!background.Is_Null()) {
+                graphics::Fill(frame.content_x(), HEADER_Y,
+                    frame.content_right() - 1,
+                    HEADER_Y + HEADER_HEIGHT - 1, PANEL_INTERIOR);
+            }
             const auto draw_header_plate = [&](int16_t x, int16_t w, const char* label) {
                 graphics::Fill(x, HEADER_Y, x + w - 1, HEADER_Y + HEADER_HEIGHT - 1,
                     list_style.plate_face);
@@ -1579,7 +1644,12 @@ namespace SETTINGS_SCREEN {
                 const ui_kit::Font& header_font = g_theme->Header_Font();
                 const int16_t label_x = (int16_t)(x +
                     (w - header_font.Width(label)) / 2);
-                header_font.Print(label_x, HEADER_Y + 4, label, false);
+                // Centre the label in the plate: the colony's plates
+                // are 31 tall and their labels sit mid-plate, not 4 px
+                // from the top the way the old 22-tall plates did.
+                header_font.Print(label_x,
+                    HEADER_Y + (HEADER_HEIGHT - header_font.Height()) / 2,
+                    label, false);
             };
             draw_header_plate(HEADER_SETTING_X, HEADER_SETTING_W, "SETTING");
             draw_header_plate(HEADER_VALUE_X, HEADER_VALUE_W, "VALUE");
@@ -1733,6 +1803,17 @@ namespace SETTINGS_SCREEN {
             const int16_t desc_bottom =
                 (int16_t)(Bottom_Bar_Y() - 1 - spacing.info_to_bar);
             const int16_t desc_h = (int16_t)(desc_bottom - desc_y + 1);
+            // On the baked background, the strip between the list
+            // panel and the description box shows the colony's info
+            // area; the settings screen leaves it black, like the
+            // fallback fill does.
+            if (!background.Is_Null()) {
+                const int16_t panel_bottom =
+                    (int16_t)(layout.panel_y() + layout.panel_h() - 1);
+                graphics::Fill(frame.content_x(),
+                    (int16_t)(panel_bottom + 1),
+                    frame.content_right() - 1, (int16_t)(desc_y - 1), 0);
+            }
             graphics::Fill(frame.content_x(), desc_y,
                 frame.content_right() - 1, desc_y + desc_h - 1,
                 PANEL_INTERIOR);
@@ -1780,6 +1861,21 @@ namespace SETTINGS_SCREEN {
             // RETURN an Image button, like the colony RETURN. A
             // button held down draws its pressed state until
             // release.
+            // On the baked background, the bottom bar shows the
+            // colony's SORT band and the strip between the
+            // description box and the bar shows the colony's info
+            // area; the settings screen leaves both black, like the
+            // fallback fill does, and the tabs, MORE and RETURN
+            // draw on top of the bar.
+            if (!background.Is_Null()) {
+                graphics::Fill(frame.content_x(),
+                    (int16_t)(desc_bottom + 1),
+                    frame.content_right() - 1,
+                    (int16_t)(Bottom_Bar_Y() - 1), 0);
+                graphics::Fill(frame.content_x(), Bottom_Bar_Y(),
+                    frame.content_right() - 1,
+                    (int16_t)(Bottom_Bar_End() - 1), 0);
+            }
             Make_Tab_Bar(true).Draw();
             const int16_t bar_y =
                 frame.bottom_bar_y(g_theme->Tab_Height());
