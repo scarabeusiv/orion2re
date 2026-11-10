@@ -336,6 +336,10 @@ def extract_all(lbx_path, lbx_files, output_root):
     written = []
     for sprite in sprites:
         sprite_id = sprite["id"]
+        # Screen-grabbed sprites (source "screen") are derived by their
+        # own tool (derive_sort_tabs.py), not by this LBX extractor.
+        if sprite.get("source") == "screen":
+            continue
         payload = lbx_entry(lbx_data, lbx_offsets, sprite["entry"])
         width, height = struct.unpack_from("<hh", payload, 0)
         expected = sprite.get("size")
@@ -401,7 +405,7 @@ def main(argv=None):
                              "against the committed files")
     args = parser.parse_args(argv)
     lbx_files = {"MAINMENU.LBX": args.mainmenu_lbx,
-                 Path(args.lbx).name: args.lbx}
+                 Path(args.lbx).name.upper(): args.lbx}
     if args.fonts_lbx is not None:
         lbx_files["FONTS.LBX"] = args.fonts_lbx
 

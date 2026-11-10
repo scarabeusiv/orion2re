@@ -89,22 +89,63 @@ Contents:
   style 2, with a white face at rest and a blue-white face when
   active (see src/game/ui_kit.h, Colony_Theme).
 
+- `colony-background` — COLSUM.LBX entry 0, the colony screen's
+  baked 640x480 background, colony palette -> menu palette. It
+  carries the frame, the header plates (NAME / FARMERS / WORKERS /
+  SCIENTISTS / BUILDING, each drawn individually with its own
+  per-row texture -- no repeating pattern reproduces them), the
+  list panel, the info area, the SORT band (SORT label + icon,
+  the seven sort tabs, RETURN) and the scrollbar track (a black
+  channel at x 621..625). The settings screen renders on this
+  same background, and the colony render too: the background is
+  the base, the kit draws only the dynamic elements on top of
+  it. The .bin is NOT committed (extract from the LBX, do not
+  copy bitmaps to git): the game extracts it at run time from
+  the user's own game data
+  (`sprite_art::Load_Colony_Background`), falling back to the
+  derived .bin when one is bundled. The manifest entry is the
+  source of truth for the derivation (and the run-time extractor
+  mirrors it: entry 0, frame 0, embedded colony palette ->
+  installed palette, index 0 preserved, fail over distance 64).
+
+- `scroll-arrow-up`, `scroll-arrow-down` — COLSUM.LBX entries 2
+  (10x20) and 3 (11x22), the scrollbar's up/down arrow buttons,
+  colony palette -> menu palette. Only the rest state (frame 0)
+  is derived: the pressed frame (frame 1) carries the vivid
+  colony blue 38 (88, 84, 240), which has no close hue in the
+  menu palette (nearest is 108 away, past the fail distance of
+  64), so it cannot be remapped. The rest frames remap cleanly
+  (the blues 58/59/60 onto the menu's 84/111/138; the brightest
+  colony blue 59 lands on 111 at distance 35.3, muted against
+  the real (28, 28, 96)). The arrows are the colony screen's
+  own buttons, drawn by the field system at (619, 15) and
+  (619, 316) -- above and below the scroll track (y 40..311),
+  not at the kit Scroll_Bar's track ends -- so the colony render
+  draws them at those positions; the settings scrollbar is a
+  drag thumb with no arrow buttons and does not use them.
+
 ## What cannot be derived from game art
 
 - Border, list panel, header plates, description box, toggle
-  squares, scrollbar track/thumb: baked into the 640x480 colony
-  background art (COLSUM.LBX entry 0); `colsum.cpp` draws no boxes
-  itself, so no separable sprite exists. They stay engine-drawn
-  Fill/Box in menu-palette indices, in the settings chrome colours
-  the restyle already uses.
+  squares, scrollbar thumb: the colony's are baked into the
+  640x480 colony background art (COLSUM.LBX entry 0), so no
+  separable sprite exists for them -- but the background itself
+  is now used as the base (see `colony-background` above), so
+  they come from the baked art instead of engine-drawn Fill/Box.
+  They stay engine-drawn only when the background fails to load
+  (the fallback). The scrollbar thumb is dynamic (it moves with
+  the scroll position), so it stays kit-drawn on top of the
+  background's track.
 - Dropdown popup: no popup-window sprite exists; the game's own
   modal lists are engine-drawn. The resolution popup stays
   engine-drawn.
 - Star buy buttons (COLSUM.LBX entries 11-20): purchase actions
   with two frames (not bought / bought), not on/off toggles. Not
   used; the settings toggles stay the engine-drawn squares.
-- Scrollbar arrows (COLSUM.LBX entries 2/3): real sprites, but the
-  settings scrollbar is a drag thumb with no arrow buttons. Not used.
+- Scrollbar arrow pressed states (COLSUM.LBX entries 2/3, frame
+  1): the vivid colony blue 38 has no close hue in the menu
+  palette (see `scroll-arrow-up` / `scroll-arrow-down` above).
+  Only the rest states are derived.
 
 Reproduce everything with `tools/extract_sprite.py --lbx COLSUM.LBX
 --fonts-lbx FONTS.LBX --mainmenu-lbx MAINMENU.LBX`, and verify with
