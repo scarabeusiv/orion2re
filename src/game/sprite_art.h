@@ -72,6 +72,19 @@ namespace sprite_art {
     };
     Buy_Button_Frames Load_Buy_Button_Frames(void* allocation_base);
 
+    // Both scroll-arrow frames (COLSUM.LBX entries 2/3, frame 0, rest
+    // state): up is 10x20, down is 11x22, remapped to the installed
+    // palette. Both null when an entry is missing or malformed, or a
+    // pixel has no close hue -- the caller keeps its code-drawn
+    // triangles. Only the rest state is loaded: the arrows have no
+    // pressed state on this screen, and frame 1's vivid colony blue
+    // has no close hue in the menu palette.
+    struct Scroll_Arrow_Frames {
+        s_animation_header* up = nullptr;
+        s_animation_header* down = nullptr;
+    };
+    Scroll_Arrow_Frames Load_Scroll_Arrow_Frames(void* allocation_base);
+
     /**
      * Draws a sub-rectangle of a frame at (dst_x, dst_y): the
      * (src_x, src_y, width, height) region of the frame's pixels.
