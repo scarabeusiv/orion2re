@@ -47,8 +47,11 @@ How each glyph was obtained (see the JSON's provenance field):
   proportions from Moo2Menu (M 8 wide against R 6, vertex at ~55% of
   cap height; O 7 wide, the same width as U, rounded top and bottom
   like U's bottom curve). O follows U's AA conventions exactly (left
-  edge AA 17, bottom-corner AA 72, inner-corner AA 15); M's vertex
-  carries the AA 72s that flank U's bottom bar. Their pressed states
+  edge AA 17, bottom-corner AA 72, inner-corner AA 15), plus a 17
+  down both outer stem edges so the O reads smooth, not hard-edged;
+  M's vertex carries the AA 72s that flank U's bottom bar, its V
+  arms reach the top row (a hollow top reads as a damaged M), and
+  its stems carry 72s down their inner edges. Their pressed states
   follow the measured pressed conventions (11 rows, orange core 221
   with 252 fill inside the strokes, 223 bright edges, top and bottom
   rows all core).
@@ -166,18 +169,18 @@ GLYPHS = {
         "width": 8,
         "bitmap": {
             "normal": [
-                [0, 0, None, None, None, None, 0, 0],
                 [0, 0, 0, None, None, 0, 0, 0],
                 [0, 0, 0, None, None, 0, 0, 0],
                 [0, 0, 0, None, None, 0, 0, 0],
-                [0, 0, None, 0, 0, None, 0, 0],
+                [0, 0, 0, None, None, 0, 0, 0],
                 [0, 0, 72, 0, 0, 72, 0, 0],
-                [0, 0, None, None, None, None, 0, 0],
-                [0, 0, None, None, None, None, 0, 0],
-                [0, 0, None, None, None, None, 0, 0],
+                [0, 0, 72, 0, 0, 72, 0, 0],
+                [0, 0, 72, None, None, 72, 0, 0],
+                [0, 0, 72, None, None, 72, 0, 0],
+                [0, 0, 72, None, None, 72, 0, 0],
             ],
             "pressed": [
-                [221, 221, None, None, None, None, None, 221, 221],
+                [221, 252, 221, None, None, None, 221, 252, 221],
                 [221, 252, 221, None, None, None, 221, 252, 221],
                 [221, 252, 221, 223, None, 223, 221, 252, 221],
                 [221, 252, 221, 223, None, 223, 221, 252, 221],
@@ -227,13 +230,13 @@ GLYPHS = {
         "bitmap": {
             "normal": [
                 [None, 72, 0, 0, 0, 72, None],
-                [17, 0, None, None, None, 0, None],
-                [17, 0, None, None, None, 0, None],
-                [None, 0, None, None, None, 0, None],
-                [None, 0, None, None, None, 0, None],
-                [None, 0, None, None, None, 0, None],
-                [None, 0, None, None, None, 0, None],
-                [None, 0, 15, None, 15, 0, None],
+                [17, 0, None, None, None, 0, 17],
+                [17, 0, None, None, None, 0, 17],
+                [17, 0, None, None, None, 0, 17],
+                [17, 0, None, None, None, 0, 17],
+                [17, 0, None, None, None, 0, 17],
+                [17, 0, None, None, None, 0, 17],
+                [17, 0, 15, None, 15, 0, 17],
                 [None, 72, 0, 0, 0, 72, None],
             ],
             "pressed": [
