@@ -932,9 +932,14 @@ namespace ui_kit {
     // a screen rendering on its baked background leaves the
     // background's own panel texture showing and draws only the
     // border and the row frame lines on top of it. True (the
-    // default) fills the panel, as before.
+    // default) fills the panel, as before. draw_row_frames false
+    // skips the per-row frame lines: the rows are text lines on
+    // the panel, not framed cells -- the settings screen renders
+    // its rows that way, and paints the background's own baked
+    // grid out itself. True (the default) frames every row.
     void Draw_List_Background(const Theme& theme,
-        const List_Layout& layout, bool fill_interior = true);
+        const List_Layout& layout, bool fill_interior = true,
+        bool draw_row_frames = true);
 
     // Column dividers over a list: the 3 px vertical grooves
     // between adjacent columns, from the first row top to the last

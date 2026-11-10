@@ -1192,6 +1192,60 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(test::fakes::g_box_calls[0].y == 30);
     }
 
+    DOCTEST_TEST_CASE("list background without row frames keeps border, footing and bevel") {
+        using namespace test_ui_kit_detail;
+        Fake_Theme theme;
+        ui_kit::List_Layout layout(11, 30, 617, 619, 32, 22, 10,
+            theme.Spacing());
+
+        // The settings screen's rows are text lines on the panel,
+        // not framed cells: no per-row frame lines at all, but the
+        // panel fill, the border box, the three-line footing and
+        // the right-edge bevel all stay -- 1 + 3 + 1 = 5 fills.
+        test::fakes::Reset_All_();
+        ui_kit::Draw_List_Background(theme, layout, true, false);
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 5);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 230);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 30);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y2 == 369);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].y1 == 366);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 235);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].y1 == 367);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 235);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].y1 == 368);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].color == 241);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[4].color == 241);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[4].x1 == 626);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[4].x2 == 626);
+        DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 1);
+        DOCTEST_CHECK(test::fakes::g_box_calls[0].x == 11);
+        DOCTEST_CHECK(test::fakes::g_box_calls[0].y == 30);
+        DOCTEST_CHECK(test::fakes::g_box_calls[0].width == 617);
+        DOCTEST_CHECK(test::fakes::g_box_calls[0].height == 340);
+        for (const test::fakes::Fill_Call& fill :
+            test::fakes::g_fill_calls) {
+            // No fill anywhere in the rows' band: the row frame
+            // lines are gone, so nothing lands on a row top or
+            // bottom (row 0 top 57, row 9 bottom 365).
+            DOCTEST_CHECK(fill.y1 != 57);
+            DOCTEST_CHECK(fill.y1 != 85);
+            DOCTEST_CHECK(fill.y1 != 336);
+            DOCTEST_CHECK(fill.y1 != 365);
+        }
+
+        // Without the interior fill too (a screen on its baked
+        // background) only the footing and the bevel remain:
+        // 3 + 1 = 4 fills, and the first is the footing shade.
+        test::fakes::Reset_All_();
+        ui_kit::Draw_List_Background(theme, layout, false, false);
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 4);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 366);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 235);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].x1 == 626);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].color == 241);
+        DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 1);
+    }
+
     DOCTEST_TEST_CASE("column layout puts the 3 px divider right after the left column") {
         using namespace test_ui_kit_detail;
         // The colony list's columns, measured from the colony
