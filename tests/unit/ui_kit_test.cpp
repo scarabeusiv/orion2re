@@ -94,6 +94,12 @@ namespace test_ui_kit_detail {
       public:
         Fake_Font font;
         ui_kit::Tab_Frames frames;
+        // Per-tab frames and gap profiles for the per-tab test:
+        // when set, Tab_Frames_For_Tab / Tab_Gap_Profile serve
+        // them; otherwise the defaults (shared frames, no gap
+        // fill).
+        std::vector<ui_kit::Tab_Frames> per_tab_frames;
+        std::vector<std::vector<uint8_t>> gap_profiles;
         ui_kit::Frame_Style frame;
         ui_kit::Spacing spacing;
         ui_kit::List_Style list;
@@ -150,6 +156,24 @@ namespace test_ui_kit_detail {
 
         ui_kit::Tab_Frames Tab_Frames() const override {
             return frames;
+        }
+
+        ui_kit::Tab_Frames Tab_Frames_For_Tab(
+            int16_t tab_index) const override {
+            if (tab_index >= 0 &&
+                (size_t)tab_index < per_tab_frames.size()) {
+                return per_tab_frames[(size_t)tab_index];
+            }
+            return frames;
+        }
+
+        std::vector<uint8_t> Tab_Gap_Profile(
+            int16_t gap_index) const override {
+            if (gap_index >= 0 &&
+                (size_t)gap_index < gap_profiles.size()) {
+                return gap_profiles[(size_t)gap_index];
+            }
+            return {};
         }
 
         ui_kit::Frame_Style Frame_Style() const override {
@@ -298,7 +322,7 @@ DOCTEST_TEST_SUITE("ui kit") {
     DOCTEST_TEST_CASE("tab bar lays tabs out from label widths with padding and a 1 px gap") {
         using namespace test_ui_kit_detail;
         Fake_Theme theme;
-        ui_kit::Tab_Bar bar(16, 446, theme);
+        ui_kit::Tab_Bar bar(16, 446, 126, theme);
         bar.Add_Tab("A", true);
         bar.Add_Tab("BB", false);
         bar.Add_Tab("CCC", false);
@@ -317,6 +341,28 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(bar.height() == 24);
     }
 
+    DOCTEST_TEST_CASE("tab bar fills the strip to its right edge in proportion to label widths") {
+        using namespace test_ui_kit_detail;
+        Fake_Theme theme;
+        ui_kit::Tab_Bar bar(16, 446, 226, theme);
+        bar.Add_Tab("A", true);
+        bar.Add_Tab("BB", false);
+        bar.Add_Tab("CCC", false);
+
+        // Natural widths 26/36/46 (total 108) over 208 px of tab
+        // width (226 - 16 - 2 gaps): 50/69/89, ending at 226.
+        DOCTEST_REQUIRE(bar.tabs().size() == 3);
+        DOCTEST_CHECK(bar.tabs()[0].width == 50);
+        DOCTEST_CHECK(bar.tabs()[1].width == 69);
+        DOCTEST_CHECK(bar.tabs()[2].width == 89);
+        DOCTEST_CHECK(bar.tabs()[0].x == 16);
+        DOCTEST_CHECK(bar.tabs()[1].x == 16 + 50 + 1);
+        DOCTEST_CHECK(bar.tabs()[2].x == 16 + 50 + 1 + 69 + 1);
+        DOCTEST_CHECK(bar.End_X() == 226);
+        DOCTEST_CHECK(bar.y() == 446);
+        DOCTEST_CHECK(bar.height() == 24);
+    }
+
     DOCTEST_TEST_CASE("tab bar draws the active frame for the active tab and centres the labels") {
         using namespace test_ui_kit_detail;
         const std::string normal = Make_Frame_Pixels(10, 1, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
@@ -328,10 +374,11 @@ DOCTEST_TEST_SUITE("ui kit") {
             ui_kit::Frame((const s_animation_header*)active.data());
         theme.frames.left_slice = 2;
         theme.frames.right_slice = 2;
+        theme.frames.normal.middle_column = 5; // value 6, tiled
 
         test::fakes::Reset_All_();
         Scoped_Video_Page page;
-        ui_kit::Tab_Bar bar(0, 0, theme);
+        ui_kit::Tab_Bar bar(0, 0, 63, theme);
         bar.Add_Tab("A", true);
         bar.Add_Tab("BB", false);
         bar.Draw();
@@ -342,6 +389,10 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(page.At(1, 0) == 12);
         DOCTEST_CHECK(page.At(27, 0) == 1);
         DOCTEST_CHECK(page.At(28, 0) == 2);
+        // The normal tab's flat middle is one face column tiled
+        // (three-slice), not the whole middle repeated.
+        DOCTEST_CHECK(page.At(29, 0) == 6);
+        DOCTEST_CHECK(page.At(60, 0) == 6);
         // Labels are centred in their tabs, at the theme's y offset,
         // with the active flag carried through to the font.
         DOCTEST_REQUIRE(theme.font.prints.size() == 2);
@@ -367,7 +418,7 @@ DOCTEST_TEST_SUITE("ui kit") {
         theme.frames.right_slice = 2;
 
         Scoped_Video_Page page;
-        ui_kit::Tab_Bar bar(0, 0, theme);
+        ui_kit::Tab_Bar bar(0, 0, 26, theme);
         bar.Add_Tab("A", true); // 26 wide: middle resampled 6 -> 22
         bar.Draw();
 
@@ -393,7 +444,7 @@ DOCTEST_TEST_SUITE("ui kit") {
 
         test::fakes::Reset_All_();
         Scoped_Video_Page page;
-        ui_kit::Tab_Bar bar(0, 0, theme);
+        ui_kit::Tab_Bar bar(0, 0, 63, theme);
         bar.Add_Tab("A", true);
         bar.Add_Tab("BB", false);
         bar.Draw();
@@ -424,7 +475,7 @@ DOCTEST_TEST_SUITE("ui kit") {
         theme.frames.right_slice = 2;
 
         Scoped_Video_Page page;
-        ui_kit::Tab_Bar bar(0, 0, theme);
+        ui_kit::Tab_Bar bar(0, 0, 49, theme);
         bar.Add_Tab("A", true);
         bar.Add_Tab("BB", false);
         // Alt metrics: padding 4, gap 3, height 30, label offset 10.
@@ -475,31 +526,152 @@ DOCTEST_TEST_SUITE("ui kit") {
         using namespace test_ui_kit_detail;
         const s_colors title = {{234, 238, 240, 242, 243, 244, 246, 247}};
         ui_kit::Colony_Theme theme(ui_kit::Frame(), ui_kit::Frame(),
-            ui_kit::Frame(), ui_kit::Frame(), title);
+            ui_kit::Frame(), ui_kit::Frame(), ui_kit::Frame(),
+            ui_kit::Frame(), ui_kit::Frame(), ui_kit::Frame(), title);
 
         const ui_kit::Tab_Frames frames = theme.Tab_Frames();
         DOCTEST_CHECK(frames.normal.frame.Is_Null());
         DOCTEST_CHECK(frames.active.frame.Is_Null());
+        // Every frame three-slices on its flat face column, both
+        // states, with 20 px fixed ramps: the selected frame's
+        // field is flat in the middle once the ramps are fixed
+        // slices, so nothing resamples. The middle column is per
+        // tab: Name 26, Population 38, Food 21.
+        DOCTEST_CHECK(frames.normal.middle_column == 26);
+        DOCTEST_CHECK(frames.active.middle_column == 26);
+        DOCTEST_CHECK_FALSE(frames.normal.resample_middle);
+        DOCTEST_CHECK_FALSE(frames.active.resample_middle);
+        DOCTEST_CHECK(frames.left_slice == 20);
+        DOCTEST_CHECK(frames.right_slice == 20);
+        DOCTEST_CHECK(theme.Tab_Frames_For_Tab(1).normal.middle_column == 38);
+        DOCTEST_CHECK(theme.Tab_Frames_For_Tab(2).normal.middle_column == 21);
+        DOCTEST_CHECK(theme.Tab_Frames_For_Tab(9).normal.middle_column == 21);
+        // The gap profile is the band's recessed channel, one
+        // entry per tab row; row 0 follows the arch, so it differs
+        // per gap.
+        const std::vector<uint8_t> gap0 = theme.Tab_Gap_Profile(0);
+        const std::vector<uint8_t> gap1 = theme.Tab_Gap_Profile(1);
+        DOCTEST_REQUIRE(gap0.size() == 24);
+        DOCTEST_REQUIRE(gap1.size() == 24);
+        DOCTEST_CHECK(gap0[0] == 239);
+        DOCTEST_CHECK(gap1[0] == 240);
+        DOCTEST_CHECK(gap0[4] == 50);
+        DOCTEST_CHECK(gap1[4] == 50);
+        DOCTEST_CHECK(gap0[23] == 239);
+        DOCTEST_CHECK(gap1[23] == 239);
 
         test::fakes::Reset_All_();
         Scoped_Video_Page page;
-        ui_kit::Tab_Bar bar(0, 0, theme);
+        ui_kit::Tab_Bar bar(0, 0, 63, theme);
         bar.Add_Tab("A", true);
         bar.Add_Tab("BB", false);
         bar.Draw();
 
         // The colony fallback fills: active menu blue, rest dark
         // navy, both bordered in the panel border colour -- and the
-        // labels still print.
-        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 2);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 138);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 50);
+        // labels still print. The gap between the tabs (x 31, 1 px
+        // wide -- the fake engine font measures every label as 6 px,
+        // so the 63-wide bar lays out 31/31) fills first, one fill
+        // per run of the profile: 239, 234, 15, 84, 50 x16, 84, 94,
+        // 29, 239 -- nine fills before the two tab fills.
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 11);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 31);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x2 == 31);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 0);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y2 == 0);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 239);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[4].y1 == 4);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[4].y2 == 19);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[4].color == 50);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[8].y1 == 23);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[8].color == 239);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[9].color == 138);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[10].color == 50);
         DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 2);
         DOCTEST_CHECK(test::fakes::g_box_calls[0].color == 234);
         DOCTEST_CHECK(test::fakes::g_box_calls[1].color == 234);
         DOCTEST_REQUIRE(test::fakes::g_print_calls.size() == 2);
         DOCTEST_CHECK(test::fakes::g_print_calls[0].text_copy == "A");
         DOCTEST_CHECK(test::fakes::g_print_calls[1].text_copy == "BB");
+    }
+
+    DOCTEST_TEST_CASE("tab bar draws each tab's own frames and fills the gaps with the band profile") {
+        using namespace test_ui_kit_detail;
+        // One-pixel-row frames, 10 wide, one distinct value per
+        // column, so a drawn pixel identifies its tab's frame:
+        // tab 0 rest 1..10 / active 21..30, tab 1 rest 31..40 /
+        // active 41..50. Slices 2/2, middle column 5.
+        const std::string tab0_normal = Make_Frame_Pixels(10, 1,
+            {1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+        const std::string tab0_active = Make_Frame_Pixels(10, 1,
+            {21, 22, 23, 24, 25, 26, 27, 28, 29, 30});
+        const std::string tab1_normal = Make_Frame_Pixels(10, 1,
+            {31, 32, 33, 34, 35, 36, 37, 38, 39, 40});
+        const std::string tab1_active = Make_Frame_Pixels(10, 1,
+            {41, 42, 43, 44, 45, 46, 47, 48, 49, 50});
+        Fake_Theme theme;
+        const auto per_tab = [](const std::string& normal,
+            const std::string& active) {
+            ui_kit::Tab_Frames frames;
+            frames.normal.frame =
+                ui_kit::Frame((const s_animation_header*)normal.data());
+            frames.active.frame =
+                ui_kit::Frame((const s_animation_header*)active.data());
+            frames.normal.middle_column = 5;
+            frames.active.middle_column = 5;
+            frames.left_slice = 2;
+            frames.right_slice = 2;
+            return frames;
+        };
+        theme.per_tab_frames = {per_tab(tab0_normal, tab0_active),
+            per_tab(tab1_normal, tab1_active)};
+        // The gap profile, one entry per tab row, in three runs:
+        // rows 0-1, rows 2-4, rows 5-23.
+        std::vector<uint8_t> profile(24, 202);
+        profile[0] = 200;
+        profile[1] = 200;
+        profile[2] = 201;
+        profile[3] = 201;
+        profile[4] = 201;
+        theme.gap_profiles = {profile};
+
+        test::fakes::Reset_All_();
+        Scoped_Video_Page page;
+        ui_kit::Tab_Bar bar(0, 0, 63, theme);
+        bar.Add_Tab("A", true);
+        bar.Add_Tab("BB", false);
+        bar.Draw();
+
+        // Tab 0 (x 0, 26 wide) draws its own active frame: left
+        // slice 21, 22, the middle tiled from column 5 (26), right
+        // slice 29, 30. Tab 1 (x 27, 36 wide) draws its own rest
+        // frame: 31, 32, middle 36, right 39, 40 -- not tab 0's.
+        DOCTEST_CHECK(page.At(0, 0) == 21);
+        DOCTEST_CHECK(page.At(1, 0) == 22);
+        DOCTEST_CHECK(page.At(2, 0) == 26);
+        DOCTEST_CHECK(page.At(23, 0) == 26);
+        DOCTEST_CHECK(page.At(24, 0) == 29);
+        DOCTEST_CHECK(page.At(25, 0) == 30);
+        DOCTEST_CHECK(page.At(27, 0) == 31);
+        DOCTEST_CHECK(page.At(28, 0) == 32);
+        DOCTEST_CHECK(page.At(29, 0) == 36);
+        DOCTEST_CHECK(page.At(61, 0) == 39);
+        DOCTEST_CHECK(page.At(62, 0) == 40);
+        // The 1 px gap at x 26 fills in three runs, one per run of
+        // the profile, before the tabs draw.
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 3);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 26);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x2 == 26);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 0);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y2 == 1);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 200);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].y1 == 2);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].y2 == 4);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 201);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].y1 == 5);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].y2 == 23);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 202);
+        DOCTEST_REQUIRE(theme.font.prints.size() == 2);
     }
 
     DOCTEST_TEST_CASE("engine font delegates width and print to the engine font") {
@@ -537,6 +709,8 @@ DOCTEST_TEST_SUITE("ui kit") {
         ui_kit::Colony_Theme theme(
             ui_kit::Frame((const s_animation_header*)normal.data()),
             ui_kit::Frame((const s_animation_header*)active.data()),
+            ui_kit::Frame(), ui_kit::Frame(),
+            ui_kit::Frame(), ui_kit::Frame(),
             ui_kit::Frame(), ui_kit::Frame(), title);
 
         // The tab font is engine font style 2 with the measured
@@ -555,9 +729,10 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK_FALSE(frames.normal.frame.Is_Null());
         DOCTEST_CHECK_FALSE(frames.active.frame.Is_Null());
         DOCTEST_CHECK_FALSE(frames.normal.resample_middle);
-        DOCTEST_CHECK(frames.active.resample_middle);
-        DOCTEST_CHECK(frames.left_slice == 4);
-        DOCTEST_CHECK(frames.right_slice == 0);
+        DOCTEST_CHECK_FALSE(frames.active.resample_middle);
+        DOCTEST_CHECK(frames.left_slice == 20);
+        DOCTEST_CHECK(frames.right_slice == 20);
+        DOCTEST_CHECK(frames.normal.middle_column == 26);
 
         DOCTEST_CHECK(theme.Tab_Padding() == 8);
         DOCTEST_CHECK(theme.Tab_Gap() == 1);
@@ -625,7 +800,8 @@ DOCTEST_TEST_SUITE("ui kit") {
         using namespace test_ui_kit_detail;
         const s_colors title = {{234, 238, 240, 242, 243, 244, 246, 247}};
         ui_kit::Colony_Theme theme(ui_kit::Frame(), ui_kit::Frame(),
-            ui_kit::Frame(), ui_kit::Frame(), title);
+            ui_kit::Frame(), ui_kit::Frame(), ui_kit::Frame(),
+            ui_kit::Frame(), ui_kit::Frame(), ui_kit::Frame(), title);
 
         // Measured from the colony summary screen (colsum.cpp):
         // 30 px rows, y_row_end advancing 31 px per row.
@@ -906,7 +1082,8 @@ DOCTEST_TEST_SUITE("ui kit") {
         // (166, 158) and its 24 px bottom bar starts at y 260.
         const s_colors title = {{234, 238, 240, 242, 243, 244, 246, 247}};
         ui_kit::Colony_Theme colony(ui_kit::Frame(), ui_kit::Frame(),
-            ui_kit::Frame(), ui_kit::Frame(), title);
+            ui_kit::Frame(), ui_kit::Frame(), ui_kit::Frame(),
+            ui_kit::Frame(), ui_kit::Frame(), ui_kit::Frame(), title);
         ui_kit::Window_Frame dialog(155, 146, 240, 148, colony);
         DOCTEST_CHECK(dialog.content_x() == 166);
         DOCTEST_CHECK(dialog.content_y() == 158);
@@ -1290,7 +1467,7 @@ DOCTEST_TEST_SUITE("ui kit") {
         theme.frames.right_slice = 2;
 
         Scoped_Video_Page page;
-        ui_kit::Tab_Bar bar(0, 0, theme);
+        ui_kit::Tab_Bar bar(0, 0, 63, theme);
         bar.Add_Tab("A", false, true); // held, not active
         bar.Add_Tab("BB", false);
         bar.Draw();
@@ -1479,6 +1656,8 @@ DOCTEST_TEST_SUITE("ui kit") {
         const s_colors title = {{234, 238, 240, 242, 243, 244, 246, 247}};
         ui_kit::Colony_Theme theme(
             ui_kit::Frame(), ui_kit::Frame(),
+            ui_kit::Frame(), ui_kit::Frame(),
+            ui_kit::Frame(), ui_kit::Frame(),
             ui_kit::Frame((const s_animation_header*)normal.data()),
             ui_kit::Frame((const s_animation_header*)pressed.data()),
             title);
@@ -1498,14 +1677,18 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(style.toggle_on_bright == 247);
         DOCTEST_CHECK(style.toggle_off_base == 236);
         DOCTEST_CHECK(style.toggle_off_bright == 246);
-        // The label fonts are engine font style 4: dark text on
-        // the metal face, light on the blue face; the cell font
-        // is the colony cyan at rest, light on the blue fill.
+        // The label fonts are engine font style 2 with 1 px
+        // spacing: the baked RETURN text inks 9 rows (style 4
+        // inks 12) and measures 41 px as style-2 widths with
+        // 1 px spacing. Dark text on the metal face, light on
+        // the blue face; the cell font is the colony cyan at
+        // rest, light on the blue fill.
         DOCTEST_REQUIRE(style.label_font != nullptr);
         DOCTEST_REQUIRE(style.cell_font != nullptr);
         test::fakes::Reset_All_();
         style.label_font->Print(0, 0, "Show", false);
-        DOCTEST_CHECK(test::fakes::g_font_style == 4);
+        DOCTEST_CHECK(test::fakes::g_font_style == 2);
+        DOCTEST_CHECK(test::fakes::g_font_spacing == 1);
         DOCTEST_CHECK(test::fakes::g_font_color.colors[0] == 230);
         style.label_font->Print(0, 0, "Show", true);
         DOCTEST_CHECK(test::fakes::g_font_color.colors[0] == 247);
@@ -1514,11 +1697,15 @@ DOCTEST_TEST_SUITE("ui kit") {
         // orange whether the print is active or not.
         DOCTEST_REQUIRE(style.label_pressed_font != nullptr);
         style.label_pressed_font->Print(0, 0, "MORE", false);
-        DOCTEST_CHECK(test::fakes::g_font_style == 4);
+        DOCTEST_CHECK(test::fakes::g_font_style == 2);
+        DOCTEST_CHECK(test::fakes::g_font_spacing == 1);
         DOCTEST_CHECK(test::fakes::g_font_color.colors[0] == 221);
         style.label_pressed_font->Print(0, 0, "MORE", true);
         DOCTEST_CHECK(test::fakes::g_font_color.colors[0] == 221);
+        // The cell font keeps the font's own spacing: no override.
+        test::fakes::Reset_All_();
         style.cell_font->Print(0, 0, "pixelart", false);
+        DOCTEST_CHECK(test::fakes::g_font_spacing == -1);
         DOCTEST_CHECK(test::fakes::g_font_color.colors[0] == 150);
         style.cell_font->Print(0, 0, "pixelart", true);
         DOCTEST_CHECK(test::fakes::g_font_color.colors[0] == 247);
@@ -1535,7 +1722,8 @@ DOCTEST_TEST_SUITE("ui kit") {
 
         // Null frames stay null, for a stale base.zip.
         ui_kit::Colony_Theme bare(ui_kit::Frame(), ui_kit::Frame(),
-            ui_kit::Frame(), ui_kit::Frame(), title);
+            ui_kit::Frame(), ui_kit::Frame(), ui_kit::Frame(),
+            ui_kit::Frame(), ui_kit::Frame(), ui_kit::Frame(), title);
         DOCTEST_CHECK(bare.Return_Frames().normal.Is_Null());
         DOCTEST_CHECK(bare.Return_Frames().pressed.Is_Null());
         DOCTEST_CHECK(bare.Return_Frames().normal.Width() == 0);

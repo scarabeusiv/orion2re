@@ -356,8 +356,12 @@ DOCTEST_TEST_SUITE("sprite art") {
 
         const std::string return_normal = read_frame("return", "normal");
         const std::string return_pressed = read_frame("return", "pressed");
-        const std::string selector_normal = read_frame("selector-frame", "normal");
-        const std::string selector_active = read_frame("selector-frame", "active");
+        const std::string sort_name_normal = read_frame("sort-name", "normal");
+        const std::string sort_name_active = read_frame("sort-name", "active");
+        const std::string sort_population_normal = read_frame("sort-population", "normal");
+        const std::string sort_population_active = read_frame("sort-population", "active");
+        const std::string sort_food_normal = read_frame("sort-food", "normal");
+        const std::string sort_food_active = read_frame("sort-food", "active");
 
         const auto dimensions = [](const std::string& bytes) {
             return std::pair<int16_t, int16_t>{
@@ -366,8 +370,12 @@ DOCTEST_TEST_SUITE("sprite art") {
         };
         DOCTEST_CHECK(dimensions(return_normal) == std::pair<int16_t, int16_t>{85, 26});
         DOCTEST_CHECK(dimensions(return_pressed) == std::pair<int16_t, int16_t>{85, 26});
-        DOCTEST_CHECK(dimensions(selector_normal) == std::pair<int16_t, int16_t>{50, 24});
-        DOCTEST_CHECK(dimensions(selector_active) == std::pair<int16_t, int16_t>{50, 24});
+        DOCTEST_CHECK(dimensions(sort_name_normal) == std::pair<int16_t, int16_t>{50, 24});
+        DOCTEST_CHECK(dimensions(sort_name_active) == std::pair<int16_t, int16_t>{50, 24});
+        DOCTEST_CHECK(dimensions(sort_population_normal) == std::pair<int16_t, int16_t>{78, 24});
+        DOCTEST_CHECK(dimensions(sort_population_active) == std::pair<int16_t, int16_t>{78, 24});
+        DOCTEST_CHECK(dimensions(sort_food_normal) == std::pair<int16_t, int16_t>{42, 24});
+        DOCTEST_CHECK(dimensions(sort_food_active) == std::pair<int16_t, int16_t>{42, 24});
         DOCTEST_CHECK(return_normal != return_pressed);
 
         // The remap only ever produces its mapped targets: every pixel
@@ -375,6 +383,9 @@ DOCTEST_TEST_SUITE("sprite art") {
         // for that sprite (the colony grey ramp 80-104 maps into the
         // menu palette's grey family; the teal column maps to 84 and
         // the bottom shadow 249 to 94, both legitimate menu indices).
+        // Population's active groove carries colony 112 (0,32,40),
+        // which remaps to 84 -- the only tab whose active frame
+        // holds it.
         const auto check_allowed = [](const std::string& bytes,
             const std::vector<uint8_t>& allowed) {
             for (size_t i = 16; i < bytes.size(); ++i) {
@@ -399,39 +410,58 @@ DOCTEST_TEST_SUITE("sprite art") {
             {10, 12, 15, 17, 29, 54, 106, 112, 207, 221, 223, 230, 233,
              234, 235, 236, 238, 239, 240, 241, 242, 243, 244, 245, 246,
              247, 248, 252});
-        check_allowed(selector_normal,
+        check_allowed(sort_name_normal,
             {15, 29, 50, 54, 84, 94, 106, 233, 234, 235, 236, 238, 239,
              240, 241, 242, 243});
-        check_allowed(selector_active,
+        check_allowed(sort_name_active,
+            {15, 29, 50, 54, 94, 103, 106, 138, 233, 234, 235, 236,
+             238, 239, 240, 241, 242, 243});
+        check_allowed(sort_population_normal,
+            {15, 29, 50, 54, 84, 94, 106, 233, 234, 235, 236, 238, 239,
+             240, 241, 242, 243});
+        check_allowed(sort_population_active,
+            {15, 29, 50, 54, 84, 94, 103, 106, 138, 233, 234, 235, 236,
+             238, 239, 240, 241, 242, 243});
+        check_allowed(sort_food_normal,
+            {15, 29, 50, 54, 84, 94, 106, 233, 234, 235, 236, 238, 239,
+             240, 241, 242, 243});
+        check_allowed(sort_food_active,
             {15, 29, 50, 54, 94, 103, 106, 138, 233, 234, 235, 236,
              238, 239, 240, 241, 242, 243});
 
-        // The selector label is blanked: the label band (rows 7-17,
-        // past the left bevel) holds no label pixels in either
-        // state. The rest frame's field is flat, so its band is the
-        // flat dark navy (50); the selected frame's field is a blue
-        // gradient, so its band continues the gradient from the
-        // label-free row above (row 5), column by column -- the band
-        // varies across columns and is never the flat menu blue.
-        const auto selector_pixels = [&](const std::string& bytes) {
-            return std::vector<uint8_t>((const uint8_t*)bytes.data() + 16,
-                (const uint8_t*)bytes.data() + 16 + 50 * 24);
+        // Each sort tab's label is blanked: the label band (rows
+        // 7-17, past the left bevel) holds no label pixels in
+        // either state. The rest frame's field is flat, so its band
+        // is the flat dark navy (50); the selected frame's band
+        // continues the label-free row above (row 5), column by
+        // column -- the band varies across columns (bright ramps
+        // at the edges, flat dark navy in the middle) and is never
+        // the flat menu blue.
+        const auto check_sort_tab = [&](const std::string& normal,
+            const std::string& active, int16_t width) {
+            const auto pixels = [&](const std::string& bytes) {
+                return std::vector<uint8_t>((const uint8_t*)bytes.data() + 16,
+                    (const uint8_t*)bytes.data() + 16 + (size_t)width * 24);
+            };
+            const std::vector<uint8_t> normal_px = pixels(normal);
+            const std::vector<uint8_t> active_px = pixels(active);
+            for (int16_t y = 7; y <= 17; ++y) {
+                for (int16_t x = 4; x < width; ++x) {
+                    DOCTEST_CHECK_MESSAGE(normal_px[(size_t)y * (size_t)width + (size_t)x] == 50, "rest label band is not flat dark navy");
+                    DOCTEST_CHECK_MESSAGE(active_px[(size_t)y * (size_t)width + (size_t)x] == active_px[(size_t)5 * (size_t)width + (size_t)x], "selected label band does not continue row 5");
+                }
+            }
+            bool active_band_varies = false;
+            for (int16_t x = 5; x < width; ++x) {
+                if (active_px[(size_t)12 * (size_t)width + (size_t)x] != active_px[(size_t)12 * (size_t)width + 4]) {
+                    active_band_varies = true;
+                }
+            }
+            DOCTEST_CHECK_MESSAGE(active_band_varies, "selected label band is flat, not ramped");
         };
-        const std::vector<uint8_t> normal_px = selector_pixels(selector_normal);
-        const std::vector<uint8_t> active_px = selector_pixels(selector_active);
-        for (int16_t y = 7; y <= 17; ++y) {
-            for (int16_t x = 4; x < 50; ++x) {
-                DOCTEST_CHECK_MESSAGE(normal_px[(size_t)y * 50 + (size_t)x] == 50, "rest label band is not flat dark navy");
-                DOCTEST_CHECK_MESSAGE(active_px[(size_t)y * 50 + (size_t)x] == active_px[(size_t)5 * 50 + (size_t)x], "selected label band does not continue the gradient");
-            }
-        }
-        bool active_band_varies = false;
-        for (int16_t x = 5; x < 50; ++x) {
-            if (active_px[(size_t)12 * 50 + (size_t)x] != active_px[(size_t)12 * 50 + 4]) {
-                active_band_varies = true;
-            }
-        }
-        DOCTEST_CHECK_MESSAGE(active_band_varies, "selected label band is flat, not a gradient");
+        check_sort_tab(sort_name_normal, sort_name_active, 50);
+        check_sort_tab(sort_population_normal, sort_population_active, 78);
+        check_sort_tab(sort_food_normal, sort_food_active, 42);
         // The pressed RETURN keeps its orange text, remapped into the
         // menu palette's orange.
         bool has_orange = false;
