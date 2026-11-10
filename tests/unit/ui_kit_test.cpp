@@ -316,6 +316,28 @@ namespace test_ui_kit_detail {
             return 10;
         }
     };
+
+    // A minimal bitmap font for the Bitmap_Font tests: cap 3, one
+    // descender row, space advance 2. A is 3 wide normal, 4 wide
+    // pressed (the pressed state carries its own width); B is 2
+    // wide normal, 3 wide pressed.
+    const char* kBitmap_Font_Json = R"JSON({
+        "name": "Test",
+        "cap_height": 3,
+        "descender_rows": 1,
+        "space_advance": 2,
+        "provenance": "test",
+        "glyphs": {
+            "A": {"advance": 4, "width": 3, "bitmap": {
+                "normal": [[1, null, 1], [1, 1, 1], [null, 1, null]],
+                "pressed": [[2, 2, 2, 2], [2, null, null, 2],
+                    [2, null, null, 2], [2, 2, 2, 2]]}},
+            "B": {"advance": 3, "width": 2, "bitmap": {
+                "normal": [[3, 3], [3, null], [3, 3]],
+                "pressed": [[4, 4, 4], [4, null, 4], [4, null, 4],
+                    [4, 4, 4]]}}
+        }
+    })JSON";
 } // namespace test_ui_kit_detail
 
 DOCTEST_TEST_SUITE("ui kit") {
@@ -699,6 +721,172 @@ DOCTEST_TEST_SUITE("ui kit") {
         font.Print(30, 40, "Mods", false);
         DOCTEST_CHECK(test::fakes::g_font_color.colors[0] == 29);
         DOCTEST_CHECK(test::fakes::g_font_color.colors[1] == 248);
+    }
+
+    DOCTEST_TEST_CASE("bitmap font parses JSON and measures text") {
+        using namespace test_ui_kit_detail;
+        const s_colors normal = {{29, 248, 248, 248, 248, 248, 248, 248}};
+        const s_colors active = {{138, 250, 250, 250, 250, 250, 250, 250}};
+        ui_kit::Engine_Font fallback(2, normal, active);
+        ui_kit::Bitmap_Font font(ui_kit::Bitmap_Font::State::Normal,
+            fallback);
+
+        DOCTEST_CHECK_FALSE(font.Is_Loaded());
+        DOCTEST_CHECK(font.Load_From_Text(kBitmap_Font_Json,
+            std::strlen(kBitmap_Font_Json)));
+        DOCTEST_CHECK(font.Is_Loaded());
+        // The last glyph counts its bitmap width, not its advance.
+        DOCTEST_CHECK(font.Width("A") == 3);
+        DOCTEST_CHECK(font.Width("AB") == 4 + 2);
+        DOCTEST_CHECK(font.Width("A B") == 4 + 2 + 2);
+        DOCTEST_CHECK(font.Width("") == 0);
+        DOCTEST_CHECK(font.Height() == 4);
+        // An unknown glyph falls back to the engine font whole.
+        test::fakes::Reset_All_();
+        test::fakes::g_string_width = 42;
+        DOCTEST_CHECK(font.Width("AC") == 42);
+        // The pressed font measures with the pressed bitmap widths.
+        ui_kit::Bitmap_Font pressed(ui_kit::Bitmap_Font::State::Pressed,
+            fallback);
+        DOCTEST_CHECK(pressed.Load_From_Text(kBitmap_Font_Json,
+            std::strlen(kBitmap_Font_Json)));
+        DOCTEST_CHECK(pressed.Width("A") == 4);
+        DOCTEST_CHECK(pressed.Width("AB") == 4 + 3);
+        DOCTEST_CHECK(pressed.Height() == 4);
+    }
+
+    DOCTEST_TEST_CASE("bitmap font rejects malformed JSON and falls back") {
+        using namespace test_ui_kit_detail;
+        const s_colors normal = {{29, 248, 248, 248, 248, 248, 248, 248}};
+        const s_colors active = {{138, 250, 250, 250, 250, 250, 250, 250}};
+        ui_kit::Engine_Font fallback(2, normal, active);
+        ui_kit::Bitmap_Font font(ui_kit::Bitmap_Font::State::Normal,
+            fallback);
+        const std::string not_json = "{not json";
+        DOCTEST_CHECK_FALSE(font.Load_From_Text(not_json.data(),
+            not_json.size()));
+        DOCTEST_CHECK_FALSE(font.Is_Loaded());
+        // Normal has 1 row, not the cap height 3.
+        const std::string short_rows = R"JSON({"cap_height": 3,
+            "descender_rows": 1, "space_advance": 2, "glyphs": {"A":
+            {"advance": 4, "width": 3, "bitmap": {"normal": [[1]],
+            "pressed": [[2], [2], [2], [2]]}}}})JSON";
+        DOCTEST_CHECK_FALSE(font.Load_From_Text(short_rows.data(),
+            short_rows.size()));
+        DOCTEST_CHECK_FALSE(font.Is_Loaded());
+        // A cell value above the palette range.
+        const std::string bad_value = R"JSON({"cap_height": 3,
+            "descender_rows": 1, "space_advance": 2, "glyphs": {"A":
+            {"advance": 4, "width": 3, "bitmap": {"normal":
+            [[300, null, 1], [1, 1, 1], [null, 1, null]],
+            "pressed": [[2], [2], [2], [2]]}}}})JSON";
+        DOCTEST_CHECK_FALSE(font.Load_From_Text(bad_value.data(),
+            bad_value.size()));
+        DOCTEST_CHECK_FALSE(font.Is_Loaded());
+        // A good font followed by a malformed one unloads again.
+        DOCTEST_CHECK(font.Load_From_Text(kBitmap_Font_Json,
+            std::strlen(kBitmap_Font_Json)));
+        DOCTEST_CHECK(font.Is_Loaded());
+        DOCTEST_CHECK_FALSE(font.Load_From_Text(not_json.data(),
+            not_json.size()));
+        DOCTEST_CHECK_FALSE(font.Is_Loaded());
+        test::fakes::Reset_All_();
+        test::fakes::g_string_width = 42;
+        test::fakes::g_font_height = 12;
+        DOCTEST_CHECK(font.Width("A") == 42);
+        DOCTEST_CHECK(font.Height() == 12);
+    }
+
+    DOCTEST_TEST_CASE("bitmap font blits glyph pixels onto the video page") {
+        using namespace test_ui_kit_detail;
+        const s_colors normal = {{29, 248, 248, 248, 248, 248, 248, 248}};
+        const s_colors active = {{138, 250, 250, 250, 250, 250, 250, 250}};
+        ui_kit::Engine_Font fallback(2, normal, active);
+        Scoped_Video_Page page;
+        ui_kit::Bitmap_Font font(ui_kit::Bitmap_Font::State::Normal,
+            fallback);
+        DOCTEST_REQUIRE(font.Load_From_Text(kBitmap_Font_Json,
+            std::strlen(kBitmap_Font_Json)));
+        font.Print(10, 20, "A", false);
+        // A normal: row0 [1, ., 1], row1 [1, 1, 1], row2 [., 1, .].
+        DOCTEST_CHECK(page.At(10, 20) == 1);
+        DOCTEST_CHECK(page.At(11, 20) == 0xFF);
+        DOCTEST_CHECK(page.At(12, 20) == 1);
+        DOCTEST_CHECK(page.At(10, 21) == 1);
+        DOCTEST_CHECK(page.At(11, 21) == 1);
+        DOCTEST_CHECK(page.At(12, 21) == 1);
+        DOCTEST_CHECK(page.At(10, 22) == 0xFF);
+        DOCTEST_CHECK(page.At(11, 22) == 1);
+        DOCTEST_CHECK(page.At(12, 22) == 0xFF);
+        DOCTEST_CHECK(page.At(10, 23) == 0xFF);
+        // The pressed font blits the pressed bitmaps (wider, value 2).
+        ui_kit::Bitmap_Font pressed(ui_kit::Bitmap_Font::State::Pressed,
+            fallback);
+        DOCTEST_REQUIRE(pressed.Load_From_Text(kBitmap_Font_Json,
+            std::strlen(kBitmap_Font_Json)));
+        pressed.Print(20, 20, "A", false);
+        DOCTEST_CHECK(page.At(20, 20) == 2);
+        DOCTEST_CHECK(page.At(23, 20) == 2);
+        DOCTEST_CHECK(page.At(20, 23) == 2);
+        DOCTEST_CHECK(page.At(23, 23) == 2);
+        DOCTEST_CHECK(page.At(21, 21) == 0xFF);
+        // Two glyphs advance by the first glyph's advance.
+        font.Print(30, 20, "AB", false);
+        DOCTEST_CHECK(page.At(30, 20) == 1);
+        DOCTEST_CHECK(page.At(34, 20) == 3);
+        DOCTEST_CHECK(page.At(35, 20) == 3);
+    }
+
+    DOCTEST_TEST_CASE("bitmap font falls back for the active state and unknown glyphs") {
+        using namespace test_ui_kit_detail;
+        const s_colors normal = {{29, 248, 248, 248, 248, 248, 248, 248}};
+        const s_colors active = {{138, 250, 250, 250, 250, 250, 250, 250}};
+        ui_kit::Engine_Font fallback(2, normal, active);
+        ui_kit::Bitmap_Font font(ui_kit::Bitmap_Font::State::Normal,
+            fallback);
+        DOCTEST_REQUIRE(font.Load_From_Text(kBitmap_Font_Json,
+            std::strlen(kBitmap_Font_Json)));
+        Scoped_Video_Page page;
+        test::fakes::Reset_All_();
+        // Active (blue face) has no baked reference: the whole
+        // string goes to the engine font with the active ramp.
+        font.Print(10, 20, "A", true);
+        DOCTEST_CHECK(test::fakes::g_font_color.colors[0] == 138);
+        DOCTEST_REQUIRE(test::fakes::g_print_calls.size() == 1);
+        DOCTEST_CHECK(test::fakes::g_print_calls[0].text_copy == "A");
+        DOCTEST_CHECK(page.At(10, 20) == 0xFF);
+        // An unknown glyph sends the whole string to the fallback.
+        font.Print(10, 20, "AC", false);
+        DOCTEST_REQUIRE(test::fakes::g_print_calls.size() == 2);
+        DOCTEST_CHECK(test::fakes::g_print_calls[1].text_copy == "AC");
+        DOCTEST_CHECK(page.At(10, 20) == 0xFF);
+    }
+
+    DOCTEST_TEST_CASE("colony theme hands out bitmap button fonts that fall back without the font file") {
+        using namespace test_ui_kit_detail;
+        const s_colors title = {{234, 238, 240, 242, 243, 244, 246, 247}};
+        ui_kit::Colony_Theme theme(ui_kit::Frame(), ui_kit::Frame(),
+            ui_kit::Frame(), ui_kit::Frame(), ui_kit::Frame(),
+            ui_kit::Frame(), ui_kit::Frame(), ui_kit::Frame(), title);
+        const ui_kit::Button_Style style = theme.Button_Style();
+        DOCTEST_REQUIRE(style.label_font != nullptr);
+        DOCTEST_REQUIRE(style.label_pressed_font != nullptr);
+        // No base.zip is mounted in the tests, so Load fails and
+        // both fonts fall back to the style-2 engine font.
+        test::fakes::Reset_All_();
+        test::fakes::g_string_width = 30;
+        test::fakes::g_font_height = 11;
+        DOCTEST_CHECK(style.label_font->Width("MORE") == 30);
+        DOCTEST_CHECK(style.label_font->Height() == 11);
+        style.label_font->Print(10, 20, "MORE", false);
+        DOCTEST_CHECK(test::fakes::g_font_style == 2);
+        DOCTEST_REQUIRE(test::fakes::g_print_calls.size() == 1);
+        DOCTEST_CHECK(test::fakes::g_print_calls[0].text_copy == "MORE");
+        test::fakes::Reset_All_();
+        style.label_pressed_font->Print(10, 20, "MORE", false);
+        DOCTEST_CHECK(test::fakes::g_font_style == 2);
+        DOCTEST_REQUIRE(test::fakes::g_print_calls.size() == 1);
+        DOCTEST_CHECK(test::fakes::g_print_calls[0].text_copy == "MORE");
     }
 
     DOCTEST_TEST_CASE("colony theme hands out the colony tab font and frames") {

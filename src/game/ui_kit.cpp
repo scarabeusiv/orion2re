@@ -4,6 +4,8 @@
 #include "game/graphics.h"
 #include "game/sprite_art.h"
 #include "game/ui_kit.h"
+#include "game/vfs.h"
+#include "yyjson.h"
 
 namespace ui_kit {
     namespace {
@@ -215,6 +217,16 @@ namespace ui_kit {
         // rest, light text on the blue active fill.
         const s_colors kCell_Label_Normal = {{150, 154, 155, 151, 152, 153, 154, 155}};
         const s_colors kCell_Label_Active = {{247, 247, 247, 247, 247, 247, 247, 247}};
+
+        // Bitmap-font JSON limits (see data/base/fonts/README.md):
+        // the file is a small hand-drawn font, not arbitrary data,
+        // so anything outside these ranges is a malformed file and
+        // the font stays unloaded.
+        constexpr int16_t kBitmap_Font_Max_Cap_Height = 32;
+        constexpr int16_t kBitmap_Font_Max_Descender_Rows = 8;
+        constexpr int16_t kBitmap_Font_Max_Advance = 64;
+        constexpr size_t kBitmap_Font_Max_Glyphs = 128;
+        constexpr int32_t kBitmap_Font_Max_File_Size = 1024 * 1024;
     } // namespace
 
     Engine_Font::Engine_Font(int16_t style, const s_colors& normal_colors,
@@ -243,6 +255,273 @@ namespace ui_kit {
             fonts::Set_Font_Spacing(spacing_);
         }
         fonts::Print(x, y, text);
+    }
+
+    Bitmap_Font::Bitmap_Font(State state, const Engine_Font& fallback)
+        : state_(state), fallback_(fallback) {}
+
+    bool Bitmap_Font::Load(const char* name) {
+        if (name == nullptr || *name == '\0') {
+            return false;
+        }
+        const std::string path = std::string("fonts/") + name + ".json";
+        std::unique_ptr<s_vfs_file, decltype(&vfs::fclose)> file(
+            vfs::fopen(path.c_str(), "rb"), &vfs::fclose);
+        if (file == nullptr) {
+            return false;
+        }
+        const int32_t size = vfs::fsize(file.get());
+        if (size <= 0 || size > kBitmap_Font_Max_File_Size) {
+            return false;
+        }
+        std::string text((size_t)size, '\0');
+        if (vfs::fread(text.data(), 1, text.size(), file.get())
+            != text.size()) {
+            return false;
+        }
+        return Load_From_Text(text.data(), text.size());
+    }
+
+    bool Bitmap_Font::Load_From_Text(const char* text, size_t size) {
+        // A failed parse unloads the font: the caller falls back to
+        // the engine font rather than rendering a half-parsed one.
+        // The new font is built in locals and swapped in only on
+        // success.
+        loaded_ = false;
+        glyphs_.clear();
+        cap_height_ = 0;
+        descender_rows_ = 0;
+        space_advance_ = 0;
+        if (text == nullptr || size == 0) {
+            return false;
+        }
+        // yyjson reads without modifying the input (no INSITU
+        // flag), but it takes a mutable pointer: parse a copy.
+        // Non-const so data() yields the char* it wants.
+        std::string copy(text, size);
+        yyjson_read_err error{};
+        std::unique_ptr<yyjson_doc, decltype(&yyjson_doc_free)> doc(
+            yyjson_read_opts(copy.data(), copy.size(), 0, nullptr,
+                &error),
+            yyjson_doc_free);
+        if (doc == nullptr) {
+            return false;
+        }
+        const yyjson_val* root = yyjson_doc_get_root(doc.get());
+        if (!yyjson_is_obj(root)) {
+            return false;
+        }
+        const auto get_uint = [](const yyjson_val* obj, const char* key,
+            uint64_t* out) {
+            const yyjson_val* value = yyjson_obj_get(obj, key);
+            if (value == nullptr || !yyjson_is_uint(value)) {
+                return false;
+            }
+            *out = yyjson_get_uint(value);
+            return true;
+        };
+        // One state's bitmap rows: exactly expected_rows rows,
+        // every row an array of the same length, each cell null or
+        // a palette index 0..255. Normal rows must be the glyph's
+        // width (expected_width >= 0); pressed rows carry their own
+        // width (expected_width < 0).
+        const auto parse_bitmap = [](const yyjson_val* bitmap,
+            const char* state_name, size_t expected_rows,
+            int16_t expected_width,
+            std::vector<std::vector<int16_t>>* out) {
+            const yyjson_val* rows = yyjson_obj_get(bitmap, state_name);
+            if (rows == nullptr || !yyjson_is_arr(rows)
+                || yyjson_arr_size(rows) != expected_rows) {
+                return false;
+            }
+            out->clear();
+            size_t state_width = 0;
+            size_t i = 0, count = 0;
+            yyjson_val* row = nullptr;
+            yyjson_arr_foreach(rows, i, count, row) {
+                if (!yyjson_is_arr(row)) {
+                    return false;
+                }
+                const size_t width = yyjson_arr_size(row);
+                if (width == 0
+                    || width > (size_t)kBitmap_Font_Max_Advance) {
+                    return false;
+                }
+                if (i == 0) {
+                    state_width = width;
+                    if (expected_width >= 0
+                        && (int16_t)width != expected_width) {
+                        return false;
+                    }
+                } else if (width != state_width) {
+                    return false;
+                }
+                std::vector<int16_t> parsed;
+                parsed.reserve(width);
+                size_t j = 0, cell_count = 0;
+                yyjson_val* cell = nullptr;
+                yyjson_arr_foreach(row, j, cell_count, cell) {
+                    if (yyjson_is_null(cell)) {
+                        parsed.push_back(-1);
+                    } else if (yyjson_is_uint(cell)
+                        && yyjson_get_uint(cell) <= 255) {
+                        parsed.push_back((int16_t)yyjson_get_uint(cell));
+                    } else {
+                        return false;
+                    }
+                }
+                out->push_back(std::move(parsed));
+            }
+            return true;
+        };
+        uint64_t value = 0;
+        if (!get_uint(root, "cap_height", &value) || value < 1
+            || value > kBitmap_Font_Max_Cap_Height) {
+            return false;
+        }
+        const int16_t cap_height = (int16_t)value;
+        if (!get_uint(root, "descender_rows", &value)
+            || value > kBitmap_Font_Max_Descender_Rows) {
+            return false;
+        }
+        const int16_t descender_rows = (int16_t)value;
+        if (!get_uint(root, "space_advance", &value) || value < 1
+            || value > kBitmap_Font_Max_Advance) {
+            return false;
+        }
+        const int16_t space_advance = (int16_t)value;
+        const yyjson_val* glyphs_val = yyjson_obj_get(root, "glyphs");
+        if (glyphs_val == nullptr || !yyjson_is_obj(glyphs_val)
+            || yyjson_obj_size(glyphs_val) == 0
+            || yyjson_obj_size(glyphs_val) > kBitmap_Font_Max_Glyphs) {
+            return false;
+        }
+        std::map<char, Glyph> glyphs;
+        size_t i = 0, count = 0;
+        yyjson_val* key = nullptr;
+        yyjson_val* glyph_val = nullptr;
+        yyjson_obj_foreach(glyphs_val, i, count, key, glyph_val) {
+            if (!yyjson_is_str(key) || yyjson_get_len(key) != 1) {
+                return false;
+            }
+            const char ch = yyjson_get_str(key)[0];
+            if (ch == ' ' || (unsigned char)ch >= 128) {
+                return false;
+            }
+            if (!yyjson_is_obj(glyph_val)) {
+                return false;
+            }
+            Glyph glyph;
+            if (!get_uint(glyph_val, "advance", &value) || value < 1
+                || value > kBitmap_Font_Max_Advance) {
+                return false;
+            }
+            glyph.advance = (int16_t)value;
+            if (!get_uint(glyph_val, "width", &value) || value < 1
+                || value > kBitmap_Font_Max_Advance) {
+                return false;
+            }
+            glyph.width = (int16_t)value;
+            const yyjson_val* bitmap = yyjson_obj_get(glyph_val, "bitmap");
+            if (bitmap == nullptr || !yyjson_is_obj(bitmap)) {
+                return false;
+            }
+            if (!parse_bitmap(bitmap, "normal", (size_t)cap_height,
+                    glyph.width, &glyph.normal)) {
+                return false;
+            }
+            if (!parse_bitmap(bitmap, "pressed",
+                    (size_t)(cap_height + descender_rows), -1,
+                    &glyph.pressed)) {
+                return false;
+            }
+            glyphs[ch] = std::move(glyph);
+        }
+        cap_height_ = cap_height;
+        descender_rows_ = descender_rows;
+        space_advance_ = space_advance;
+        glyphs_ = std::move(glyphs);
+        loaded_ = true;
+        return true;
+    }
+
+    bool Bitmap_Font::Is_Loaded() const {
+        return loaded_;
+    }
+
+    bool Bitmap_Font::Renderable(const char* text) const {
+        if (!loaded_ || text == nullptr) {
+            return false;
+        }
+        for (const char* p = text; *p != '\0'; ++p) {
+            if (*p != ' ' && glyphs_.find(*p) == glyphs_.end()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    const std::vector<std::vector<int16_t>>* Bitmap_Font::Rows(
+        const Glyph& glyph) const {
+        return state_ == State::Pressed ? &glyph.pressed : &glyph.normal;
+    }
+
+    int16_t Bitmap_Font::Width(const char* text) const {
+        if (!Renderable(text)) {
+            return fallback_.Width(text);
+        }
+        int16_t width = 0;
+        for (const char* p = text; *p != '\0'; ++p) {
+            if (*p == ' ') {
+                width = (int16_t)(width + space_advance_);
+            } else {
+                const Glyph& glyph = glyphs_.at(*p);
+                width = (int16_t)(width + (*(p + 1) == '\0'
+                    // The last glyph counts its bitmap width, not
+                    // its advance: the trailing gap belongs to no
+                    // following letter.
+                    ? (int16_t)Rows(glyph)->front().size()
+                    : glyph.advance));
+            }
+        }
+        return width;
+    }
+
+    int16_t Bitmap_Font::Height() const {
+        if (!loaded_) {
+            return fallback_.Height();
+        }
+        return (int16_t)(cap_height_ + descender_rows_);
+    }
+
+    void Bitmap_Font::Print(int16_t x, int16_t y, const char* text,
+        bool active) const {
+        // All-or-nothing per string: a string the bitmap font
+        // cannot render whole (unloaded, unknown glyph, active
+        // blue face) goes to the engine font entire, never mixed.
+        if (active || !Renderable(text)) {
+            fallback_.Print(x, y, text, active);
+            return;
+        }
+        int16_t cx = x;
+        for (const char* p = text; *p != '\0'; ++p) {
+            if (*p == ' ') {
+                cx = (int16_t)(cx + space_advance_);
+                continue;
+            }
+            const Glyph& glyph = glyphs_.at(*p);
+            const std::vector<std::vector<int16_t>>& rows = *Rows(glyph);
+            for (size_t row = 0; row < rows.size(); ++row) {
+                for (size_t col = 0; col < rows[row].size(); ++col) {
+                    const int16_t value = rows[row][col];
+                    if (value >= 0) {
+                        graphics::Dot((int16_t)(cx + col),
+                            (int16_t)(y + row), (uint8_t)value);
+                    }
+                }
+            }
+            cx = (int16_t)(cx + glyph.advance);
+        }
     }
 
     int16_t Frame::Width() const {
@@ -295,21 +574,33 @@ namespace ui_kit {
         const s_colors& title_colors)
         // Tab labels are engine font style 2: the baked colony
         // labels measure as style 2 (widths within 1-2 px per
-        // label, ink 8-9 rows tall). Button labels are style 2
-        // with spacing 1, not style 4: the baked RETURN text inks
-        // 9 rows (style 4 inks 12) and its 41 px string measures
-        // as style-2 widths with 1 px spacing (style 4 measures
-        // 71 px). The title and cell labels keep style 4.
+        // label, ink 8-9 rows tall). Button labels are the
+        // Moo2Button bitmap font (the baked RETURN text is
+        // hand-drawn pixel art, not a font render: style 2 with
+        // spacing 1 only reaches IoU 0.626 against it), loaded in
+        // the body below; the style-2 engine fonts stay as the
+        // fallback for a missing or malformed font file. The title
+        // and cell labels keep style 4.
         : tab_font_(2, kTab_Label_Normal, kTab_Label_Active),
           title_font_(4, title_colors, title_colors),
           button_font_(2, kButton_Label_Dark, kButton_Label_Light, 1),
           button_pressed_font_(2, kButton_Label_Pressed,
               kButton_Label_Pressed, 1),
+          button_bitmap_font_(Bitmap_Font::State::Normal, button_font_),
+          button_pressed_bitmap_font_(Bitmap_Font::State::Pressed,
+              button_pressed_font_),
           cell_font_(4, kCell_Label_Normal, kCell_Label_Active),
           tab_normal_{name_normal, population_normal, food_normal},
           tab_active_{name_active, population_active, food_active},
           return_normal_(return_normal),
-          return_pressed_(return_pressed) {}
+          return_pressed_(return_pressed) {
+        // Loading is soft: a missing or malformed file leaves the
+        // bitmap fonts unloaded and the engine fonts above render
+        // instead (vfs::fopen returns null in the tests, where no
+        // base.zip is mounted, so the theme falls back there too).
+        button_bitmap_font_.Load("Moo2Button");
+        button_pressed_bitmap_font_.Load("Moo2Button");
+    }
 
     const Font& Colony_Theme::Tab_Font() const {
         return tab_font_;
@@ -426,8 +717,8 @@ namespace ui_kit {
         style.toggle_off_base = kToggle_Off_Base;
         style.toggle_off_bright = kToggle_Off_Bright;
         style.scroll_corner = kScroll_Corner;
-        style.label_font = &button_font_;
-        style.label_pressed_font = &button_pressed_font_;
+        style.label_font = &button_bitmap_font_;
+        style.label_pressed_font = &button_pressed_bitmap_font_;
         style.cell_font = &cell_font_;
         return style;
     }
