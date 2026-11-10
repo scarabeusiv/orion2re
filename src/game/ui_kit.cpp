@@ -22,27 +22,47 @@ namespace ui_kit {
         const s_colors kTab_Label_Normal = {{29, 248, 248, 248, 248, 248, 248, 248}};
         const s_colors kTab_Label_Active = {{138, 250, 250, 250, 250, 250, 250, 250}};
 
-        // The colony sort-button frame, COLSUM.LBX anims[4], 50x24:
-        // bevelled on the left and top, flat black on the right, so
-        // the stretched draw keeps a 7 px left slice and no right
-        // slice. The bevel itself is 4 px wide (grey ramp plus the
-        // teal line on the rest frame, blue ramp on the selected),
-        // but its corner tails reach column 6 (row 2) and column 4
-        // (row 22), so a 4 px slice would drop them: the slice is
-        // 7 px, and the middle starts at the first flat-face column
-        // (kSelector_Middle_Column).
-        constexpr int16_t kSelector_Left_Slice = 7;
-        constexpr int16_t kSelector_Right_Slice = 0;
+        // The colony sort-button frames, grabbed from the rendered
+        // colony screen (tools/sprites/derive_sort_tabs.py): one
+        // per sort tab -- Name 50 px, Population 78 px, Food 42 px,
+        // all 24 tall -- each with a fixed ~20 px bright ramp on
+        // each side and a flat dark-navy middle whose width grows
+        // with the tab. The draw three-slices every frame with 20 px
+        // fixed slices and one tiled middle column per tab (the
+        // middle of that tab's flat run), never a resample: the
+        // colony's widest sort tab is 86 px with ~20 px ramps, so
+        // resampling would stretch the ramps, which the colony
+        // never does. The selected frame's field is flat in the
+        // middle once the ramps are fixed slices -- the gradient is
+        // the ramps, not the field -- so both states three-slice.
+        constexpr int16_t kSort_Left_Slice = 20;
+        constexpr int16_t kSort_Right_Slice = 20;
+        // Middle columns, by tab index (0 Name, 1 Population,
+        // 2 Food): the middle of each tab's flat run on the
+        // label-free row 5, the same column for both states -- the
+        // column is the flat face (menu 50) on every row of both
+        // derived frames, including the groove row, where the
+        // ramp tails remap onto the same index.
+        constexpr int16_t kSort_Middle_Columns[] = {26, 38, 21};
+        constexpr int16_t kSort_Tab_Count = 3;
 
-        // The rest frame's three-slice middle column: column 7, the
-        // first column past the 7 px left slice, is the flat face
-        // (menu 50) on every row of the derived frame -- columns
-        // 7..11 are the modal middle value on all 24 rows
-        // (measured from data/base/sprites/selector-frame/normal.bin;
-        // columns 4..6 carry the top bevel's tail on row 2 and column
-        // 4 on row 22, so tiling the whole middle would repeat them
-        // once per tile on a wide tab).
-        constexpr int16_t kSelector_Middle_Column = 7;
+        // The window-band background the gaps between tabs show,
+        // in menu-palette indices, one per tab row (top -> bottom):
+        // the recessed channel -- a light top bevel stepping down
+        // to the dark-navy face, stepping back up to a light bottom
+        // edge -- measured from the rendered colony screen's five
+        // sort-tab gaps (tools/sprites/derive_sort_tabs.py). All
+        // five gaps agree on rows 1..23; row 0 follows the
+        // strip-wide arch, so it differs per gap: 239 after tab 0,
+        // 240 after tab 1 (the colony's gaps read 239, 240, 240,
+        // 241, 240 left to right). A bar with more gaps than
+        // profiles reuses the last profile.
+        constexpr uint8_t kSort_Gap_Profiles[][24] = {
+            {239, 234, 15, 84, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50,
+             50, 50, 50, 50, 50, 50, 84, 94, 29, 239},
+            {240, 234, 15, 84, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50,
+             50, 50, 50, 50, 50, 50, 84, 94, 29, 239},
+        };
 
         // Tab metrics, measured from the colony sort buttons
         // (colsum.cpp: y 446, 24 tall; next x = x + width + 1).
@@ -263,7 +283,9 @@ namespace ui_kit {
             left_slice, middle_column, right_slice);
     }
 
-    Colony_Theme::Colony_Theme(Frame tab_normal, Frame tab_active,
+    Colony_Theme::Colony_Theme(Frame name_normal, Frame name_active,
+        Frame population_normal, Frame population_active,
+        Frame food_normal, Frame food_active,
         Frame return_normal, Frame return_pressed,
         const s_colors& title_colors)
         // Tab labels are engine font style 2: the baked colony
@@ -279,7 +301,8 @@ namespace ui_kit {
           button_pressed_font_(2, kButton_Label_Pressed,
               kButton_Label_Pressed, 1),
           cell_font_(4, kCell_Label_Normal, kCell_Label_Active),
-          tab_normal_(tab_normal), tab_active_(tab_active),
+          tab_normal_{name_normal, population_normal, food_normal},
+          tab_active_{name_active, population_active, food_active},
           return_normal_(return_normal),
           return_pressed_(return_pressed) {}
 
@@ -287,22 +310,57 @@ namespace ui_kit {
         return tab_font_;
     }
 
+    namespace {
+        // One tab's frames: the tab's own sort frame in both
+        // states, three-sliced with the fixed 20 px ramps and that
+        // tab's flat middle column.
+        ui_kit::Tab_Frames Make_Tab_Frames(const Frame& normal,
+            const Frame& active, int16_t middle_column) {
+            ui_kit::Tab_Frames frames;
+            frames.normal.frame = normal;
+            frames.normal.resample_middle = false;
+            frames.normal.middle_column = middle_column;
+            frames.active.frame = active;
+            frames.active.resample_middle = false;
+            frames.active.middle_column = middle_column;
+            frames.left_slice = kSort_Left_Slice;
+            frames.right_slice = kSort_Right_Slice;
+            frames.fallback_fill_normal = kTab_Fallback_Fill_Normal;
+            frames.fallback_fill_active = kTab_Fallback_Fill_Active;
+            frames.fallback_border = kTab_Fallback_Border;
+            return frames;
+        }
+    } // namespace
+
     ui_kit::Tab_Frames Colony_Theme::Tab_Frames() const {
-        ui_kit::Tab_Frames frames;
-        frames.normal.frame = tab_normal_;
-        frames.normal.resample_middle = false;
-        frames.normal.middle_column = kSelector_Middle_Column;
-        frames.active.frame = tab_active_;
-        // The selected frame's middle is a blue gradient, brightest
-        // at the edges and dark in the middle: resample it across
-        // the tab width, or the gradient repeats like stripes.
-        frames.active.resample_middle = true;
-        frames.left_slice = kSelector_Left_Slice;
-        frames.right_slice = kSelector_Right_Slice;
-        frames.fallback_fill_normal = kTab_Fallback_Fill_Normal;
-        frames.fallback_fill_active = kTab_Fallback_Fill_Active;
-        frames.fallback_border = kTab_Fallback_Border;
-        return frames;
+        return Tab_Frames_For_Tab(0);
+    }
+
+    ui_kit::Tab_Frames Colony_Theme::Tab_Frames_For_Tab(
+        int16_t tab_index) const {
+        if (tab_index < 0) {
+            tab_index = 0;
+        }
+        if (tab_index >= kSort_Tab_Count) {
+            tab_index = kSort_Tab_Count - 1;
+        }
+        return Make_Tab_Frames(tab_normal_[(size_t)tab_index],
+            tab_active_[(size_t)tab_index],
+            kSort_Middle_Columns[(size_t)tab_index]);
+    }
+
+    std::vector<uint8_t> Colony_Theme::Tab_Gap_Profile(
+        int16_t gap_index) const {
+        if (gap_index < 0) {
+            gap_index = 0;
+        }
+        const size_t profile_count =
+            sizeof(kSort_Gap_Profiles) / sizeof(kSort_Gap_Profiles[0]);
+        if ((size_t)gap_index >= profile_count) {
+            gap_index = (int16_t)(profile_count - 1);
+        }
+        const uint8_t* profile = kSort_Gap_Profiles[(size_t)gap_index];
+        return std::vector<uint8_t>(profile, profile + kTab_Height);
     }
 
     ui_kit::Frame_Style Colony_Theme::Frame_Style() const {
@@ -394,9 +452,17 @@ namespace ui_kit {
     std::unique_ptr<Colony_Theme> Load_Colony_Theme(
         void* allocation_base, const s_colors& title_colors) {
         return std::make_unique<Colony_Theme>(
-            Frame(sprite_art::Load_Sprite_Frame("selector-frame", "normal",
+            Frame(sprite_art::Load_Sprite_Frame("sort-name", "normal",
                 allocation_base)),
-            Frame(sprite_art::Load_Sprite_Frame("selector-frame", "active",
+            Frame(sprite_art::Load_Sprite_Frame("sort-name", "active",
+                allocation_base)),
+            Frame(sprite_art::Load_Sprite_Frame("sort-population",
+                "normal", allocation_base)),
+            Frame(sprite_art::Load_Sprite_Frame("sort-population",
+                "active", allocation_base)),
+            Frame(sprite_art::Load_Sprite_Frame("sort-food", "normal",
+                allocation_base)),
+            Frame(sprite_art::Load_Sprite_Frame("sort-food", "active",
                 allocation_base)),
             Frame(sprite_art::Load_Sprite_Frame("return", "normal",
                 allocation_base)),
@@ -425,6 +491,10 @@ namespace ui_kit {
 
     void Button::Set_Primary(bool primary) {
         primary_ = primary;
+    }
+
+    void Button::Set_Tab_Index(int16_t tab_index) {
+        tab_index_ = tab_index;
     }
 
     void Button::Draw() const {
@@ -550,7 +620,11 @@ namespace ui_kit {
     }
 
     void Button::Draw_Selector() const {
-        const Tab_Frames frames = theme_.Tab_Frames();
+        // A tab draws its own tab's frames; a Selector with no tab
+        // index draws the shared frames.
+        const Tab_Frames frames = tab_index_ >= 0
+            ? theme_.Tab_Frames_For_Tab(tab_index_)
+            : theme_.Tab_Frames();
         // Active and pressed are both the colony's frame 1 (the
         // selected sort column's blue gradient); a disabled
         // selector has no frame of its own and renders as rest.
@@ -737,13 +811,49 @@ namespace ui_kit {
     }
 
     void Tab_Bar::Draw() const {
-        for (const Tab& tab : tabs_) {
+        // The band first: the gaps between adjacent tabs show the
+        // window band's recessed channel, one profile entry per row,
+        // coalesced into one fill per run of equal colour. A theme
+        // with no gap profile draws no fill, and the gaps stay the
+        // background -- the old behaviour. The strip after the last
+        // tab has no colony counterpart (the colony's strip ends at
+        // its last tab; the settings strip ends 8 px short of MORE)
+        // and is left alone.
+        for (size_t i = 0; i + 1 < tabs_.size(); ++i) {
+            const std::vector<uint8_t> profile =
+                theme_.Tab_Gap_Profile((int16_t)i);
+            if (profile.size() != (size_t)theme_.Tab_Height()) {
+                continue;
+            }
+            const int16_t gap_x =
+                (int16_t)(tabs_[i].x + tabs_[i].width);
+            const int16_t gap_w =
+                (int16_t)(tabs_[i + 1].x - gap_x);
+            if (gap_w < 1) {
+                continue;
+            }
+            int16_t run_start = 0;
+            for (int16_t row = 1; row <= theme_.Tab_Height(); ++row) {
+                if (row < theme_.Tab_Height() &&
+                    profile[(size_t)row] == profile[(size_t)run_start]) {
+                    continue;
+                }
+                graphics::Fill(gap_x, (int16_t)(y_ + run_start),
+                    (int16_t)(gap_x + gap_w - 1),
+                    (int16_t)(y_ + row - 1),
+                    profile[(size_t)run_start]);
+                run_start = row;
+            }
+        }
+        for (size_t i = 0; i < tabs_.size(); ++i) {
+            const Tab& tab = tabs_[i];
             Button button(tab.x, y_, tab.width, theme_.Tab_Height(),
                 Button_Kind::Selector, theme_);
             button.Set_Label(tab.label);
             button.Set_State(tab.pressed ? Button_State::Pressed
                 : (tab.active ? Button_State::Active
                               : Button_State::Rest));
+            button.Set_Tab_Index((int16_t)i);
             button.Draw();
         }
     }

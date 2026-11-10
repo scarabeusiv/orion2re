@@ -119,13 +119,18 @@ namespace ui_kit {
     };
 
     // One tab frame: the derived sprite plus how its middle is
-    // treated when the tab is wider than the frame. A flat middle
-    // (the rest frame) tiles one text-free face column
-    // (middle_column, three-slice, like a metal button); a gradient
-    // middle (the selected frame's blue field) must be resampled,
-    // or the gradient repeats like stripes. middle_column < 0
-    // means the theme names no single face column: the whole middle
-    // tiles, as before.
+    // treated when the tab is wider than the frame. Both states
+    // three-slice on one text-free face column (middle_column,
+    // like a metal button): the colony's sort frames carry fixed
+    // bright ramps on each side and a flat middle, so tiling one
+    // face column keeps the ramps 1:1 at any width. resample_middle
+    // is the generic alternative for a frame whose middle is a
+    // gradient that must span the width once, not tile (the colony
+    // theme no longer uses it: the selected sort frame's field
+    // turned out to be flat in the middle once the ramps are fixed
+    // slices, not a gradient). middle_column < 0 means the theme
+    // names no single face column: the whole middle tiles, as
+    // before.
     struct Tab_Frame {
         Frame frame;
         bool resample_middle = false;
@@ -257,8 +262,8 @@ namespace ui_kit {
     // use of the same click-a-cell idea:
     // - Selector: a derived COLSUM sort-button frame (Tab_Frames),
     //   cut into three slices at the button width -- the bevel as-is,
-    //   one text-free face column tiled across a flat middle, the
-    //   gradient middle resampled -- label rendered at runtime.
+    //   one text-free face column tiled across a flat middle --
+    //   label rendered at runtime.
     // - Metal: a RETURN cut into three slices -- the derived
     //   frame's domes as-is, one text-free face column tiled
     //   across the middle, the label rendered at runtime -- so
@@ -347,6 +352,30 @@ namespace ui_kit {
         // Qualified: the member function name would otherwise hide
         // the same-named struct in the return type.
         virtual ui_kit::Tab_Frames Tab_Frames() const = 0;
+        // Per-tab frames: the colony's sort buttons are per-tab
+        // frames (Name, Population, Food ...), each with its own
+        // bevel and ramp widths, so a tab draws its own tab's
+        // frames, not the shared first tab's. The default is the
+        // shared frames for every tab, so a theme with one frame
+        // pair needs no override; a tab's index is its position in
+        // the bar, set by the bar (see Button::Set_Tab_Index).
+        virtual ui_kit::Tab_Frames Tab_Frames_For_Tab(
+            int16_t tab_index) const {
+            (void)tab_index;
+            return Tab_Frames();
+        }
+        // The window-band background the gaps between adjacent tabs
+        // show: one palette index per tab row, top -> bottom. The
+        // colony's sort strip is one continuous band, so the gaps
+        // show the band's recessed channel, not black. Empty means
+        // the theme names no band: the bar draws no gap fill. The
+        // profile is per gap: the band's top row follows the
+        // strip-wide arch, so it differs per gap.
+        virtual std::vector<uint8_t> Tab_Gap_Profile(
+            int16_t gap_index) const {
+            (void)gap_index;
+            return {};
+        }
         // Qualified: the member function name would otherwise hide
         // the same-named struct in the return type.
         virtual ui_kit::Frame_Style Frame_Style() const = 0;
@@ -379,13 +408,26 @@ namespace ui_kit {
     // in; the tab label ramps are the theme's own, measured from the
     // baked labels (menu palette): inactive is a white face with a
     // dark-grey edge, active a blue-white face with a mid-blue edge.
+    // The sort frames are per tab: the settings screen has three
+    // categories, so the theme carries the first three colony sort
+    // frames (Name, Population, Food), grabbed from the rendered
+    // colony screen -- see tools/sprites/README.md. Tab_Frames()
+    // returns the first tab's frames, for a Selector with no tab
+    // index; the bar hands each tab its own frames through
+    // Tab_Frames_For_Tab.
     class Colony_Theme : public Theme {
       public:
-        Colony_Theme(Frame tab_normal, Frame tab_active,
+        Colony_Theme(Frame name_normal, Frame name_active,
+            Frame population_normal, Frame population_active,
+            Frame food_normal, Frame food_active,
             Frame return_normal, Frame return_pressed,
             const s_colors& title_colors);
         const Font& Tab_Font() const override;
         ui_kit::Tab_Frames Tab_Frames() const override;
+        ui_kit::Tab_Frames Tab_Frames_For_Tab(
+            int16_t tab_index) const override;
+        std::vector<uint8_t> Tab_Gap_Profile(
+            int16_t gap_index) const override;
         ui_kit::Frame_Style Frame_Style() const override;
         ui_kit::Spacing Spacing() const override;
         ui_kit::List_Style List_Style() const override;
@@ -402,14 +444,18 @@ namespace ui_kit {
         Engine_Font button_font_;
         Engine_Font button_pressed_font_;
         Engine_Font cell_font_;
-        Frame tab_normal_;
-        Frame tab_active_;
+        // The three sort frames, by tab index: 0 Name, 1 Population,
+        // 2 Food. Tab_Frames_For_Tab clamps an out-of-range index to
+        // the last tab, so a bar with more tabs than frames still
+        // draws.
+        Frame tab_normal_[3];
+        Frame tab_active_[3];
         Frame return_normal_;
         Frame return_pressed_;
     };
 
-    // Loads the colony theme's frames (the derived selector-frame
-    // sprite, both states, and the derived RETURN sprite, rest and
+    // Loads the colony theme's frames (the three derived sort-tab
+    // sprites, both states, and the derived RETURN sprite, rest and
     // pressed) from the screen's allocation base and returns the
     // theme. The screen never names a sprite id and never sees a
     // frame pointer: the theme owns its assets, so a hi-res asset
@@ -446,6 +492,11 @@ namespace ui_kit {
         void Set_Label_Y_Offset(int16_t dy);
         void Set_State(Button_State state);
         void Set_Primary(bool primary);
+        // The tab's position in its bar, for a Selector: the theme
+        // hands a Selector its own tab's frames through
+        // Tab_Frames_For_Tab. -1 (the default) means no tab: the
+        // shared Tab_Frames(). Only the bar sets it.
+        void Set_Tab_Index(int16_t tab_index);
         void Draw() const;
 
       private:
@@ -471,6 +522,7 @@ namespace ui_kit {
         bool label_y_offset_set_ = false;
         Button_State state_ = Button_State::Rest;
         bool primary_ = false;
+        int16_t tab_index_ = -1;
     };
 
     // A row of tabs: one continuous strip filling [x, right),
