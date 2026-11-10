@@ -418,6 +418,12 @@ namespace ui_kit {
       public:
         virtual ~Theme() = default;
         virtual const Font& Tab_Font() const = 0;
+        // The header-plate label font: the colony's large display
+        // font (Moo2Display, cap 8), for the header plates' labels
+        // (NAME, FARMERS, ... on the colony screen; SETTING, VALUE
+        // on the settings screen). The baked labels are ~14 px per
+        // character; no engine font renders them at the right width.
+        virtual const Font& Header_Font() const = 0;
         // Qualified: the member function name would otherwise hide
         // the same-named struct in the return type.
         virtual ui_kit::Tab_Frames Tab_Frames() const = 0;
@@ -492,6 +498,7 @@ namespace ui_kit {
             Frame return_normal, Frame return_pressed,
             const s_colors& title_colors);
         const Font& Tab_Font() const override;
+        const Font& Header_Font() const override;
         ui_kit::Tab_Frames Tab_Frames() const override;
         ui_kit::Tab_Frames Tab_Frames_For_Tab(
             int16_t tab_index) const override;
@@ -520,6 +527,13 @@ namespace ui_kit {
         // blank label. Declared after the fallbacks they borrow.
         Bitmap_Font button_bitmap_font_;
         Bitmap_Font button_pressed_bitmap_font_;
+        // The header-plate label font over Moo2Display.json: the
+        // colony's large display font for the header plates. Loaded
+        // in the constructor body; when the file is missing or
+        // malformed it stays unloaded and the title font renders
+        // instead, so the theme never ships a blank label. Declared
+        // after the fallback it borrows.
+        Bitmap_Font header_font_;
         Engine_Font cell_font_;
         // The three sort frames, by tab index: 0 Name, 1 Population,
         // 2 Food. Tab_Frames_For_Tab clamps an out-of-range index to

@@ -589,6 +589,7 @@ namespace ui_kit {
           button_bitmap_font_(Bitmap_Font::State::Normal, button_font_),
           button_pressed_bitmap_font_(Bitmap_Font::State::Pressed,
               button_pressed_font_),
+          header_font_(Bitmap_Font::State::Normal, title_font_),
           cell_font_(4, kCell_Label_Normal, kCell_Label_Active),
           tab_normal_{name_normal, population_normal, food_normal},
           tab_active_{name_active, population_active, food_active},
@@ -600,10 +601,15 @@ namespace ui_kit {
         // base.zip is mounted, so the theme falls back there too).
         button_bitmap_font_.Load("Moo2Button");
         button_pressed_bitmap_font_.Load("Moo2Button");
+        header_font_.Load("Moo2Display");
     }
 
     const Font& Colony_Theme::Tab_Font() const {
         return tab_font_;
+    }
+
+    const Font& Colony_Theme::Header_Font() const {
+        return header_font_;
     }
 
     namespace {

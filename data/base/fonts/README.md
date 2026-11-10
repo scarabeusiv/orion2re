@@ -1,5 +1,13 @@
 # Fonts in `data/base/fonts/`
 
+These are orion2re-owned replica fonts, drawn by observation from the
+rendered game screens and bundled with the game. They reproduce the
+baked letterforms where no runtime engine font can (the baked text is
+hand-drawn pixel art, not a font render). No font is a verbatim copy
+of game data: the grids are transcriptions of the rendered screen,
+verified by each font's --check, and the fonts are generated from
+literals in the build scripts -- no LBX file is read to produce them.
+
 ## Moo2Menu.json
 
 The main-screen button font. Recreated from the baked MAINMENU.LBX
@@ -94,3 +102,74 @@ glyph bitmaps for the button labels, with the pressed-state bitmaps
 used while a button is held. Loading is soft: a missing or malformed
 file, a missing glyph, or the active (blue-face) state falls back to
 the previous style-2 engine-font rendering, never a blank label.
+
+## Moo2Display.json
+
+The colony header-plate label font (cap 8). The colony summary
+screen's header plates (NAME, FARMERS, WORKERS, SCIENTISTS, BUILDING)
+and the SORT caption carry large display labels -- about 14 px per
+character, 8 rows of ink -- but the kit had no such theme font: the
+replication rendered them in the tab font (engine font style 2),
+which inks the right 8 rows but only about half the width (real
+FARMERS 97 px vs kit 53 px). Moo2Display closes that gap: the five
+plate labels compose to their measured widths exactly (NAME 58,
+FARMERS 97, WORKERS 98, SCIENTISTS 105, BUILDING 87).
+
+### How it was made
+
+Drawn by observation from the rendered colony summary screen
+(header plates y 4..31, label ink rows 17..24, game coords). Each
+pixel's RGB was mapped to the nearest menu-palette grey (MAINMENU.LBX
+entry 2, offset 24; ramp 230-250); indices >= 240 are ink, the rest
+transparent. No LBX file was read to produce this font and no sprite
+pixels were byte-extracted into it: the grids are transcriptions of
+the rendered screen. The source of truth is
+`tools/build_moo2display_font.py`, which holds the glyph grids as
+literals and generates this JSON.
+
+### Glyphs
+
+19 (A B C D E F G I K L M N O R S T U V W). Every glyph except V is
+transcribed from the rendered colony screen; V is designed to match
+(no baked V at this scale -- VALUE is a settings-screen plate,
+rendered at runtime). The pressed state mirrors normal: header
+plates have no pressed state, so the JSON carries the same 8 rows
+for pressed (the runtime requires a pressed bitmap; it is never
+rendered for plates).
+
+Advances are solved so the five plate labels land on their measured
+widths exactly (single advance per glyph; F=13 and D=14 sit 1 px
+above their measured gap). The baked labels vary slightly in AA
+values between instances of the same letter, so exact palette-index
+match is unachievable and is not what the census measures -- the
+--check screenshot comparison is binary ink with 1 px tolerance,
+the same tolerance the colony census uses.
+
+### Format
+
+Same top-level shape as Moo2Menu.json: `name`, `cap_height` (8),
+`descender_rows` (0), `space_advance` (4), `provenance`, `glyphs`.
+Each glyph has `advance`, `width` and `bitmap` with `normal` (8 rows)
+and `pressed` (8 rows, identical to normal).
+
+### Regeneration
+
+```sh
+python3 tools/build_moo2display_font.py [--output data/base/fonts/Moo2Display.json] [--check] [--screenshot PATH]
+```
+
+`--check` composes the five plate labels and verifies their widths
+against the measured widths. With `--screenshot PATH` (a colony
+summary screengrab, 1280x1024 with the 640x480 game centred), it
+additionally compares each composed label's ink shape against the
+screenshot's label band (binary ink, 1 px tolerance). Do not edit the
+JSON by hand: edit the grids in the script and regenerate.
+
+### Runtime use
+
+The theme carries the display font as `Header_Font()` (see
+`src/game/ui_kit.h`); the settings screen's header plates
+(`draw_header_plate`) and the colony replication render it through
+the theme instead of the engine font. Loading is soft, like
+Moo2Button: a missing or malformed file falls back to the engine
+font, never a blank label.
