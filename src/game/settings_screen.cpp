@@ -179,6 +179,15 @@ namespace SETTINGS_SCREEN {
         // list's row fields stop short of its scrollbar.
         constexpr int16_t SCROLL_X = 621;
         constexpr int16_t SCROLL_W = 5;
+        // Colony-list scrollbar track, like COLSUM's: the strip
+        // between the scroll arrows (up y 15..34, down y 316..337),
+        // y 40..311 (272 tall). The kit layout's scroll track spans
+        // the rows (y 38..346), but the colony's thumb slides in
+        // the shorter track, with the down-arrow and the footing
+        // below it -- the settings bar uses the colony's track, so
+        // the thumb, the drag field and the restored strip agree.
+        constexpr int16_t COLONY_TRACK_Y = 40;
+        constexpr int16_t COLONY_TRACK_H = 272;
         constexpr int16_t ROW_FIELD_X_END = SCROLL_X - 2;
 
         // The colony BUILDING toggle: 19x29 at x 599, the buy
@@ -472,97 +481,40 @@ namespace SETTINGS_SCREEN {
                 ROWS_PER_PAGE, g_theme->Spacing());
         }
 
-        // Paint out the colony background's baked list grid in the
-        // list area: the background art carries the colony listing's
-        // grid -- vertical dividers at the colony's column grooves
-        // (98/233/375/509, colsum.cpp) and a dithered bevel band at
-        // the bottom of every row. The settings rows are text lines,
-        // not cells, so the grid goes: the panel's own interior is
-        // copied over it from the background next to it (the
-        // interior is flat with a sparse speckle, so a nearby copy
-        // is seamless). The bands run in segments between the
-        // grooves, with the groove columns through each band
-        // painted from the interior beside them; the dividers run
-        // in segments between the bands. No copy ever samples a
-        // band row as its source: a band's own rows are bevel,
-        // not interior.
-        // The last row keeps its band: it is the panel's footing,
-        // like the colony's. Only call on the baked background:
+        // Paint out the colony background's baked vertical dividers
+        // in the list area: the background art carries the colony
+        // listing's dividers at the column grooves (98/233/375/509,
+        // colsum.cpp). The settings rows are text lines, not cells,
+        // so the dividers go -- but the horizontal row bands stay:
+        // each row is visually separated by the baked bevel band at
+        // its bottom, like the colony's rows. The dividers are
+        // painted from the interior beside them at the same row, so
+        // the row bands continue across the divider columns (the
+        // band's own rows are the source there, the interior rows
+        // the source elsewhere). Only the list area, y 35..347: the
+        // header plates carry their own frames above, the panel's
+        // footing below stays. Only call on the baked background:
         // without one there is no baked grid to paint out.
-        void Paint_Out_Baked_Grid(const ui_kit::Frame& background,
+        void Paint_Out_Baked_Dividers(const ui_kit::Frame& background,
             const ui_kit::List_Layout& layout) {
             // The colony's column grooves.
             static constexpr int16_t kDividers[] = {98, 233, 375, 509};
             static constexpr int16_t kDivider_W = 3;
-            // The bevel band at a row's bottom: 6 rows tall
-            // (bottom - 5 .. bottom), copied from the 6 interior
-            // rows just above it.
-            static constexpr int16_t kBand_H = 6;
-            // The bands, in x segments between the dividers: the
-            // panel interior from the left border to the right
-            // bevel (x 12..617), split at each groove.
-            static constexpr int16_t kBand_Segments[][2] = {
-                {12, 97}, {101, 232}, {236, 374}, {378, 508},
-                {512, 617},
-            };
-            for (int index = 0; index + 1 < ROWS_PER_PAGE; ++index) {
-                const int16_t bottom = (int16_t)(
-                    layout.row_y(index) + layout.row_height() - 1);
-                const int16_t band_top = (int16_t)(bottom - kBand_H + 1);
-                const int16_t src_top = (int16_t)(band_top - kBand_H);
-                for (const auto& segment : kBand_Segments) {
-                    background.Draw_Region(segment[0], src_top,
-                        (int16_t)(segment[1] - segment[0] + 1), kBand_H,
-                        segment[0], band_top);
-                }
-                // The grooves through this band: the band paint
-                // above copies only the segments between the
-                // grooves, so the groove columns keep their baked
-                // pixels here. Paint them from the interior beside
-                // them, six rows up -- the band's own rows are
-                // bevel, not interior, so the source is the
-                // interior rows just above the band.
-                for (const int16_t divider : kDividers) {
-                    background.Draw_Region((int16_t)(divider - 8),
-                        src_top, kDivider_W, kBand_H,
-                        divider, band_top);
-                }
-            }
-            // The dividers, in y segments between the bands: from
-            // just below the header plates to the last painted
-            // band's top, split at each band (the last segment ends
-            // where the last row's band -- the footing -- begins).
-            // The grooves through the bands are painted above, so
-            // these segments skip the band rows: the source there
-            // would sample the bevel itself. The source is the
-            // interior 8 px left of the groove.
-            int16_t segment_top =
-                (int16_t)(HEADER_Y + HEADER_HEIGHT);
-            for (int index = 0; index + 1 < ROWS_PER_PAGE; ++index) {
-                const int16_t bottom = (int16_t)(
-                    layout.row_y(index) + layout.row_height() - 1);
-                const int16_t segment_bottom =
-                    (int16_t)(bottom - kBand_H);
-                for (const int16_t divider : kDividers) {
-                    background.Draw_Region((int16_t)(divider - 8),
-                        segment_top, kDivider_W,
-                        (int16_t)(segment_bottom - segment_top + 1),
-                        divider, segment_top);
-                }
-                segment_top = (int16_t)(bottom + 1);
-            }
-            // The last segment: below the last painted band to
-            // the footing (the last row's band top - 1).
-            const int16_t last_bottom = (int16_t)(
-                layout.row_y(ROWS_PER_PAGE - 1) +
-                layout.row_height() - 1);
-            const int16_t last_segment_bottom =
-                (int16_t)(last_bottom - kBand_H);
+            // The baked rows sit header_to_first_row above the
+            // layout's rows (the layout's first row is the header
+            // plus header_to_first_row; the baked first row starts
+            // right below the header plates), and the last row's
+            // footing extends list_footing below its bottom edge.
+            const ui_kit::Spacing spacing = g_theme->Spacing();
+            const int16_t top = (int16_t)(layout.row_y(0) -
+                spacing.header_to_first_row);
+            const int16_t bottom = (int16_t)(
+                layout.row_y(ROWS_PER_PAGE - 1) + layout.row_height() -
+                1 - spacing.header_to_first_row + spacing.list_footing);
             for (const int16_t divider : kDividers) {
-                background.Draw_Region((int16_t)(divider - 8),
-                    segment_top, kDivider_W,
-                    (int16_t)(last_segment_bottom - segment_top + 1),
-                    divider, segment_top);
+                background.Draw_Region((int16_t)(divider - 8), top,
+                    kDivider_W, (int16_t)(bottom - top + 1),
+                    divider, top);
             }
         }
 
@@ -672,19 +624,20 @@ namespace SETTINGS_SCREEN {
         // Colony-list scrollbar, the kit's Scroll_Bar
         // (game/ui_kit.h, element 5): colsum's thumb formula, its
         // bevel edges and its single-dot corner markers, in the
-        // theme's colours, on the layout's track (first row top to
-        // last row bottom). This screen shows the bar only when
+        // theme's colours, on the colony's track (y 40..311, the
+        // strip between the scroll arrows) -- not the layout's
+        // track, which spans the rows and leaves no room for the
+        // down-arrow below it. This screen shows the bar only when
         // the list is longer than the window; colsum's own rule
         // also draws a full-track thumb at exactly 10, which this
         // screen omits.
-        void Draw_Scroll_Bar(const ui_kit::List_Layout& layout) {
+        void Draw_Scroll_Bar() {
             const int total = Visible_Count();
             if (total <= ROWS_PER_PAGE) {
                 return;
             }
             const ui_kit::Scroll_Bar bar(SCROLL_X, SCROLL_W,
-                layout.scroll_track_y(), layout.scroll_track_h(),
-                *g_theme);
+                COLONY_TRACK_Y, COLONY_TRACK_H, *g_theme);
             bar.Draw(Scroll_Top(), total, ROWS_PER_PAGE);
         }
 
@@ -1049,9 +1002,9 @@ namespace SETTINGS_SCREEN {
             const int total = Visible_Count();
             if (total > ROWS_PER_PAGE) {
                 g_state.scroll_field = fields::Add_Scroll_Field(SCROLL_X,
-                    layout.scroll_track_y(), 0, (int16_t)total, 0,
+                    COLONY_TRACK_Y, 0, (int16_t)total, 0,
                     (int16_t)Max_Scroll(), SCROLL_W,
-                    layout.scroll_track_h(),
+                    COLONY_TRACK_H,
                     &g_state.slider_position[g_state.category], "", 0);
             } else {
                 g_state.scroll_field = -1;
@@ -1673,82 +1626,80 @@ namespace SETTINGS_SCREEN {
             ui_kit::Draw_List_Background(*g_theme, layout,
                 background.Is_Null(), false);
             if (!background.Is_Null()) {
-                Paint_Out_Baked_Grid(background, layout);
+                Paint_Out_Baked_Dividers(background, layout);
             }
             // The panel fill above covers the scrollbar strip with
             // the panel interior. On the baked background the strip
-            // is the colony's scrollbar track (a black channel with
-            // the footing lines at its foot), so restore it from the
-            // background: the kit's Scroll_Bar draws only the thumb
-            // and the corner dots on top of it.
-            // Restore only the colony's own track (y 40..311, the
-            // scroll field's black channel): below it the background
-            // holds the colony's down-arrow (y 317..336) and the
-            // panel footing (y 337..347), which must not show on
-            // the settings screen. Fill the rest of the settings
-            // track (above y 40 and below y 311) with black, so
-            // the track is a continuous black channel.
+            // is the colony's scrollbar: the black track (y 40..311),
+            // the down-arrow below it (y 316..337) and the footing
+            // (y 337..347), so restore the whole strip from the
+            // background, from the first row top to the last row's
+            // footing. The down-arrow shows now, like the colony's;
+            // the kit's Scroll_Bar draws only the thumb and the
+            // corner dots on top of the restored track.
             if (!background.Is_Null()) {
-                constexpr int16_t kColony_Track_Y = 40;
-                constexpr int16_t kColony_Track_H = 272;
-                const int16_t track_top = layout.scroll_track_y();
-                const int16_t track_bottom =
-                    (int16_t)(track_top + layout.scroll_track_h() - 1);
-                const int16_t restore_top =
-                    std::max(track_top, kColony_Track_Y);
-                const int16_t restore_bottom = std::min(track_bottom,
-                    (int16_t)(kColony_Track_Y + kColony_Track_H - 1));
-                if (restore_bottom >= restore_top) {
-                    background.Draw_Region(SCROLL_X, restore_top,
-                        SCROLL_W,
-                        (int16_t)(restore_bottom - restore_top + 1),
-                        SCROLL_X, restore_top);
-                }
-                if (track_top < restore_top) {
-                    graphics::Fill(SCROLL_X, track_top,
-                        SCROLL_X + SCROLL_W - 1, restore_top - 1, 0);
-                }
-                if (track_bottom > restore_bottom) {
-                    graphics::Fill(SCROLL_X, restore_bottom + 1,
-                        SCROLL_X + SCROLL_W - 1, track_bottom, 0);
-                }
+                const ui_kit::Spacing strip_spacing =
+                    g_theme->Spacing();
+                const int16_t strip_top =
+                    (int16_t)(HEADER_Y + HEADER_HEIGHT);
+                const int16_t strip_bottom = (int16_t)(
+                    layout.row_y(ROWS_PER_PAGE - 1) +
+                    layout.row_height() - 1 -
+                    strip_spacing.header_to_first_row +
+                    strip_spacing.list_footing);
+                background.Draw_Region(SCROLL_X, strip_top, SCROLL_W,
+                    (int16_t)(strip_bottom - strip_top + 1),
+                    SCROLL_X, strip_top);
             }
 
             // Header plates, like the colony list's raised header
-            // boxes (NAME, FARMERS, WORKERS, ...): bevelled plates
-            // over the name and value columns at the top of the list
-            // panel, their face lighter than the list interior.
-            // Drawn after the panel fill, so the fill does not cover them.
-            // On the baked background, first fill the whole plates'
-            // band with the panel interior: the two settings plates
-            // leave the colony plates' side slivers (x 11..12,
-            // 616..619) and the gap between them (x 364..367)
-            // uncovered, and the baked plates would show through
-            // there as thin mid-grey strips.
+            // boxes (NAME, FARMERS, WORKERS, ...): individual
+            // bevelled plates over the name and value columns at the
+            // top of the list panel, one per column -- not a single
+            // bar spanning the whole width. The face is the baked
+            // plate face, tiled from the background: the colony's
+            // plates carry a dithered face, and a flat fill reads as
+            // one bar. The tile source is the NAME plate's clean
+            // strip (x 81..94, right of its label, inside its face),
+            // which carries no label and no groove at any row; the
+            // face is flat per row, so the tiling is seamless. The
+            // plates' top and bottom bevels are the baked bands in
+            // the tiled face; only the left and right bevels are
+            // drawn. Drawn after the panel fill, so the fill does not
+            // cover them. No band fill behind them: the gaps between
+            // the plates (the colony's grooves) and the panel's left
+            // edge show the baked background, so the plates read as
+            // separate plates and the frame reads around them. The
+            // right sliver (x 598..618, the baked BUILDING plate's
+            // tail, whose label would show) is filled with the panel
+            // interior; it stops short of the scrollbar strip, so
+            // the colony's up-arrow (x 619..628, y 15..34) shows.
             const ui_kit::List_Style list_style = g_theme->List_Style();
             if (!background.Is_Null()) {
-                // The band fill stops 3 px short of the scrollbar
-                // strip: the colony's up-arrow sits in the strip at
-                // the plates' height (x 619..628, y 15..34), and
-                // the fill used to cover it. The plates' side
-                // slivers (x 11..12, 616..618) and the inter-plate
-                // gap are still covered; the one remaining pixel
-                // column (x 619) is the baked plate's own edge.
-                graphics::Fill(frame.content_x(), HEADER_Y,
-                    (int16_t)(SCROLL_X - 3),
+                graphics::Fill(598, HEADER_Y, 618,
                     HEADER_Y + HEADER_HEIGHT - 1, PANEL_INTERIOR);
             }
             const auto draw_header_plate = [&](int16_t x, int16_t w, const char* label) {
-                graphics::Fill(x, HEADER_Y, x + w - 1, HEADER_Y + HEADER_HEIGHT - 1,
-                    list_style.plate_face);
-                // Raised bevel: light on the top and left, shade on
-                // the bottom and right, like the colony's plates.
-                graphics::Fill(x, HEADER_Y, x + w - 1, HEADER_Y,
-                    list_style.frame_light);
+                if (!background.Is_Null()) {
+                    // Tile the baked plate face over the plate.
+                    static constexpr int16_t kFace_Src_X = 81;
+                    static constexpr int16_t kFace_Src_W = 14;
+                    for (int16_t dx = x; dx < x + w; dx += kFace_Src_W) {
+                        const int16_t tw = (int16_t)std::min<int32_t>(
+                            kFace_Src_W, x + w - dx);
+                        background.Draw_Region(kFace_Src_X, HEADER_Y,
+                            tw, HEADER_HEIGHT, dx, HEADER_Y);
+                    }
+                } else {
+                    graphics::Fill(x, HEADER_Y, x + w - 1,
+                        HEADER_Y + HEADER_HEIGHT - 1,
+                        list_style.plate_face);
+                }
+                // Raised bevel: light on the left, shade on the
+                // right, like the colony's plates. The top and bottom
+                // bevels are the baked bands in the tiled face.
                 graphics::Fill(x, HEADER_Y, x, HEADER_Y + HEADER_HEIGHT - 1,
                     list_style.frame_light);
-                graphics::Fill(x, HEADER_Y + HEADER_HEIGHT - 1, x + w - 1,
-                    HEADER_Y + HEADER_HEIGHT - 1, list_style.frame_shade);
                 graphics::Fill(x + w - 1, HEADER_Y, x + w - 1,
                     HEADER_Y + HEADER_HEIGHT - 1, list_style.frame_shade);
                 // The header-plate labels render in the theme's
@@ -1938,7 +1889,7 @@ namespace SETTINGS_SCREEN {
                 }
             }
 
-            Draw_Scroll_Bar(layout);
+            Draw_Scroll_Bar();
 
             // Info area: the colony's bottom-left info box, not a
             // whole-width box -- the selected row's description
