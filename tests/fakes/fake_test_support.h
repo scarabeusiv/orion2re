@@ -57,6 +57,17 @@ namespace test::fakes {
         uint8_t density;
     };
 
+    struct Dithered_Box_Call {
+        int16_t x;
+        int16_t y;
+        int16_t width;
+        int16_t height;
+        int16_t thickness;
+        uint8_t base;
+        uint8_t speckle;
+        uint8_t density;
+    };
+
     struct Box_Call {
         int16_t x;
         int16_t y;
@@ -109,5 +120,6 @@ namespace test::fakes {
     extern std::vector<Line_Call> g_line_calls;
     extern std::vector<Fill_Call> g_fill_calls;
     extern std::vector<Dithered_Fill_Call> g_dithered_fill_calls;
+    extern std::vector<Dithered_Box_Call> g_dithered_box_calls;
     extern std::vector<Box_Call> g_box_calls;
 }

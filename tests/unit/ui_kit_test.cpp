@@ -469,11 +469,14 @@ DOCTEST_TEST_SUITE("ui kit") {
         test::fakes::Reset_All_();
         ui_kit::Draw_List_Background(theme, layout, true, false);
 
-        // The panel interior is a sparse Bayer speckle (~13% of
+        // The panel interior is a sparse irregular speckle (~13% of
         // the plate-face grey) over the flat dark interior, so the
         // rows carry the colony's texture and the bevelled toggle
-        // circles read as part of the surface.
-        DOCTEST_REQUIRE(test::fakes::g_dithered_fill_calls.size() == 1);
+        // circles read as part of the surface. The footing and the
+        // right bevel are dithered too (the same irregular speckle,
+        // one shade lighter, density 2), so the whole panel border
+        // carries the colony's bitmap feel.
+        DOCTEST_REQUIRE(test::fakes::g_dithered_fill_calls.size() == 5);
         DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].x1 == 11);
         DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].y1 == 30);
         DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].x2 == 627);
@@ -481,10 +484,21 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].base == 230);
         DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].speckle == 233);
         DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].density == 2);
-        // The flat fill count is unchanged: the dither is recorded
-        // separately, so the existing fill assertions still hold.
-        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 5);
+        // The footing (shade, shade, light) and the right bevel
+        // follow the interior dither, each one shade lighter.
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].y1 == 366);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].base == 235);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].speckle == 236);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[4].base == 241);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[4].x1 == 626);
+        // Only the flat interior fill is a Fill now; the panel
+        // border is a Dithered_Box.
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 1);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 230);
+        DOCTEST_REQUIRE(test::fakes::g_dithered_box_calls.size() == 1);
+        DOCTEST_CHECK(test::fakes::g_dithered_box_calls[0].base == 234);
+        DOCTEST_CHECK(test::fakes::g_dithered_box_calls[0].speckle == 235);
+        DOCTEST_CHECK(test::fakes::g_dithered_box_calls[0].density == 2);
     }
 
     DOCTEST_TEST_CASE("tab bar resamples the active frame's gradient middle instead of tiling it") {
@@ -530,7 +544,7 @@ DOCTEST_TEST_SUITE("ui kit") {
         bar.Add_Tab("BB", false);
         bar.Draw();
 
-        // The active tab's face is a Bayer dither of the brightest
+        // The active tab's face is an irregular speckle of the brightest
         // blue over dark navy at 5/16 (~31%, the colony's own
         // bright fraction), with bright left/right edge columns
         // and dark top/bottom edge rows; the inactive tab is a
@@ -605,23 +619,28 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(theme.font.prints[1].y == 10);
         // The window frame follows the alt chrome, not the colony's:
         // 4 + 5 + 4 + 5 band lines, and the 5th line of a 5 px side
-        // repeats the profile's last entry.
+        // repeats the profile's last entry. Each band line is a
+        // Dithered_Fill (one shade lighter speckle, density 2), so
+        // the frame carries the colony's bitmap feel.
         test::fakes::Reset_All_();
         ui_kit::Window_Frame frame(0, 0, 100, 50, theme);
         frame.Draw("Alt");
-        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 18);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 0);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 0);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x2 == 99);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 20);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[3].y1 == 3);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[3].color == 23);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[8].y1 == 45);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[8].color == 23);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[17].x1 == 95);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[17].y1 == 4);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[17].y2 == 45);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[17].color == 23);
+        DOCTEST_REQUIRE(test::fakes::g_dithered_fill_calls.size() == 18);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].x1 == 0);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].y1 == 0);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].x2 == 99);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].base == 20);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].speckle == 21);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].density == 2);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[3].y1 == 3);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[3].base == 23);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[3].speckle == 24);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[8].y1 == 45);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[8].base == 23);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[17].x1 == 95);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[17].y1 == 4);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[17].y2 == 45);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[17].base == 23);
         DOCTEST_CHECK(test::fakes::g_box_calls.empty());
         // The two tab labels printed above, plus the frame title.
         DOCTEST_REQUIRE(theme.font.prints.size() == 3);
@@ -699,7 +718,7 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].x2 == 29);
         DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].y2 == 22);
         DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].base == 50);
-        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].speckle == 138);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].speckle == 253);
         DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].density == 5);
         DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 14);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 31);
@@ -712,8 +731,8 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(test::fakes::g_fill_calls[4].color == 50);
         DOCTEST_CHECK(test::fakes::g_fill_calls[8].y1 == 23);
         DOCTEST_CHECK(test::fakes::g_fill_calls[8].color == 239);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[9].color == 138);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[10].color == 138);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[9].color == 253);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[10].color == 253);
         DOCTEST_CHECK(test::fakes::g_fill_calls[11].color == 50);
         DOCTEST_CHECK(test::fakes::g_fill_calls[12].color == 50);
         DOCTEST_CHECK(test::fakes::g_fill_calls[13].color == 50);
@@ -1060,32 +1079,37 @@ DOCTEST_TEST_SUITE("ui kit") {
         window.Draw("Settings");
         // 12 + 10 + 11 + 12 band lines; the top band's 12th line
         // repeats the profile's last entry (its thickness exceeds
-        // the profile).
-        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 45);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 0);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 0);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x2 == 639);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 234);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[9].y1 == 9);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[9].x1 == 9);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[9].x2 == 630);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[9].color == 236);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[10].y1 == 10);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[10].color == 234);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[11].y1 == 11);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[11].x1 == 11);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[11].x2 == 628);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[11].color == 234);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[12].y1 == 479);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[12].color == 234);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[21].y1 == 470);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[21].color == 234);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[22].x1 == 0);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[22].y1 == 0);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[22].y2 == 479);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[33].x1 == 639);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[33].y1 == 0);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[33].y2 == 479);
+        // the profile). Each band line is a Dithered_Fill (one
+        // shade lighter speckle, density 2), so the frame carries
+        // the colony's bitmap feel.
+        DOCTEST_REQUIRE(test::fakes::g_dithered_fill_calls.size() == 45);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].x1 == 0);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].y1 == 0);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].x2 == 639);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].base == 234);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].speckle == 235);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].density == 2);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[9].y1 == 9);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[9].x1 == 9);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[9].x2 == 630);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[9].base == 236);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[9].speckle == 237);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[10].y1 == 10);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[10].base == 234);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[11].y1 == 11);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[11].x1 == 11);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[11].x2 == 628);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[11].base == 234);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[12].y1 == 479);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[12].base == 234);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[21].y1 == 470);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[21].base == 234);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[22].x1 == 0);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[22].y1 == 0);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[22].y2 == 479);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[33].x1 == 639);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[33].y1 == 0);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[33].y2 == 479);
         DOCTEST_CHECK(test::fakes::g_font_style == 4);
         DOCTEST_REQUIRE(test::fakes::g_print_calls.size() == 1);
         DOCTEST_CHECK(test::fakes::g_print_calls[0].x == (640 - 70) / 2);
@@ -1174,17 +1198,24 @@ DOCTEST_TEST_SUITE("ui kit") {
         test::fakes::Reset_All_();
         ui_kit::Draw_List_Background(theme, layout);
 
-        // One panel fill, one panel border box.
-        DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 1);
-        DOCTEST_CHECK(test::fakes::g_box_calls[0].x == 11);
-        DOCTEST_CHECK(test::fakes::g_box_calls[0].y == 30);
-        DOCTEST_CHECK(test::fakes::g_box_calls[0].width == 617);
-        DOCTEST_CHECK(test::fakes::g_box_calls[0].height == 340);
-        DOCTEST_CHECK(test::fakes::g_box_calls[0].color == 234);
+        // One panel fill, one panel border box (dithered).
+        DOCTEST_REQUIRE(test::fakes::g_dithered_box_calls.size() == 1);
+        DOCTEST_CHECK(test::fakes::g_dithered_box_calls[0].x == 11);
+        DOCTEST_CHECK(test::fakes::g_dithered_box_calls[0].y == 30);
+        DOCTEST_CHECK(test::fakes::g_dithered_box_calls[0].width == 617);
+        DOCTEST_CHECK(test::fakes::g_dithered_box_calls[0].height == 340);
+        DOCTEST_CHECK(test::fakes::g_dithered_box_calls[0].base == 234);
+        DOCTEST_CHECK(test::fakes::g_dithered_box_calls[0].speckle == 235);
+        DOCTEST_CHECK(test::fakes::g_dithered_box_calls[0].density == 2);
         // Panel fill plus five frame lines per row, the
         // three-line footing and the right-edge bevel line:
-        // 1 + 10 * 5 + 3 + 1 = 55 fills.
-        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 55);
+        // 1 flat fill + 55 dithered (1 interior + 10 * 5 row
+        // lines + 3 footing + 1 bevel). The frame lines, the
+        // footing and the bevel are Dithered_Fills (one shade
+        // lighter speckle, density 2), so the panel border
+        // carries the colony's bitmap feel.
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 1);
+        DOCTEST_REQUIRE(test::fakes::g_dithered_fill_calls.size() == 55);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 230);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 11);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 30);
@@ -1196,52 +1227,55 @@ DOCTEST_TEST_SUITE("ui kit") {
         // panel background -- no fill covers it -- and no line
         // crosses the scrollbar strip: the frame lines stop at the
         // list edge, x 619.
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].y1 == 57);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].y2 == 57);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 241);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].x1 == 12);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].x2 == 619);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[2].y1 == 58);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 235);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[3].y1 == 84);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[3].color == 235);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[4].y1 == 85);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[4].color == 241);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[5].y1 == 86);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[5].color == 235);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[6].y1 == 88);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[6].color == 241);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[6].x2 == 619);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].y1 == 57);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].y2 == 57);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].base == 241);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].speckle == 242);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].density == 2);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].x1 == 12);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].x2 == 619);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[2].y1 == 58);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[2].base == 235);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[3].y1 == 84);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[3].base == 235);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[4].y1 == 85);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[4].base == 241);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[5].y1 == 86);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[5].base == 235);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[6].y1 == 88);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[6].base == 241);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[6].x2 == 619);
         // Last row's top light line at 336, shade at 337, shade at
         // 363, bottom light line at 364, trailing shade at 365 --
         // and the footing below it: shade at 366, shade at 367,
         // light at 368, the panel border at 369 its bottom edge.
-        DOCTEST_CHECK(test::fakes::g_fill_calls[46].y1 == 336);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[46].color == 241);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[47].y1 == 337);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[47].color == 235);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[48].y1 == 363);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[48].color == 235);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[46].y1 == 336);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[46].base == 241);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[47].y1 == 337);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[47].base == 235);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[48].y1 == 363);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[48].base == 235);
         // The right-edge bevel: a frame-light vertical line one
         // pixel inside the panel's right edge, full panel height.
-        DOCTEST_CHECK(test::fakes::g_fill_calls[54].color == 241);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[54].x1 == 626);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[54].x2 == 626);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[54].y1 == 30);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[54].y2 == 369);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[49].y1 == 364);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[49].y2 == 364);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[49].color == 241);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[50].y1 == 365);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[50].color == 235);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[51].y1 == 366);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[51].color == 235);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[52].y1 == 367);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[52].color == 235);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[53].y1 == 368);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[53].color == 241);
-        for (const test::fakes::Fill_Call& fill :
-            test::fakes::g_fill_calls) {
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[54].base == 241);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[54].speckle == 242);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[54].x1 == 626);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[54].x2 == 626);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[54].y1 == 30);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[54].y2 == 369);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[49].y1 == 364);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[49].y2 == 364);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[49].base == 241);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[50].y1 == 365);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[50].base == 235);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[51].y1 == 366);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[51].base == 235);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[52].y1 == 367);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[52].base == 235);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[53].y1 == 368);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[53].base == 241);
+        for (const test::fakes::Dithered_Fill_Call& fill :
+            test::fakes::g_dithered_fill_calls) {
             DOCTEST_CHECK(fill.y1 != 87);
             DOCTEST_CHECK(fill.y1 != 369);
         }
@@ -1249,16 +1283,17 @@ DOCTEST_TEST_SUITE("ui kit") {
         // Without the interior fill (a screen on its baked
         // background) the panel fill is gone but the border, the
         // row frame lines, the footing and the right bevel stay:
-        // one fewer fill, and the first fill is row 0's top light
-        // line, not the panel interior.
+        // one fewer dithered call, and the first dithered call is
+        // row 0's top light line, not the panel interior.
         test::fakes::Reset_All_();
         ui_kit::Draw_List_Background(theme, layout, false);
-        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 54);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 57);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y2 == 57);
-        DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 1);
-        DOCTEST_CHECK(test::fakes::g_box_calls[0].x == 11);
-        DOCTEST_CHECK(test::fakes::g_box_calls[0].y == 30);
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.empty());
+        DOCTEST_REQUIRE(test::fakes::g_dithered_fill_calls.size() == 54);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].y1 == 57);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].y2 == 57);
+        DOCTEST_REQUIRE(test::fakes::g_dithered_box_calls.size() == 1);
+        DOCTEST_CHECK(test::fakes::g_dithered_box_calls[0].x == 11);
+        DOCTEST_CHECK(test::fakes::g_dithered_box_calls[0].y == 30);
     }
 
     DOCTEST_TEST_CASE("list background without row frames keeps border, footing and bevel") {
@@ -1270,30 +1305,33 @@ DOCTEST_TEST_SUITE("ui kit") {
         // The settings screen's rows are text lines on the panel,
         // not framed cells: no per-row frame lines at all, but the
         // panel fill, the border box, the three-line footing and
-        // the right-edge bevel all stay -- 1 + 3 + 1 = 5 fills.
+        // the right-edge bevel all stay -- 1 flat fill + 5 dithered
+        // (1 interior + 3 footing + 1 bevel). The footing and the
+        // bevel are Dithered_Fills, and the border a Dithered_Box.
         test::fakes::Reset_All_();
         ui_kit::Draw_List_Background(theme, layout, true, false);
-        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 5);
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 1);
+        DOCTEST_REQUIRE(test::fakes::g_dithered_fill_calls.size() == 5);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 230);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 30);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].y2 == 369);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].y1 == 366);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 235);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[2].y1 == 367);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 235);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[3].y1 == 368);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[3].color == 241);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[4].color == 241);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[4].x1 == 626);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[4].x2 == 626);
-        DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 1);
-        DOCTEST_CHECK(test::fakes::g_box_calls[0].x == 11);
-        DOCTEST_CHECK(test::fakes::g_box_calls[0].y == 30);
-        DOCTEST_CHECK(test::fakes::g_box_calls[0].width == 617);
-        DOCTEST_CHECK(test::fakes::g_box_calls[0].height == 340);
-        for (const test::fakes::Fill_Call& fill :
-            test::fakes::g_fill_calls) {
-            // No fill anywhere in the rows' band: the row frame
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].y1 == 366);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].base == 235);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[2].y1 == 367);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[2].base == 235);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[3].y1 == 368);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[3].base == 241);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[4].base == 241);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[4].x1 == 626);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[4].x2 == 626);
+        DOCTEST_REQUIRE(test::fakes::g_dithered_box_calls.size() == 1);
+        DOCTEST_CHECK(test::fakes::g_dithered_box_calls[0].x == 11);
+        DOCTEST_CHECK(test::fakes::g_dithered_box_calls[0].y == 30);
+        DOCTEST_CHECK(test::fakes::g_dithered_box_calls[0].width == 617);
+        DOCTEST_CHECK(test::fakes::g_dithered_box_calls[0].height == 340);
+        for (const test::fakes::Dithered_Fill_Call& fill :
+            test::fakes::g_dithered_fill_calls) {
+            // No dither anywhere in the rows' band: the row frame
             // lines are gone, so nothing lands on a row top or
             // bottom (row 0 top 57, row 9 bottom 365).
             DOCTEST_CHECK(fill.y1 != 57);
@@ -1304,15 +1342,16 @@ DOCTEST_TEST_SUITE("ui kit") {
 
         // Without the interior fill too (a screen on its baked
         // background) only the footing and the bevel remain:
-        // 3 + 1 = 4 fills, and the first is the footing shade.
+        // 3 + 1 = 4 dithered fills, and the first is the footing shade.
         test::fakes::Reset_All_();
         ui_kit::Draw_List_Background(theme, layout, false, false);
-        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 4);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 366);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 235);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[3].x1 == 626);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[3].color == 241);
-        DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 1);
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.empty());
+        DOCTEST_REQUIRE(test::fakes::g_dithered_fill_calls.size() == 4);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].y1 == 366);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].base == 235);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[3].x1 == 626);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[3].base == 241);
+        DOCTEST_REQUIRE(test::fakes::g_dithered_box_calls.size() == 1);
     }
 
     DOCTEST_TEST_CASE("column layout puts the 3 px divider right after the left column") {
@@ -1361,20 +1400,26 @@ DOCTEST_TEST_SUITE("ui kit") {
 
         // One 3 px divider: left/mid/right in the theme's colours,
         // running the rows' height, first row top to last row bottom.
-        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 3);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 364);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x2 == 364);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 57);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y2 == 365);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 233);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].x1 == 365);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].x2 == 365);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].y1 == 57);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].y2 == 365);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 235);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[2].x1 == 366);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[2].x2 == 366);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 232);
+        // Dithered like every other border on the panel (one shade
+        // lighter speckle, density 2).
+        DOCTEST_REQUIRE(test::fakes::g_dithered_fill_calls.size() == 3);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].x1 == 364);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].x2 == 364);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].y1 == 57);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].y2 == 365);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].base == 233);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].speckle == 234);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].density == 2);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].x1 == 365);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].x2 == 365);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].y1 == 57);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].y2 == 365);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].base == 235);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].speckle == 236);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[2].x1 == 366);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[2].x2 == 366);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[2].base == 232);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[2].speckle == 233);
 
         // The colony's four dividers, in a second theme's colours:
         // the divider geometry follows the columns, the colours
@@ -1385,18 +1430,21 @@ DOCTEST_TEST_SUITE("ui kit") {
             35, 343);
         test::fakes::Reset_All_();
         ui_kit::Draw_List_Columns(alt, colony);
-        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 12);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 98);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 23);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].x1 == 99);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 24);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[2].x1 == 100);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 25);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[11].x1 == 511);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[11].x2 == 511);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[11].y1 == 35);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[11].y2 == 343);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[11].color == 25);
+        DOCTEST_REQUIRE(test::fakes::g_dithered_fill_calls.size() == 12);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].x1 == 98);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].base == 23);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].speckle == 24);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].x1 == 99);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].base == 24);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].speckle == 25);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[2].x1 == 100);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[2].base == 25);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[2].speckle == 26);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[11].x1 == 511);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[11].x2 == 511);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[11].y1 == 35);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[11].y2 == 343);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[11].base == 25);
     }
 
     DOCTEST_TEST_CASE("list layout follows a second theme's spacing without component changes") {
@@ -1423,35 +1471,44 @@ DOCTEST_TEST_SUITE("ui kit") {
         // it, so no fill covers 277 or 278.
         test::fakes::Reset_All_();
         ui_kit::Draw_List_Background(theme, layout);
-        // 1 panel fill + 10 * 5 row lines + 3 footing + 1 bevel = 55.
-        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 55);
+        // 1 panel fill + 55 dithered (1 interior + 10 * 5 row
+        // lines + 3 footing + 1 bevel). The row lines, the
+        // footing and the bevel are Dithered_Fills (one shade
+        // lighter speckle, density 2); the border is a
+        // Dithered_Box.
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 1);
+        DOCTEST_REQUIRE(test::fakes::g_dithered_fill_calls.size() == 55);
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 10);
         // The right-edge bevel: the alt theme's frame light (21),
         // one pixel inside the panel's right edge (x 630), full height.
-        DOCTEST_CHECK(test::fakes::g_fill_calls[54].color == 21);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[54].x1 == 630);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[54].x2 == 630);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[54].y1 == 30);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[54].y2 == 282);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 21);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 22);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[50].y1 == 276);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[50].color == 22);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[51].y1 == 279);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[51].color == 22);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[52].y1 == 280);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[52].color == 22);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[53].y1 == 281);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[53].color == 21);
-        for (const test::fakes::Fill_Call& fill :
-            test::fakes::g_fill_calls) {
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[54].base == 21);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[54].speckle == 22);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[54].density == 2);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[54].x1 == 630);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[54].x2 == 630);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[54].y1 == 30);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[54].y2 == 282);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].base == 21);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[2].base == 22);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[50].y1 == 276);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[50].base == 22);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[51].y1 == 279);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[51].base == 22);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[52].y1 == 280);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[52].base == 22);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[53].y1 == 281);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[53].base == 21);
+        for (const test::fakes::Dithered_Fill_Call& fill :
+            test::fakes::g_dithered_fill_calls) {
             DOCTEST_CHECK(fill.y1 != 277);
             DOCTEST_CHECK(fill.y1 != 278);
             DOCTEST_CHECK(fill.y1 != 282);
         }
-        DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 1);
-        DOCTEST_CHECK(test::fakes::g_box_calls[0].color == 11);
-        DOCTEST_CHECK(test::fakes::g_box_calls[0].height == 253);
+        DOCTEST_REQUIRE(test::fakes::g_dithered_box_calls.size() == 1);
+        DOCTEST_CHECK(test::fakes::g_dithered_box_calls[0].base == 11);
+        DOCTEST_CHECK(test::fakes::g_dithered_box_calls[0].speckle == 12);
+        DOCTEST_CHECK(test::fakes::g_dithered_box_calls[0].density == 2);
+        DOCTEST_CHECK(test::fakes::g_dithered_box_calls[0].height == 253);
     }
 
     DOCTEST_TEST_CASE("window frame derives the content rect from the theme") {
@@ -1506,45 +1563,51 @@ DOCTEST_TEST_SUITE("ui kit") {
         test::fakes::Reset_All_();
         frame.Draw("Alt");
 
-        // 3 + 3 + 3 + 3 band lines, no boxes: the frame is fills.
-        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 12);
-        DOCTEST_CHECK(test::fakes::g_box_calls.empty());
+        // 3 + 3 + 3 + 3 band lines, no boxes: the frame is
+        // dithered fills. Each band line is a Dithered_Fill (one
+        // shade lighter speckle, density 2), so the frame carries
+        // the colony's bitmap feel.
+        DOCTEST_REQUIRE(test::fakes::g_dithered_fill_calls.size() == 12);
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.empty());
+        DOCTEST_CHECK(test::fakes::g_dithered_box_calls.empty());
         // Top band: each line stops one pixel further in, so the
         // corners meet on a 45-degree seam.
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 0);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 0);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x2 == 99);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 10);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[2].x1 == 2);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[2].y1 == 2);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[2].x2 == 97);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 12);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].x1 == 0);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].y1 == 0);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].x2 == 99);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].base == 10);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].speckle == 11);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].density == 2);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[2].x1 == 2);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[2].y1 == 2);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[2].x2 == 97);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[2].base == 12);
         // Bottom band, same seam at the bottom corners.
-        DOCTEST_CHECK(test::fakes::g_fill_calls[3].x1 == 0);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[3].y1 == 49);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[3].x2 == 99);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[3].color == 10);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[5].x1 == 2);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[5].y1 == 47);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[5].x2 == 97);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[5].color == 12);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[3].x1 == 0);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[3].y1 == 49);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[3].x2 == 99);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[3].base == 10);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[5].x1 == 2);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[5].y1 == 47);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[5].x2 == 97);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[5].base == 12);
         // Side bands run between the mitres, not past them.
-        DOCTEST_CHECK(test::fakes::g_fill_calls[6].x1 == 0);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[6].y1 == 0);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[6].y2 == 49);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[6].color == 10);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[8].x1 == 2);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[8].y1 == 2);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[8].y2 == 47);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[8].color == 12);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[9].x1 == 99);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[9].y1 == 0);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[9].y2 == 49);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[9].color == 10);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[11].x1 == 97);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[11].y1 == 2);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[11].y2 == 47);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[11].color == 12);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[6].x1 == 0);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[6].y1 == 0);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[6].y2 == 49);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[6].base == 10);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[8].x1 == 2);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[8].y1 == 2);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[8].y2 == 47);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[8].base == 12);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[9].x1 == 99);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[9].y1 == 0);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[9].y2 == 49);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[9].base == 10);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[11].x1 == 97);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[11].y1 == 2);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[11].y2 == 47);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[11].base == 12);
         // The title is centred in the window, at the theme's title y.
         DOCTEST_REQUIRE(theme.font.prints.size() == 1);
         DOCTEST_CHECK(theme.font.prints[0].x == 35);
@@ -2431,13 +2494,17 @@ DOCTEST_TEST_SUITE("ui kit") {
         const ui_kit::Scroll_Bar bar(621, 6, 40, 271, theme);
         test::fakes::Reset_All_();
         bar.Draw_Arrows();
-        // Twenty up rows and twenty-two down rows, three fills
-        // each (bright row, left edge, right edge), plus one full
-        // edge row for each tip and each base.
-        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 130);
-        // Every fill stays inside the arrow strip (x 619..628)
-        // and inside the two arrow bands (y 15..34, y 316..337):
-        // no stray pixels beside the arrows.
+        // Twenty up rows and twenty-two down rows: each row is
+        // one dithered face (bright over the metal face grey,
+        // density 5) plus a left edge (111) and a right edge (84)
+        // -- the bevel, light from the top-left -- and one full
+        // edge row for each tip and each base. 42 dithered faces
+        // and 88 fills (20 * 2 + 2 up, 22 * 2 + 2 down).
+        DOCTEST_REQUIRE(test::fakes::g_dithered_fill_calls.size() == 42);
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 88);
+        // Every fill and every dither stays inside the arrow strip
+        // (x 619..628) and inside the two arrow bands
+        // (y 15..34, y 316..337): no stray pixels beside the arrows.
         for (const test::fakes::Fill_Call& fill :
             test::fakes::g_fill_calls) {
             DOCTEST_CHECK(fill.x1 >= 619);
@@ -2447,47 +2514,61 @@ DOCTEST_TEST_SUITE("ui kit") {
             const bool in_arrow_band = (fill.y1 >= 15 && fill.y1 <= 34) ||
                 (fill.y1 >= 316 && fill.y1 <= 337);
             DOCTEST_CHECK(in_arrow_band);
-            const bool arrow_color = fill.color == 249 ||
-                fill.color == 111;
+            const bool arrow_color = fill.color == 111 ||
+                fill.color == 84;
             DOCTEST_CHECK(arrow_color);
         }
-        // The up-arrow's tip row: a 2 px bright row at x 623..624,
-        // both pixels edged.
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 15);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 623);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x2 == 624);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 249);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[60].y1 == 15);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[60].x1 == 623);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[60].x2 == 624);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[60].color == 111);
-        // The up-arrow's base row: the full 10 px, x 619..628.
-        DOCTEST_CHECK(test::fakes::g_fill_calls[57].y1 == 34);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[57].x1 == 619);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[57].x2 == 628);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[57].color == 249);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[61].y1 == 34);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[61].x1 == 619);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[61].x2 == 628);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[61].color == 111);
-        // The down-arrow's base row: the full 10 px, x 619..628.
-        DOCTEST_CHECK(test::fakes::g_fill_calls[62].y1 == 316);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[62].x1 == 619);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[62].x2 == 628);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[62].color == 249);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[128].y1 == 316);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[128].x1 == 619);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[128].x2 == 628);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[128].color == 111);
-        // The down-arrow's tip row: a 2 px bright row at x 623..624.
-        DOCTEST_CHECK(test::fakes::g_fill_calls[125].y1 == 337);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[125].x1 == 623);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[125].x2 == 624);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[125].color == 249);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[129].y1 == 337);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[129].x1 == 623);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[129].x2 == 624);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[129].color == 111);
+        for (const test::fakes::Dithered_Fill_Call& fill :
+            test::fakes::g_dithered_fill_calls) {
+            DOCTEST_CHECK(fill.x1 >= 619);
+            DOCTEST_CHECK(fill.x2 <= 628);
+            const bool in_arrow_band = (fill.y1 >= 15 && fill.y1 <= 34) ||
+                (fill.y1 >= 316 && fill.y1 <= 337);
+            DOCTEST_CHECK(in_arrow_band);
+            DOCTEST_CHECK(fill.base == 249);
+            DOCTEST_CHECK(fill.speckle == 238);
+            DOCTEST_CHECK(fill.density == 5);
+        }
+        // The up-arrow's tip row: a 2 px dithered face at x 623..624,
+        // with a full bright edge row over it.
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].y1 == 15);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].x1 == 623);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].x2 == 624);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].base == 249);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[40].y1 == 15);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[40].x1 == 623);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[40].x2 == 624);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[40].color == 111);
+        // The up-arrow's base row: the full 10 px, x 619..628,
+        // with a dark full edge row over it.
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[19].y1 == 34);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[19].x1 == 619);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[19].x2 == 628);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[19].base == 249);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[41].y1 == 34);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[41].x1 == 619);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[41].x2 == 628);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[41].color == 84);
+        // The down-arrow's base row: the full 10 px, x 619..628,
+        // with a bright full edge row over it.
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[20].y1 == 316);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[20].x1 == 619);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[20].x2 == 628);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[20].base == 249);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[86].y1 == 316);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[86].x1 == 619);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[86].x2 == 628);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[86].color == 111);
+        // The down-arrow's tip row: a 2 px dithered face at x 623..624,
+        // with a dark full edge row over it.
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[41].y1 == 337);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[41].x1 == 623);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[41].x2 == 624);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[41].base == 249);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[87].y1 == 337);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[87].x1 == 623);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[87].x2 == 624);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[87].color == 84);
     }
 
     DOCTEST_TEST_CASE("tab bar places fixed-size sort tabs at the colony's positions") {
@@ -2554,34 +2635,41 @@ DOCTEST_TEST_SUITE("ui kit") {
         Fake_Theme fake;
         test::fakes::Reset_All_();
         ui_kit::Draw_List_Background(fake, layout);
-        // 1 panel fill + 10 * 5 row lines + 3 footing + 1 bevel = 55.
-        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 55);
+        // 1 panel fill + 55 dithered (1 interior + 10 * 5 row
+        // lines + 3 footing + 1 bevel). The row lines, the
+        // footing and the bevel are Dithered_Fills; the border
+        // is a Dithered_Box.
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 1);
+        DOCTEST_REQUIRE(test::fakes::g_dithered_fill_calls.size() == 55);
         // The panel fill and border stop at the content edge, 619:
         // the scrollbar strip beyond it stays black.
         DOCTEST_CHECK(test::fakes::g_fill_calls[0].x2 == 619);
         // The right-edge bevel: frame-light, one pixel inside the
         // panel's right edge (x 618), full panel height.
-        DOCTEST_CHECK(test::fakes::g_fill_calls[54].color == 241);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[54].x1 == 618);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[54].x2 == 618);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[54].y1 == 4);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[54].y2 == 347);
-        DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 1);
-        DOCTEST_CHECK(test::fakes::g_box_calls[0].width == 609);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].y1 == 35);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 241);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[2].y1 == 36);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 235);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[46].y1 == 314);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[46].color == 241);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[50].y1 == 343);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[50].color == 235);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[51].y1 == 344);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[51].color == 235);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[52].y1 == 345);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[52].color == 235);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[53].y1 == 346);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[53].color == 241);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[54].base == 241);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[54].speckle == 242);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[54].density == 2);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[54].x1 == 618);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[54].x2 == 618);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[54].y1 == 4);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[54].y2 == 347);
+        DOCTEST_REQUIRE(test::fakes::g_dithered_box_calls.size() == 1);
+        DOCTEST_CHECK(test::fakes::g_dithered_box_calls[0].width == 609);
+        DOCTEST_CHECK(test::fakes::g_dithered_box_calls[0].base == 234);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].y1 == 35);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].base == 241);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[2].y1 == 36);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[2].base == 235);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[46].y1 == 314);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[46].base == 241);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[50].y1 == 343);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[50].base == 235);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[51].y1 == 344);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[51].base == 235);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[52].y1 == 345);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[52].base == 235);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[53].y1 == 346);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[53].base == 241);
 
         // The dividers land on the baked grooves: 98..100,
         // 233..235, 375..377, 509..511, over the rows only.
@@ -2591,16 +2679,17 @@ DOCTEST_TEST_SUITE("ui kit") {
             layout.first_row_y(),
             (int16_t)(layout.row_y(9) + layout.row_height() - 1));
         ui_kit::Draw_List_Columns(fake, columns);
-        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 12);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 98);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 233);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 35);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y2 == 343);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].x1 == 99);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 235);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[2].x1 == 100);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 232);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[9].x1 == 509);
-        DOCTEST_CHECK(test::fakes::g_fill_calls[9].color == 233);
+        DOCTEST_REQUIRE(test::fakes::g_dithered_fill_calls.size() == 12);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].x1 == 98);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].base == 233);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].speckle == 234);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].y1 == 35);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[0].y2 == 343);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].x1 == 99);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[1].base == 235);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[2].x1 == 100);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[2].base == 232);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[9].x1 == 509);
+        DOCTEST_CHECK(test::fakes::g_dithered_fill_calls[9].base == 233);
     }
 } // DOCTEST_TEST_SUITE("ui kit")

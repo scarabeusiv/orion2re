@@ -103,13 +103,14 @@ namespace graphics {
     void __cdecl Tri_Interlaced_Fill(int16_t x1, int16_t y1, int16_t x2, int16_t y2, int16_t color1, int16_t color2, int16_t color3);
 
     /**
-     * Fills a rectangle with a deterministic Bayer-ordered dither:
+     * Fills a rectangle with a deterministic irregular speckle:
      * base colour with speckle-colour dots at density/16 of the
      * pixels. density 0 = solid base, 16 = solid speckle. The
-     * pattern is fixed in screen space (4x4 Bayer matrix), so it
-     * never repeats like a tiled strip and never flickers -- the
-     * colony's baked surfaces are a speckle dither, not a flat
-     * fill, and this is how the kit reproduces that texture.
+     * pattern is a hash of the absolute screen coordinates, so it
+     * is irregular -- no repeat distance -- and never flickers:
+     * the colony's baked surfaces are an irregular speckle
+     * dither, not a flat fill, and this is how the kit
+     * reproduces that texture.
      * @param x1 Left coordinate.
      * @param y1 Top coordinate.
      * @param x2 Right coordinate.
@@ -130,6 +131,25 @@ namespace graphics {
      * @param color Palette index to draw.
      */
     void __cdecl Box(int16_t x, int16_t y, int16_t width, int16_t height, int16_t thickness, uint8_t color);
+
+    /**
+     * Draws a rectangular border with the colony's bitmap feel:
+     * the base colour speckled with the speckle colour at
+     * density/16 of the border pixels, like the colony's baked
+     * frame and plate borders (base grey with ~10-15% speckles
+     * of a neighbouring shade). The speckle is the same
+     * irregular hash Dithered_Fill uses, so the border reads as
+     * one textured line, not a smooth flat one.
+     * @param x Left coordinate.
+     * @param y Top coordinate.
+     * @param width Border width in pixels.
+     * @param height Border height in pixels.
+     * @param thickness Border thickness in pixels.
+     * @param base Palette index of the border colour.
+     * @param speckle Palette index of the speckle colour.
+     * @param density Speckle density in sixteenths (0..16).
+     */
+    void __cdecl Dithered_Box(int16_t x, int16_t y, int16_t width, int16_t height, int16_t thickness, uint8_t base, uint8_t speckle, uint8_t density);
 
     /**
      * Draws a single pixel.

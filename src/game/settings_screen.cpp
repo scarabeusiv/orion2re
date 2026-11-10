@@ -85,19 +85,23 @@ namespace SETTINGS_SCREEN {
         //   sized to their value.
         // - Category selectors: the tabs are kit Selector buttons
         //   drawn by the theme's fallback (a flat fill with a
-        //   border: bright blue 138 active, dark navy 50 at rest),
+        //   border: bright blue 253 active, dark navy 50 at rest),
         //   not the derived COLSUM sort-button frames. The derived
         //   frames cannot match the colony's bright blue in the
         //   menu palette: their top and bottom rows are grey (239)
         //   and their bands dark (103/50), so the active tab reads
         //   muted dark blue, while the colony's active tab reads
-        //   bright vivid blue. The menu palette's brightest blue
-        //   is 138 -- there is no closer hue to the colony's vivid
-        //   (24, 12, 252), nearest 138 at distance 124.6 -- so a
-        //   flat 138 face is the brightest the active tab can be,
-        //   and the fallback draws it full-height with no grey
-        //   rows. The gaps between tabs show the window band's
-        //   recessed channel, not black, like the colony's sort
+        //   bright vivid blue. The menu palette holds no such blue
+        //   -- its brightest is 138 (52, 48, 136), distance 124.6
+        //   from the colony's vivid (24, 12, 252) -- so the
+        //   settings screen patches the vivid blue into
+        //   menu-palette index 253 at setup (see
+        //   Install_Vivid_Blue): 253 is black and unused by the
+        //   settings screen, and the patch is transient -- leaving
+        //   the screen reloads the palette. The fallback draws the
+        //   vivid face full-height with no grey rows. The gaps
+        //   between tabs show the window band's recessed channel,
+        //   not black, like the colony's sort
         //   strip. The labels are font style 2 (the colony tabs'
         //   baked labels measure as style 2, not the style 4 the
         //   rest of this screen uses), white at rest and blue-white
@@ -1578,10 +1582,17 @@ namespace SETTINGS_SCREEN {
             // the shade line inside, on all four sides.
             const ui_kit::List_Style list_style =
                 g_theme->List_Style();
-            graphics::Box(x, y, w, h, 1, list_style.frame_light);
-            graphics::Box((int16_t)(x + 1), (int16_t)(y + 1),
+            // Dithered_Box, not flat Box: the colony's baked
+            // borders are speckled, and a flat border reads as a
+            // smooth line with no bitmap feel (the speckle is one
+            // shade lighter, density 2, like every other border
+            // on this screen).
+            graphics::Dithered_Box(x, y, w, h, 1, list_style.frame_light,
+                (uint8_t)(list_style.frame_light + 1), 2);
+            graphics::Dithered_Box((int16_t)(x + 1), (int16_t)(y + 1),
                 (int16_t)(w - 2), (int16_t)(h - 2), 1,
-                list_style.frame_shade);
+                list_style.frame_shade,
+                (uint8_t)(list_style.frame_shade + 1), 2);
             const int16_t text_x = (int16_t)(x + 1 + 8);
             // The labels print in style 4: set it before measuring
             // the row text offset, so the text sits mid-row
@@ -1612,7 +1623,39 @@ namespace SETTINGS_SCREEN {
             }
         }
 
+        // The colony's vivid blue (24, 12, 252) is in the
+        // colony's palette at index 56 but not in the menu palette
+        // the settings screen renders with, so the active tab is
+        // patched in: menu-palette index 253 is black (0, 0, 0)
+        // and unused by the settings screen -- no sprite or font
+        // in data/base uses it -- so it is repurposed for the
+        // vivid blue. current_palette stores 6-bit values (the
+        // upload shifts them left 2), so (24, 12, 252) is
+        // (6, 3, 63). The entry is set directly -- never via
+        // Set_Palette_Gradient with count 1, which divides by
+        // (count - 1) = 0 -- then marked changed and uploaded.
+        // Called every frame with a guard (only writes when the
+        // entry is not already vivid), so a palette reload
+        // mid-screen re-installs it on the next frame. Transient:
+        // leaving the screen reloads the palette, restoring 253
+        // to black.
+        void Install_Vivid_Blue() {
+            constexpr uint8_t kVivid_Blue_Index = 253;
+            s_palette_entry& entry =
+                video::current_palette[kVivid_Blue_Index];
+            if (entry.r != 6 || entry.g != 3 || entry.b != 63) {
+                entry.r = 6;
+                entry.g = 3;
+                entry.b = 63;
+                entry.changed = 1;
+                palette::Set_Palette_Changes(kVivid_Blue_Index,
+                    kVivid_Blue_Index);
+                palette::Refresh_Palette();
+            }
+        }
+
         void Draw_Settings_Screen() {
+            Install_Vivid_Blue();
             video::Set_Page_Off();
 
             // The background is painted here with the kit, not
@@ -1634,10 +1677,16 @@ namespace SETTINGS_SCREEN {
             // blend into it. Darken the top band to the colony's
             // profile -- menu-palette greys closest to the
             // colony's -- so the header plates stand out.
-            graphics::Fill(0, 0, 639, 0, 84);
-            graphics::Fill(0, 1, 639, 1, 230);
-            graphics::Fill(0, 2, 639, 2, 230);
-            graphics::Fill(0, 3, 639, 3, 233);
+            // Dithered, not flat: the colony's baked frame top is
+            // a speckle (base grey with ~10-15% speckles of a
+            // neighbouring shade), and a flat darkening reads as a
+            // smooth line with no bitmap feel. The speckle is one
+            // shade lighter, at density 2 (~13%), like the kit
+            // frame's own bands underneath.
+            graphics::Dithered_Fill(0, 0, 639, 0, 84, 85, 2);
+            graphics::Dithered_Fill(0, 1, 639, 1, 230, 231, 2);
+            graphics::Dithered_Fill(0, 2, 639, 2, 230, 231, 2);
+            graphics::Dithered_Fill(0, 3, 639, 3, 233, 234, 2);
             fonts::Set_Font_Style(4, &g_normal_colors);
 
             // List panel, like the colony list: the kit draws the
@@ -1735,15 +1784,23 @@ namespace SETTINGS_SCREEN {
                     list_style.plate_face, list_style.border, 6);
                 // Raised bevel: light on the top and left, shade on
                 // the bottom and right, like the colony's plates.
-                graphics::Fill(x, HEADER_Y, x + w - 1, HEADER_Y,
-                    list_style.frame_light);
-                graphics::Fill(x, HEADER_Y, x, HEADER_Y + HEADER_HEIGHT - 1,
-                    list_style.frame_light);
-                graphics::Fill(x, HEADER_Y + HEADER_HEIGHT - 1,
+                // Dithered like every other border on this screen
+                // (speckle one shade lighter, density 2), so the
+                // plate bevels carry the colony's bitmap feel
+                // instead of reading as smooth flat lines.
+                graphics::Dithered_Fill(x, HEADER_Y, x + w - 1, HEADER_Y,
+                    list_style.frame_light,
+                    (uint8_t)(list_style.frame_light + 1), 2);
+                graphics::Dithered_Fill(x, HEADER_Y, x, HEADER_Y + HEADER_HEIGHT - 1,
+                    list_style.frame_light,
+                    (uint8_t)(list_style.frame_light + 1), 2);
+                graphics::Dithered_Fill(x, HEADER_Y + HEADER_HEIGHT - 1,
                     x + w - 1, HEADER_Y + HEADER_HEIGHT - 1,
-                    list_style.frame_shade);
-                graphics::Fill(x + w - 1, HEADER_Y, x + w - 1,
-                    HEADER_Y + HEADER_HEIGHT - 1, list_style.frame_shade);
+                    list_style.frame_shade,
+                    (uint8_t)(list_style.frame_shade + 1), 2);
+                graphics::Dithered_Fill(x + w - 1, HEADER_Y, x + w - 1,
+                    HEADER_Y + HEADER_HEIGHT - 1, list_style.frame_shade,
+                    (uint8_t)(list_style.frame_shade + 1), 2);
                 // The header-plate labels render in the theme's
                 // display font (Moo2Display, cap 8): the colony's
                 // large display labels are ~14 px per character, and
@@ -1960,17 +2017,21 @@ namespace SETTINGS_SCREEN {
                 (int16_t)(Bottom_Bar_Y() - 1 - spacing.info_to_bar);
             graphics::Fill(frame.content_x(), desc_y,
                 (int16_t)(frame.content_right() - 1), desc_bottom, 0);
-            graphics::Fill(frame.content_x(), desc_y,
+            // The info box border is dithered like every other
+            // border on this screen (speckle one shade lighter,
+            // density 2), so it carries the colony's bitmap feel
+            // instead of reading as smooth flat lines.
+            graphics::Dithered_Fill(frame.content_x(), desc_y,
                 (int16_t)(frame.content_right() - 1), desc_y,
-                PANEL_BORDER);
-            graphics::Fill(frame.content_x(), desc_bottom,
+                PANEL_BORDER, (uint8_t)(PANEL_BORDER + 1), 2);
+            graphics::Dithered_Fill(frame.content_x(), desc_bottom,
                 (int16_t)(frame.content_right() - 1), desc_bottom,
-                PANEL_BORDER);
-            graphics::Fill(frame.content_x(), desc_y, frame.content_x(),
-                desc_bottom, PANEL_BORDER);
-            graphics::Fill((int16_t)(frame.content_right() - 1), desc_y,
+                PANEL_BORDER, (uint8_t)(PANEL_BORDER + 1), 2);
+            graphics::Dithered_Fill(frame.content_x(), desc_y, frame.content_x(),
+                desc_bottom, PANEL_BORDER, (uint8_t)(PANEL_BORDER + 1), 2);
+            graphics::Dithered_Fill((int16_t)(frame.content_right() - 1), desc_y,
                 (int16_t)(frame.content_right() - 1), desc_bottom,
-                PANEL_BORDER);
+                PANEL_BORDER, (uint8_t)(PANEL_BORDER + 1), 2);
             std::string help_text;
             bool restart_required = false;
             if (mods_tab && Is_Mod_Row(g_state.selected)) {

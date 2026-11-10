@@ -116,9 +116,11 @@ namespace ui_kit {
 
         // Fallback fills when a derived frame is missing (stale
         // base.zip): the derived frames' own interior colours, so
-        // the tab stays readable -- rest dark navy, active menu blue.
+        // the tab stays readable -- rest dark navy, active the
+        // colony's vivid blue, patched into menu-palette index 253
+        // by the settings screen (see settings_screen.cpp).
         constexpr uint8_t kTab_Fallback_Fill_Normal = 50;
-        constexpr uint8_t kTab_Fallback_Fill_Active = 138;
+        constexpr uint8_t kTab_Fallback_Fill_Active = 253;
         constexpr uint8_t kTab_Fallback_Border = 234;
 
         // List spacing, measured from the colony summary screen
@@ -188,10 +190,18 @@ namespace ui_kit {
         // bright centre (204, 204, 204) is menu 249 (distance
         // 8.0), the edge (28, 28, 96) menu 111 (distance 35.3)
         // and the darker edge (20, 20, 56) menu 84 (distance
-        // 12.6). The arrow is drawn as a triangle of the bright
-        // index with a 1 px edge around it, like the colony's.
+        // 12.6). The arrow is a triangle of the bright index
+        // with a bevelled edge -- the lighter edge (111) on the
+        // top and left, the darker edge (84) on the bottom and
+        // right, light from the top-left like the colony's --
+        // and a speckled face (bright over the metal face grey),
+        // not a flat triangle with a uniform hard edge: the
+        // colony's baked arrows are bevelled metal with texture,
+        // and a plain triangle reads as a regression against them.
         constexpr uint8_t kScroll_Arrow_Edge = 111;
+        constexpr uint8_t kScroll_Arrow_Dark = 84;
         constexpr uint8_t kScroll_Arrow_Bright = 249;
+        constexpr uint8_t kScroll_Arrow_Face = 238;
         // The metal button's three slices, cut from the derived
         // RETURN frame (COLSUM entry 1, 85x26): the left dome
         // (columns 0..16) and the right dome (columns 60..84) are
@@ -1368,36 +1378,49 @@ namespace ui_kit {
             };
             // Top and bottom bands, mitred: each line stops one
             // pixel further in per offset, so the corners meet on a
-            // 45-degree seam.
+            // 45-degree seam. Each band line is a Dithered_Fill,
+            // not a flat Fill: the colony's baked frame is a
+            // speckle dither (base grey with ~10-15% speckles of
+            // a neighbouring shade), and a flat band reads as a
+            // smooth line with no bitmap feel. The speckle is one
+            // shade lighter than the band (the profile is greys
+            // 231..239, so +1 stays in the ramp), at density 2
+            // (~13%), matching the colony's border speckle.
             for (int16_t offset = 0; offset < style.thickness_top;
                 ++offset) {
-                graphics::Fill((int16_t)(x_ + offset),
+                const uint8_t colour = band(offset, style.thickness_top);
+                graphics::Dithered_Fill((int16_t)(x_ + offset),
                     (int16_t)(y_ + offset),
                     (int16_t)(x_ + w_ - 1 - offset),
                     (int16_t)(y_ + offset),
-                    band(offset, style.thickness_top));
+                    colour, (uint8_t)(colour + 1), 2);
             }
             for (int16_t offset = 0; offset < style.thickness_bottom;
                 ++offset) {
                 const int16_t yy = (int16_t)(y_ + h_ - 1 - offset);
-                graphics::Fill((int16_t)(x_ + offset), yy,
+                const uint8_t colour =
+                    band(offset, style.thickness_bottom);
+                graphics::Dithered_Fill((int16_t)(x_ + offset), yy,
                     (int16_t)(x_ + w_ - 1 - offset), yy,
-                    band(offset, style.thickness_bottom));
+                    colour, (uint8_t)(colour + 1), 2);
             }
             for (int16_t offset = 0; offset < style.thickness_left;
                 ++offset) {
-                graphics::Fill((int16_t)(x_ + offset),
+                const uint8_t colour = band(offset, style.thickness_left);
+                graphics::Dithered_Fill((int16_t)(x_ + offset),
                     (int16_t)(y_ + offset),
                     (int16_t)(x_ + offset),
                     (int16_t)(y_ + h_ - 1 - offset),
-                    band(offset, style.thickness_left));
+                    colour, (uint8_t)(colour + 1), 2);
             }
             for (int16_t offset = 0; offset < style.thickness_right;
                 ++offset) {
                 const int16_t xx = (int16_t)(x_ + w_ - 1 - offset);
-                graphics::Fill(xx, (int16_t)(y_ + offset), xx,
+                const uint8_t colour =
+                    band(offset, style.thickness_right);
+                graphics::Dithered_Fill(xx, (int16_t)(y_ + offset), xx,
                     (int16_t)(y_ + h_ - 1 - offset),
-                    band(offset, style.thickness_right));
+                    colour, (uint8_t)(colour + 1), 2);
             }
         }
         if (style.title_font != nullptr && title != nullptr) {
@@ -1512,10 +1535,14 @@ namespace ui_kit {
         // narrowing to its tip at y 337. Both start 2 px left of
         // the strip, so the triangle is centred on it. The
         // half-width runs 0 at the tip to 4 at the base,
-        // proportionally over the arrow's height. The triangle is
-        // the bright index with a 1 px edge around it: the edge
-        // rows and the edge columns of each row draw the edge
-        // index, the inside the bright one.
+        // proportionally over the arrow's height. The triangle's
+        // face is a dithered bright (bright over the metal face
+        // grey, density 5), so it carries the colony's metal
+        // texture instead of reading as a flat triangle; its edge
+        // is a bevel -- the lighter edge (111) on the top and
+        // left, the darker edge (84) on the bottom and right,
+        // light from the top-left -- like the colony's baked
+        // arrows, not a uniform hard outline.
         const int16_t ax = (int16_t)(x_ - 2);
         const int16_t up_tip = (int16_t)(track_y_ - 25);
         const int16_t up_base = (int16_t)(track_y_ - 6);
@@ -1524,16 +1551,16 @@ namespace ui_kit {
                 (up_base - up_tip));
             const int16_t left = (int16_t)(ax + 5 - half - 1);
             const int16_t right = (int16_t)(ax + 5 + half);
-            graphics::Fill(left, row, right, row,
-                kScroll_Arrow_Bright);
+            graphics::Dithered_Fill(left, row, right, row,
+                kScroll_Arrow_Bright, kScroll_Arrow_Face, 5);
             graphics::Fill(left, row, left, row, kScroll_Arrow_Edge);
             graphics::Fill(right, row, right, row,
-                kScroll_Arrow_Edge);
+                kScroll_Arrow_Dark);
         }
         graphics::Fill((int16_t)(ax + 4), up_tip, (int16_t)(ax + 5),
             up_tip, kScroll_Arrow_Edge);
         graphics::Fill(ax, up_base, (int16_t)(ax + 9), up_base,
-            kScroll_Arrow_Edge);
+            kScroll_Arrow_Dark);
         const int16_t down_base = (int16_t)(track_bottom() + 5);
         const int16_t down_tip = (int16_t)(track_bottom() + 26);
         for (int16_t row = down_base; row <= down_tip; ++row) {
@@ -1541,16 +1568,16 @@ namespace ui_kit {
                 (down_tip - down_base));
             const int16_t left = (int16_t)(ax + 5 - half - 1);
             const int16_t right = (int16_t)(ax + 5 + half);
-            graphics::Fill(left, row, right, row,
-                kScroll_Arrow_Bright);
+            graphics::Dithered_Fill(left, row, right, row,
+                kScroll_Arrow_Bright, kScroll_Arrow_Face, 5);
             graphics::Fill(left, row, left, row, kScroll_Arrow_Edge);
             graphics::Fill(right, row, right, row,
-                kScroll_Arrow_Edge);
+                kScroll_Arrow_Dark);
         }
         graphics::Fill(ax, down_base, (int16_t)(ax + 9), down_base,
             kScroll_Arrow_Edge);
         graphics::Fill((int16_t)(ax + 4), down_tip, (int16_t)(ax + 5),
-            down_tip, kScroll_Arrow_Edge);
+            down_tip, kScroll_Arrow_Dark);
     }
 
     void Draw_List_Background(const Theme& theme,
@@ -1563,18 +1590,28 @@ namespace ui_kit {
             graphics::Fill(x, y, (int16_t)(x + layout.panel_w() - 1),
                 (int16_t)(y + layout.panel_h() - 1), style.interior);
             // The colony's panel is a speckle dither, not a flat
-            // fill: a sparse Bayer speckle (~13% of the plate-face
-            // grey) gives the rows the same texture as the colony's
-            // and lets the bevelled toggle circles read as part of
-            // the surface instead of a textured control pasted on
-            // a plain row.
+            // fill: a sparse irregular speckle (~13% of the
+            // plate-face grey) gives the rows the same texture as
+            // the colony's and lets the bevelled toggle circles
+            // read as part of the surface instead of a textured
+            // control pasted on a plain row.
             graphics::Dithered_Fill(x, y,
                 (int16_t)(x + layout.panel_w() - 1),
                 (int16_t)(y + layout.panel_h() - 1), style.interior,
                 style.plate_face, 2);
         }
-        graphics::Box(x, y, layout.panel_w(), layout.panel_h(), 1,
-            style.border);
+        // The panel border is a Dithered_Box, not a flat Box:
+        // the colony's baked borders are speckled (base grey
+        // with ~10-15% speckles of a neighbouring shade), and
+        // a flat border reads as a smooth line with no bitmap
+        // feel. The speckle is one shade lighter than the
+        // border, at density 2 (~13%). The row frame lines,
+        // the footing and the right bevel below are dithered
+        // the same way, so every border on the panel carries
+        // the colony's texture.
+        graphics::Dithered_Box(x, y, layout.panel_w(),
+            layout.panel_h(), 1, style.border,
+            (uint8_t)(style.border + 1), 2);
         if (draw_row_frames) {
         for (int index = 0; index < layout.rows(); ++index) {
             const int16_t row_y = layout.row_y(index);
@@ -1586,20 +1623,25 @@ namespace ui_kit {
             // that last pixel is the shade below the light line
             // (the cell's drop shadow), on every row including the
             // last: the colony's last row has its shade too, and
-            // the footing below it is drawn next.
-            graphics::Fill((int16_t)(x + 1), row_y,
-                layout.content_right(), row_y, style.frame_light);
-            graphics::Fill((int16_t)(x + 1), (int16_t)(row_y + 1),
+            // the footing below it is drawn next. Each line is a
+            // Dithered_Fill (speckle one shade lighter, density
+            // 2), so the row dividers carry the colony's bitmap
+            // feel instead of reading as smooth flat lines.
+            graphics::Dithered_Fill((int16_t)(x + 1), row_y,
+                layout.content_right(), row_y, style.frame_light,
+                (uint8_t)(style.frame_light + 1), 2);
+            graphics::Dithered_Fill((int16_t)(x + 1), (int16_t)(row_y + 1),
                 layout.content_right(), (int16_t)(row_y + 1),
-                style.frame_shade);
-            graphics::Fill((int16_t)(x + 1), (int16_t)(bottom - 2),
+                style.frame_shade, (uint8_t)(style.frame_shade + 1), 2);
+            graphics::Dithered_Fill((int16_t)(x + 1), (int16_t)(bottom - 2),
                 layout.content_right(), (int16_t)(bottom - 2),
-                style.frame_shade);
-            graphics::Fill((int16_t)(x + 1), (int16_t)(bottom - 1),
+                style.frame_shade, (uint8_t)(style.frame_shade + 1), 2);
+            graphics::Dithered_Fill((int16_t)(x + 1), (int16_t)(bottom - 1),
                 layout.content_right(), (int16_t)(bottom - 1),
-                style.frame_light);
-            graphics::Fill((int16_t)(x + 1), bottom,
-                layout.content_right(), bottom, style.frame_shade);
+                style.frame_light, (uint8_t)(style.frame_light + 1), 2);
+            graphics::Dithered_Fill((int16_t)(x + 1), bottom,
+                layout.content_right(), bottom, style.frame_shade,
+                (uint8_t)(style.frame_shade + 1), 2);
         }
         } // draw_row_frames
         // The panel footing: the colony's shade band and bevel
@@ -1609,15 +1651,15 @@ namespace ui_kit {
         // plain panel interior above it. It draws in both modes:
         // a frameless list still keeps the panel's bottom chrome.
         const int16_t panel_bottom = (int16_t)(y + layout.panel_h());
-        graphics::Fill((int16_t)(x + 1), (int16_t)(panel_bottom - 4),
+        graphics::Dithered_Fill((int16_t)(x + 1), (int16_t)(panel_bottom - 4),
             layout.content_right(), (int16_t)(panel_bottom - 4),
-            style.frame_shade);
-        graphics::Fill((int16_t)(x + 1), (int16_t)(panel_bottom - 3),
+            style.frame_shade, (uint8_t)(style.frame_shade + 1), 2);
+        graphics::Dithered_Fill((int16_t)(x + 1), (int16_t)(panel_bottom - 3),
             layout.content_right(), (int16_t)(panel_bottom - 3),
-            style.frame_shade);
-        graphics::Fill((int16_t)(x + 1), (int16_t)(panel_bottom - 2),
+            style.frame_shade, (uint8_t)(style.frame_shade + 1), 2);
+        graphics::Dithered_Fill((int16_t)(x + 1), (int16_t)(panel_bottom - 2),
             layout.content_right(), (int16_t)(panel_bottom - 2),
-            style.frame_light);
+            style.frame_light, (uint8_t)(style.frame_light + 1), 2);
         // The panel's right edge is a 3 px bevel in the colony: a
         // bright middle line one pixel inside the border (the
         // colony's is 152 at the strip's right edge; the kit renders
@@ -1629,9 +1671,10 @@ namespace ui_kit {
         // the content edge, so nothing crosses it, and the scrollbar
         // draws over it where the two overlap.
         const int16_t panel_right = (int16_t)(x + layout.panel_w() - 1);
-        graphics::Fill((int16_t)(panel_right - 1), y,
+        graphics::Dithered_Fill((int16_t)(panel_right - 1), y,
             (int16_t)(panel_right - 1),
-            (int16_t)(y + layout.panel_h() - 1), style.frame_light);
+            (int16_t)(y + layout.panel_h() - 1), style.frame_light,
+            (uint8_t)(style.frame_light + 1), 2);
     }
 
     Column_Layout::Column_Layout(const std::vector<Column>& columns,
@@ -1650,14 +1693,20 @@ namespace ui_kit {
     void Draw_List_Columns(const Theme& theme,
         const Column_Layout& columns) {
         const List_Style style = theme.List_Style();
+        // The column dividers are dithered like every other border
+        // on the panel (speckle one shade lighter, density 2), so
+        // they carry the colony's bitmap feel instead of reading
+        // as smooth flat lines.
         for (int index = 0; index < columns.divider_count(); ++index) {
             const int16_t x = columns.divider_x(index);
-            graphics::Fill(x, columns.top(), x, columns.bottom(),
-                style.divider_left);
-            graphics::Fill((int16_t)(x + 1), columns.top(),
-                (int16_t)(x + 1), columns.bottom(), style.divider_mid);
-            graphics::Fill((int16_t)(x + 2), columns.top(),
-                (int16_t)(x + 2), columns.bottom(), style.divider_right);
+            graphics::Dithered_Fill(x, columns.top(), x, columns.bottom(),
+                style.divider_left, (uint8_t)(style.divider_left + 1), 2);
+            graphics::Dithered_Fill((int16_t)(x + 1), columns.top(),
+                (int16_t)(x + 1), columns.bottom(), style.divider_mid,
+                (uint8_t)(style.divider_mid + 1), 2);
+            graphics::Dithered_Fill((int16_t)(x + 2), columns.top(),
+                (int16_t)(x + 2), columns.bottom(), style.divider_right,
+                (uint8_t)(style.divider_right + 1), 2);
         }
     }
 } // namespace ui_kit
