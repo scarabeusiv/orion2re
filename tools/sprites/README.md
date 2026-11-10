@@ -14,7 +14,9 @@ pipeline. The derived frames ship in
 `base.zip`; the runtime loads them with
 `sprite_art::Load_Sprite_Frame` and draws them with
 `sprite_art::Draw_Sprite_Frame` /
-`sprite_art::Draw_Sprite_Frame_Stretched` (flat middles) or
+`sprite_art::Draw_Sprite_Frame_Stretched` (flat middles),
+`sprite_art::Draw_Sprite_Frame_Three_Slice` (fixed slices, one
+tiled face column -- the sort tabs) or
 `sprite_art::Draw_Sprite_Frame_Stretched_Resampled` (gradient
 middles, which must span the width once, not tile).
 
@@ -57,30 +59,35 @@ Contents:
   mismatches are mostly text-antialiasing pixels that a blank
   button must not have.
 
-- `selector-frame` — COLSUM.LBX entry 4, the colony sort button
-  ("Name"), 50x24, colony palette -> menu palette. The baked label
-  is blanked per state so the settings screen can render its own
-  labels with the game font: `normal` takes frame 0, blanked with a
-  flat fill of the dark-navy interior (rows 4-19, columns 4 to the
-  right edge); `active` takes frame 1 -- the selected sort column --
-  whose field is a blue gradient (bright at both edges, dark navy in
-  the centre) with a blue bevel, blanked by copying each pixel from
-  the same column at label-free row 5, so the gradient continues
-  behind the new label. The blue ramp has no close hue in the menu
-  palette, so the active state overrides it onto the menu's own
-  blues (50/84/103/138). The sort button is asymmetric as authored
-  — bevelled on the left and top, flat black on the right — so the
-  stretched draw keeps a 7 px left slice and no right slice: the
-bevel is 4 px but its corner tails reach column 6, so the slice
-carries them as-is. The
-  rest frame's flat middle tiles; the selected frame's gradient
-  middle is resampled to the tab width
-  (sprite_art::Draw_Sprite_Frame_Stretched_Resampled), or the
-  gradient would repeat like stripes. The tabs sit 1 px apart at
-  y=446, like the colony's sort buttons, and their labels are font
-  style 2: the baked colony labels measure as style 2, with a white
-  face at rest and a blue-white face when active (see
-  src/game/ui_kit.h, Colony_Theme).
+- `sort-name`, `sort-population`, `sort-food` — the colony sort
+  tabs (Name 50x24, Population 78x24, Food 42x24), grabbed from the
+  rendered colony screen, not extracted from the LBX: the settings
+  screen's three category tabs each draw their own tab's frame
+  (`../derive_sort_tabs.py`; the screengrab is the source, so the
+  frames are the colony's own pixels -- the Name frames it derives
+  are byte-identical to the old LBX-derived `selector-frame`, which
+  retired with them). The baked label is blanked per state so the
+  settings screen can render its own labels with the game font:
+  `normal` takes frame 0, blanked with a flat fill of the dark-navy
+  interior (rows 4-19, columns 4 to the right edge); `active` takes
+  frame 1 -- the selected sort column -- blanked by copying each
+  pixel from the same column at label-free row 5, so the field
+  continues behind the new label. The blue ramp has no close hue
+  in the menu palette, so the active state overrides it onto the
+  menu's own blues (50/84/103/138). Each frame carries a fixed
+  ~20 px bright ramp on each side and a flat dark-navy middle, so
+  the draw three-slices with 20 px fixed slices and one tiled
+  middle column per tab (Name 26, Population 38, Food 21) -- the
+  ramps stay 1:1 at any tab width; the selected frame's field is
+  flat in the middle once the ramps are fixed slices, so nothing
+  resamples. The gaps between tabs show the window band's
+  recessed channel, measured from the same screengrabs (one
+  palette index per row: 239/240, 234, 15, 84, 50 x16, 84, 94,
+  29, 239 -- row 0 follows the strip-wide arch). The tabs sit
+  1 px apart at y=446, like the colony's sort buttons, and their
+  labels are font style 2: the baked colony labels measure as
+  style 2, with a white face at rest and a blue-white face when
+  active (see src/game/ui_kit.h, Colony_Theme).
 
 ## What cannot be derived from game art
 
@@ -102,4 +109,8 @@ carries them as-is. The
 Reproduce everything with `tools/extract_sprite.py --lbx COLSUM.LBX
 --fonts-lbx FONTS.LBX --mainmenu-lbx MAINMENU.LBX`, and verify with
 the same command plus `--check`. The tool needs the user's original
-game data; the committed .bin files are the checked-in result.
+game data; the committed .bin files are the checked-in result. The
+sort tabs reproduce with `tools/derive_sort_tabs.py --game <game
+data> --grabs <colony screenshots> --out data/base/sprites`, which
+needs the colony-screen screengrabs (not committed) and the same
+game data.
