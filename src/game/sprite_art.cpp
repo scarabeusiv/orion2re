@@ -2,9 +2,11 @@
 
 #include "sprite_art.h"
 
+#include "game/allocate.h"
 #include "game/animate.h"
 #include "game/button_art.h"
 #include "game/video.h"
+#include "game/vfs.h"
 
 namespace sprite_art {
     namespace {
@@ -282,6 +284,255 @@ namespace sprite_art {
                     (int16_t)(frame->width - right_slice), row, right_width,
                     cursor, dst_y);
             }
+        }
+    }
+
+    namespace {
+        // Unaligned little-endian reads (LBX entries are loaded at
+        // arbitrary addresses, so the payload has no alignment
+        // guarantee).
+        int16_t Read_I16(const uint8_t* p) {
+            return (int16_t)((uint16_t)p[0] | ((uint16_t)p[1] << 8));
+        }
+
+        uint16_t Read_U16(const uint8_t* p) {
+            return (uint16_t)((uint16_t)p[0] | ((uint16_t)p[1] << 8));
+        }
+
+        uint32_t Read_U32(const uint8_t* p) {
+            return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+                ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+        }
+
+        // No close hue in the installed palette (Euclidean distance
+        // in 8-bit RGB), like tools/extract_sprite.py
+        // REMAP_FAIL_DISTANCE.
+        constexpr int32_t kRemap_Fail_Distance_Sq = 64 * 64;
+    } // namespace
+
+    s_animation_header* Load_Colony_Background(void* allocation_base) {
+        if (allocation_base == nullptr) {
+            return nullptr;
+        }
+        // Load COLSUM.LBX entry 0 (the colony background) through
+        // the VFS, soft: a missing file or entry returns null
+        // instead of terminating (farload::Far_Reload_Next would
+        // call Error_Handler).
+        // The colony background's library, named here rather than
+        // via COLONY::COLSUM_LBX: colony.cpp is not linked into the
+        // sprite-art test target, and the name is stable.
+        s_vfs_file* file = vfs::fopen_lbx("COLSUM.LBX", 0);
+        if (file == nullptr) {
+            return nullptr;
+        }
+        const int32_t entry_size = vfs::fsize(file);
+        if (entry_size <= 0) {
+            vfs::fclose(file);
+            return nullptr;
+        }
+        auto* payload = (uint8_t*)allocate::Allocate_Next_Block(
+            allocation_base, (uint32_t)entry_size);
+        if (payload == nullptr) {
+            vfs::fclose(file);
+            return nullptr;
+        }
+        if (vfs::fread(payload, 1, (size_t)entry_size, file) !=
+            (size_t)entry_size) {
+            vfs::fclose(file);
+            return nullptr;
+        }
+        vfs::fclose(file);
+
+        // Animation header: width, height, frame count. The colony
+        // background is 640x480, one frame.
+        if (entry_size < 12) {
+            return nullptr;
+        }
+        const int16_t width = Read_I16(payload + 0);
+        const int16_t height = Read_I16(payload + 2);
+        const int16_t frame_count = Read_I16(payload + 6);
+        if (width != 640 || height != 480 || frame_count < 1) {
+            return nullptr;
+        }
+        // Frame offset table follows the 12-byte header.
+        if (entry_size < 12 + (frame_count + 1) * 4) {
+            return nullptr;
+        }
+        const uint32_t frame_offset = Read_U32(payload + 12);
+        if (frame_offset >= (uint32_t)entry_size) {
+            return nullptr;
+        }
+        // Embedded palette: after the header and the frame table, a
+        // start/count header then count s_palette_entry records
+        // ([changed, r, g, b], 6-bit values), like
+        // tools/extract_sprite.py load_palette (embedded).
+        const int32_t palette_header_at = 12 + (frame_count + 1) * 4;
+        if (entry_size < palette_header_at + 4) {
+            return nullptr;
+        }
+        const int16_t palette_start =
+            Read_I16(payload + palette_header_at);
+        const int16_t palette_count =
+            Read_I16(payload + palette_header_at + 2);
+        if (palette_start < 0 || palette_count <= 0 ||
+            palette_start + palette_count > 256 ||
+            entry_size < palette_header_at + 4 + palette_count * 4) {
+            return nullptr;
+        }
+        const uint8_t* palette_raw = payload + palette_header_at + 4;
+
+        // Colony palette in 8-bit RGB (6-bit values * 4, like the
+        // tool). Entries outside [start, start+count) stay black.
+        uint8_t colony_palette[256][3] = {};
+        for (int16_t i = 0; i < palette_count; ++i) {
+            const uint8_t* rec = palette_raw + i * 4;
+            colony_palette[palette_start + i][0] =
+                (uint8_t)(rec[1] * 4);
+            colony_palette[palette_start + i][1] =
+                (uint8_t)(rec[2] * 4);
+            colony_palette[palette_start + i][2] =
+                (uint8_t)(rec[3] * 4);
+        }
+        // Installed palette in 8-bit RGB the same way:
+        // video::current_palette holds the same 6-bit values.
+        uint8_t menu_palette[256][3];
+        for (int i = 0; i < 256; ++i) {
+            menu_palette[i][0] =
+                (uint8_t)(video::current_palette[i].r * 4);
+            menu_palette[i][1] =
+                (uint8_t)(video::current_palette[i].g * 4);
+            menu_palette[i][2] =
+                (uint8_t)(video::current_palette[i].b * 4);
+        }
+
+        // Output frame, in the native bitmap layout (the same
+        // bytes bitmap::Create_Bitmap_Header produces: a 12-byte
+        // header, one frame, draw mode BITMAP, frame data at offset
+        // 16, width*height index bytes padded to a multiple of 4).
+        // Built field by field here so the test target, which does
+        // not link bitmap.cpp, can still exercise this function --
+        // and without the helper's side effect of setting the
+        // global animate::animation_header.
+        const int32_t bitmap_size =
+            ((int32_t)width * height + (int32_t)kBitmapFrameDataOffset +
+                3) / 4 * 4;
+        if (bitmap_size <= 0) {
+            return nullptr;
+        }
+        auto* frame = (s_animation_header*)allocate::Allocate_Next_Block(
+            allocation_base, (uint32_t)bitmap_size);
+        if (frame == nullptr) {
+            return nullptr;
+        }
+        frame->width = width;
+        frame->height = height;
+        frame->current_frame = 0;
+        frame->frame_count = 1;
+        frame->loop_frame = 0;
+        frame->keyframe_interval = 0;
+        frame->unknown_0xa = 0;
+        frame->flags = (undefined1)ANIMATION_DRAW_MODE_BITMAP;
+        Set_Animation_Frame_Offset_(frame, 0, kBitmapFrameDataOffset);
+        uint8_t* out_pixels = (uint8_t*)frame + kBitmapFrameDataOffset;
+        for (int32_t i = 0; i < (int32_t)width * height; ++i) {
+            out_pixels[i] = 0;
+        }
+
+        // Remap table, built lazily per source index. Index 0 stays
+        // 0 (the transparency anchor, like the tool). A source
+        // index with no close hue in the installed palette fails
+        // the whole load.
+        int16_t remap[256];
+        for (int i = 0; i < 256; ++i) {
+            remap[i] = -1;
+        }
+        remap[0] = 0;
+        auto remap_index = [&](uint8_t source) -> int16_t {
+            if (remap[source] >= 0) {
+                return remap[source];
+            }
+            const uint8_t* rgb = colony_palette[source];
+            int32_t best = 0;
+            int32_t best_dist_sq = -1;
+            for (int i = 0; i < 256; ++i) {
+                const int32_t dr = (int32_t)rgb[0] - menu_palette[i][0];
+                const int32_t dg = (int32_t)rgb[1] - menu_palette[i][1];
+                const int32_t db = (int32_t)rgb[2] - menu_palette[i][2];
+                const int32_t dist_sq = dr * dr + dg * dg + db * db;
+                if (best_dist_sq < 0 || dist_sq < best_dist_sq) {
+                    best = i;
+                    best_dist_sq = dist_sq;
+                }
+            }
+            if (best_dist_sq > kRemap_Fail_Distance_Sq) {
+                return -1;
+            }
+            remap[source] = (int16_t)best;
+            return remap[source];
+        };
+
+        // Decode frame 0 (RLE, like tools/extract_sprite.py
+        // decode_frame): the frame starts with a 2-byte field,
+        // start_y at offset 2, then (pixel_count, skip) int16 runs
+        // from offset 4. A zero count skips rows; otherwise
+        // pixel_count bytes land at row y, column skip. Runs are
+        // padded to an even byte offset.
+        const uint8_t* stream = payload + frame_offset;
+        const int32_t stream_size = entry_size - (int32_t)frame_offset;
+        if (stream_size < 4) {
+            return nullptr;
+        }
+        const int16_t start_y = (int16_t)Read_U16(stream + 2);
+        int32_t pos = 4;
+        int16_t y = start_y;
+        while (y < height) {
+            if (pos + 4 > stream_size) {
+                return nullptr;
+            }
+            const int16_t pixel_count = Read_I16(stream + pos);
+            const int16_t skip = Read_I16(stream + pos + 2);
+            pos += 4;
+            if (pixel_count == 0) {
+                if (skip <= 0) {
+                    return nullptr;
+                }
+                y = (int16_t)(y + skip);
+                continue;
+            }
+            if (pixel_count < 0 || skip < 0 ||
+                skip + pixel_count > width || y < 0 || y >= height ||
+                pos + pixel_count > stream_size) {
+                return nullptr;
+            }
+            uint8_t* dst = out_pixels + (int32_t)y * width + skip;
+            for (int16_t i = 0; i < pixel_count; ++i) {
+                const int16_t target = remap_index(stream[pos + i]);
+                if (target < 0) {
+                    return nullptr;
+                }
+                dst[i] = (uint8_t)target;
+            }
+            pos += pixel_count;
+            if (pos & 1) {
+                ++pos;
+            }
+        }
+        return frame;
+    }
+
+    void Draw_Sprite_Frame_Region(const s_animation_header* frame,
+        int16_t src_x, int16_t src_y, int16_t width, int16_t height,
+        int16_t dst_x, int16_t dst_y) {
+        if (frame == nullptr || frame->width <= 0 || frame->height <= 0 ||
+            width <= 0 || height <= 0 || src_x < 0 || src_y < 0 ||
+            src_x + width > frame->width ||
+            src_y + height > frame->height) {
+            return;
+        }
+        const uint8_t* pixels = Frame_Pixels(frame);
+        for (int16_t row = 0; row < height; ++row) {
+            Blit_Row(pixels, frame->width, src_x, (int16_t)(src_y + row),
+                width, dst_x, (int16_t)(dst_y + row));
         }
     }
 } // namespace sprite_art
