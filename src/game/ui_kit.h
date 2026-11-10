@@ -173,6 +173,11 @@ namespace ui_kit {
         void Draw_Three_Slice(int16_t x, int16_t y, int16_t width,
             int16_t left_slice, int16_t middle_column,
             int16_t right_slice) const;
+        // Draws a sub-rectangle of the frame at (dst_x, dst_y): the
+        // (src_x, src_y, width, height) region of its pixels.
+        // Nothing when the frame is null or the region is outside it.
+        void Draw_Region(int16_t src_x, int16_t src_y, int16_t width,
+            int16_t height, int16_t dst_x, int16_t dst_y) const;
 
       private:
         const s_animation_header* frame_ = nullptr;
@@ -474,6 +479,17 @@ namespace ui_kit {
         // The RETURN button's derived frames (see
         // Image_Button_Frames).
         virtual ui_kit::Image_Button_Frames Return_Frames() const = 0;
+        // The colony screen's baked background (640x480), for
+        // screens that render on it instead of the kit's drawn
+        // frame: the colony background is the base, the screen's
+        // content draws on top of it. Null when the theme carries
+        // no background (the screen falls back to the kit frame).
+        // The colony theme loads it from the game data at run time
+        // (sprite_art::Load_Colony_Background); other themes
+        // return null.
+        virtual ui_kit::Frame Background() const {
+            return Frame();
+        }
     };
 
     // The colony look: derived COLSUM sort-button frames, font
@@ -496,7 +512,8 @@ namespace ui_kit {
             Frame population_normal, Frame population_active,
             Frame food_normal, Frame food_active,
             Frame return_normal, Frame return_pressed,
-            const s_colors& title_colors);
+            const s_colors& title_colors,
+            Frame background = Frame());
         const Font& Tab_Font() const override;
         const Font& Header_Font() const override;
         ui_kit::Tab_Frames Tab_Frames() const override;
@@ -509,6 +526,7 @@ namespace ui_kit {
         ui_kit::List_Style List_Style() const override;
         ui_kit::Button_Style Button_Style() const override;
         ui_kit::Image_Button_Frames Return_Frames() const override;
+        ui_kit::Frame Background() const override;
         int16_t Tab_Padding() const override;
         int16_t Tab_Gap() const override;
         int16_t Tab_Height() const override;
@@ -543,6 +561,10 @@ namespace ui_kit {
         Frame tab_active_[3];
         Frame return_normal_;
         Frame return_pressed_;
+        // The colony screen's baked background (COLSUM.LBX entry 0,
+        // remapped to the menu palette at run time). Null when it
+        // failed to load; the screen falls back to the kit frame.
+        Frame background_;
     };
 
     // Loads the colony theme's frames (the three derived sort-tab
