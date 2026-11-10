@@ -528,23 +528,20 @@ namespace SETTINGS_SCREEN {
             return visible - (int)g_state.visible_rows.size();
         }
 
-        // Maximum first-visible-row index on the current tab: 0
-        // when everything fits, otherwise the top row of the last
-        // window. Mirrors the colony's `num_colonies - 10` bound.
+        // Maximum first-visible-row index on the current tab: the
+        // kit scroll model (game/ui_kit.h: Scroll_Bar), the
+        // colony's `num_colonies - 10` bound.
         int Max_Scroll() {
-            const int count = Visible_Count();
-            if (count <= ROWS_PER_PAGE) {
-                return 0;
-            }
-            return count - ROWS_PER_PAGE;
+            return ui_kit::Scroll_Bar::Max_Scroll(Visible_Count(),
+                ROWS_PER_PAGE);
         }
 
         // Derive the current tab's first visible row from its
-        // slider position, mirroring COLSUM::Update_First: the
-        // slider is inverted, so the top row is the maximum minus
-        // the slider. Clamps the slider into range (the field
-        // system also clamps it, but the count can shrink under it
-        // when MORE toggles or the category changes).
+        // slider position, the kit scroll model (COLSUM's inverted
+        // slider: the top row is the maximum minus the slider).
+        // Clamps the slider into range (the field system also
+        // clamps it, but the count can shrink under it when MORE
+        // toggles or the category changes).
         void Sync_Scroll() {
             const int max_scroll = Max_Scroll();
             int16_t& slider = g_state.slider_position[g_state.category];
@@ -554,7 +551,9 @@ namespace SETTINGS_SCREEN {
             if (slider > max_scroll) {
                 slider = (int16_t)max_scroll;
             }
-            g_state.scroll_top[g_state.category] = max_scroll - slider;
+            g_state.scroll_top[g_state.category] =
+                ui_kit::Scroll_Bar::Top_From_Slider(slider,
+                    Visible_Count(), ROWS_PER_PAGE);
         }
 
         // First visible row on the current tab (after Sync_Scroll).
@@ -562,50 +561,23 @@ namespace SETTINGS_SCREEN {
             return g_state.scroll_top[g_state.category];
         }
 
-        // Colony-list scrollbar thumb, mirroring colsum.cpp's
-        // Draw_Bar_Indicator: a filled bar with a bright top/left
-        // edge and a dark bottom/right edge, in the theme's button
-        // colours (the scrollbar itself is element 5's; only its
-        // colours come from the theme, so the kit owns them once).
-        // The thumb spans the fraction of the list that is
-        // visible, at least 8 px tall so it stays grabbable. Only
-        // drawn when the list is longer than the window. The track
-        // is the layout's: first row top to last row bottom.
+        // Colony-list scrollbar, the kit's Scroll_Bar
+        // (game/ui_kit.h, element 5): colsum's thumb formula, its
+        // bevel edges and its single-dot corner markers, in the
+        // theme's colours, on the layout's track (first row top to
+        // last row bottom). This screen shows the bar only when
+        // the list is longer than the window; colsum's own rule
+        // also draws a full-track thumb at exactly 10, which this
+        // screen omits.
         void Draw_Scroll_Bar(const ui_kit::List_Layout& layout) {
             const int total = Visible_Count();
             if (total <= ROWS_PER_PAGE) {
                 return;
             }
-            const int16_t track_y = layout.scroll_track_y();
-            const int16_t track_h = layout.scroll_track_h();
-            const int top = Scroll_Top();
-            int16_t y1 = (int16_t)(track_y +
-                (track_h * top) / total);
-            int16_t y2 = (int16_t)(track_y +
-                (track_h * (top + ROWS_PER_PAGE)) / total);
-            if (y2 - y1 < 8) {
-                y2 = (int16_t)(y1 + 8);
-                if (y2 > track_y + track_h) {
-                    y2 = (int16_t)(track_y + track_h);
-                    y1 = (int16_t)(y2 - 8);
-                }
-            }
-            const ui_kit::Button_Style style = g_theme->Button_Style();
-            graphics::Fill(SCROLL_X, y1, SCROLL_X + SCROLL_W - 1, y2,
-                style.face);
-            graphics::Fill(SCROLL_X, y1, SCROLL_X + SCROLL_W - 1, y1,
-                style.highlight);
-            graphics::Fill(SCROLL_X, y1, SCROLL_X, y2, style.highlight);
-            graphics::Fill(SCROLL_X, y2, SCROLL_X + SCROLL_W - 1, y2,
-                style.shadow);
-            graphics::Fill(SCROLL_X + SCROLL_W - 1, y1,
-                SCROLL_X + SCROLL_W - 1, y2, style.shadow);
-            // Corner dots marking the track ends, like the colony's.
-            graphics::Fill(SCROLL_X, track_y,
-                SCROLL_X + SCROLL_W - 1, track_y, PANEL_BORDER);
-            graphics::Fill(SCROLL_X, track_y + track_h - 1,
-                SCROLL_X + SCROLL_W - 1,
-                track_y + track_h - 1, PANEL_BORDER);
+            const ui_kit::Scroll_Bar bar(SCROLL_X, SCROLL_W,
+                layout.scroll_track_y(), layout.scroll_track_h(),
+                *g_theme);
+            bar.Draw(Scroll_Top(), total, ROWS_PER_PAGE);
         }
 
         // Rows index for a visible index in a settings category.
