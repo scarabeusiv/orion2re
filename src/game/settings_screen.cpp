@@ -1561,11 +1561,19 @@ namespace SETTINGS_SCREEN {
                     HEADER_Y + HEADER_HEIGHT - 1, list_style.frame_shade);
                 graphics::Fill(x + w - 1, HEADER_Y, x + w - 1,
                     HEADER_Y + HEADER_HEIGHT - 1, list_style.frame_shade);
-                fonts::Set_Font_Style(4, &g_title_colors);
+                // The header-plate labels render in the theme's
+                // display font (Moo2Display, cap 8): the colony's
+                // large display labels are ~14 px per character, and
+                // no engine font renders them at the right width
+                // (real FARMERS 97 px vs style-4 53 px). The bitmap
+                // font inks rows y..y+7, like the engine font it
+                // replaces, so the print y is unchanged; the font
+                // falls back to the style-4 title font when its file
+                // is missing, never a blank label.
+                const ui_kit::Font& header_font = g_theme->Header_Font();
                 const int16_t label_x = (int16_t)(x +
-                    (w - fonts::Get_String_Width(label)) / 2);
-                fonts::Print(label_x, HEADER_Y + 4, label);
-                fonts::Set_Font_Style(4, &g_normal_colors);
+                    (w - header_font.Width(label)) / 2);
+                header_font.Print(label_x, HEADER_Y + 4, label, false);
             };
             draw_header_plate(HEADER_SETTING_X, HEADER_SETTING_W, "SETTING");
             draw_header_plate(HEADER_VALUE_X, HEADER_VALUE_W, "VALUE");
