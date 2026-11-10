@@ -45,6 +45,34 @@ namespace sprite_art {
         const char* state, void* allocation_base);
 
     /**
+     * Extracts the colony screen's baked background (COLSUM.LBX entry 0)
+     * at run time from the user's own game data: decodes its RLE frame,
+     * remaps the entry's embedded colony palette to the currently
+     * installed palette, and returns a 640x480 bitmap frame in the
+     * native layout bitmap::Create_Bitmap_Header produces. The frame
+     * is allocated from `allocation_base` and lives as long as the
+     * pool does (MOX::screen_seg, like the derived frames).
+     * Loading is soft: a missing or malformed LBX entry, or a pixel
+     * with no close hue in the installed palette, returns null and
+     * the caller keeps its previous rendering. The derived .bin
+     * (tools/extract_sprite.py, colony-background) is the same
+     * pixels; this is the run-time path that activates the background
+     * in a fresh build, where no .bin is bundled.
+     */
+    s_animation_header* Load_Colony_Background(void* allocation_base);
+
+    /**
+     * Draws a sub-rectangle of a frame at (dst_x, dst_y): the
+     * (src_x, src_y, width, height) region of the frame's pixels.
+     * Same pixel and clipping rules as Draw_Sprite_Frame (writes
+     * every pixel including index 0). Returns silently when the
+     * frame is null or the region is outside it.
+     */
+    void Draw_Sprite_Frame_Region(const s_animation_header* frame,
+        int16_t src_x, int16_t src_y, int16_t width, int16_t height,
+        int16_t dst_x, int16_t dst_y);
+
+    /**
      * Draws a frame at its native size at (x, y), writing every pixel
      * including index 0. Clipped to the screen (and to the animate clip
      * window when clipping is on). The caller selects the page first

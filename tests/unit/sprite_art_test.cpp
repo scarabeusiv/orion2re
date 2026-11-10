@@ -479,4 +479,46 @@ DOCTEST_TEST_SUITE("sprite art") {
         }
         DOCTEST_CHECK_FALSE(normal_has_orange);
     }
+
+    DOCTEST_TEST_CASE("region draw copies only the requested sub-rectangle") {
+        using namespace test_sprite_art_detail;
+        // 4x3 frame with distinct values per cell.
+        const std::string frame = Make_Frame_Pixels(4, 3,
+            {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+        const auto* header = (const s_animation_header*)frame.data();
+
+        Scoped_Video_Page page;
+        // Middle 2x2 (columns 1..2, rows 0..1) at (10, 20).
+        sprite_art::Draw_Sprite_Frame_Region(header, 1, 0, 2, 2, 10, 20);
+        DOCTEST_CHECK(page.At(10, 20) == 2);
+        DOCTEST_CHECK(page.At(11, 20) == 3);
+        DOCTEST_CHECK(page.At(10, 21) == 6);
+        DOCTEST_CHECK(page.At(11, 21) == 7);
+        // Outside the region the page is untouched.
+        DOCTEST_CHECK(page.At(9, 20) == 0xFF);
+        DOCTEST_CHECK(page.At(12, 20) == 0xFF);
+        DOCTEST_CHECK(page.At(10, 19) == 0xFF);
+        DOCTEST_CHECK(page.At(10, 22) == 0xFF);
+        // A region outside the frame, and a null frame, draw nothing.
+        sprite_art::Draw_Sprite_Frame_Region(header, 3, 0, 2, 2, 10, 20);
+        DOCTEST_CHECK(page.At(10, 20) == 2);
+        sprite_art::Draw_Sprite_Frame_Region(nullptr, 0, 0, 2, 2, 10, 20);
+        DOCTEST_CHECK(page.At(10, 20) == 2);
+    }
+
+    DOCTEST_TEST_CASE("colony background fails soft when the LBX is absent") {
+        using namespace test_sprite_art_detail;
+        // The test VFS mounts only an empty temp dir: there is no
+        // COLSUM.LBX anywhere the game can reach, so the run-time
+        // extraction returns null and the screen falls back to the
+        // kit's drawn frame instead of terminating.
+        Scoped_Test_Directory test_dir;
+        DOCTEST_REQUIRE(vfs::Init(test_dir.root_path().string().c_str()) == 1);
+
+        Scoped_Buffer_Pool pool(1024 * 1024);
+        DOCTEST_CHECK(
+            sprite_art::Load_Colony_Background(pool.payload) == nullptr);
+        DOCTEST_CHECK(
+            sprite_art::Load_Colony_Background(nullptr) == nullptr);
+    }
 } // DOCTEST_TEST_SUITE("sprite art")
