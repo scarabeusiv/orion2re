@@ -67,27 +67,34 @@ namespace SETTINGS_SCREEN {
         //   instead (game/ui_kit.h: Button, Toggle/Cell kinds):
         //   the colony list's value cell, engine-drawn in the
         //   panel's own border/interior colours.
-        // - Category selectors: COLSUM anims[4..10] are real sprites,
-        //   but their labels are baked in (Name, Population, Food,
-        //   ...) and do not match Game Internals / Gameplay / Mods;
-        //   the frame without text is not a separate sprite. The
-        //   derived selector-frame asset is anims[4] with its label
-        //   blanked, stretched to the tab width with the label
-        //   rendered at runtime (game/ui_kit.h: Tab_Bar over the
-        //   colony theme). The two states are different frames, not
-        //   a recolour: frame 0 rests on a flat dark-navy field with
-        //   a grey bevel; frame 1 is the selected tab, a blue
-        //   gradient field (bright at both edges, dark navy in the
-        //   centre) with a blue bevel and a blue-white label -- so
-        //   its middle is resampled to the tab width, not tiled, or
-        //   the gradient would repeat like stripes. The labels are
-        //   font style 2 (the colony tabs' baked labels measure as
-        //   style 2, not the style 4 the rest of this screen uses),
-        //   white at rest and blue-white when active, and the tabs
-        //   sit 1 px apart at y=446, like the colony's sort buttons.
-        //   Both frames are remapped from the colony screen's own
-        //   palette -- the palette embedded in COLSUM.LBX entry 0,
-        //   which animate::Draw_Palette installs before the colony
+        // - Category selectors: COLSUM anims[4..10] are the sort
+        //   tabs' frames (Name, Population, Food, ...), but their
+        //   labels are baked in and do not match Game Internals /
+        //   Gameplay / Mods; the frame without text is not a
+        //   separate sprite. The settings screen's three tabs use
+        //   the first three sort frames, grabbed from the rendered
+        //   colony screen and label-blanked (tools/sprites/
+        //   derive_sort_tabs.py; the screen grab, not an LBX
+        //   extraction, so the frames are the colony's own pixels).
+        //   Each tab draws its own frame in both states, cut into
+        //   three slices at the tab width -- fixed ~20 px ramps on
+        //   each side, one flat face column tiled across the middle
+        //   -- with the label rendered at runtime (game/ui_kit.h:
+        //   Tab_Bar over the colony theme). The two states are
+        //   different frames, not a recolour: frame 0 rests on a
+        //   flat dark-navy field with a grey bevel; frame 1 is the
+        //   selected tab, a blue field (bright at both edges, dark
+        //   navy in the centre) with a blue bevel and a blue-white
+        //   label. The gaps between tabs show the window band's
+        //   recessed channel, not black, like the colony's sort
+        //   strip. The labels are font style 2 (the colony tabs'
+        //   baked labels measure as style 2, not the style 4 the
+        //   rest of this screen uses), white at rest and blue-white
+        //   when active, and the tabs sit 1 px apart at y=446,
+        //   like the colony's sort buttons. The frames are remapped
+        //   from the colony screen's own palette -- the palette
+        //   embedded in COLSUM.LBX entry 0, which
+        //   animate::Draw_Palette installs before the colony
         //   sprites draw -- to the menu palette; see
         //   tools/sprites/README.md.
         // - Star buy buttons (anims[11..20]) are purchase actions,
