@@ -910,6 +910,20 @@ namespace ui_kit {
         // Draws the thumb and the corner dots; nothing when the
         // list fits (see Visible).
         void Draw(int top, int total, int visible) const;
+        // The scroll arrows at the track's ends, like COLSUM's
+        // (anims[2]/[3]): the up-arrow above the track, the
+        // down-arrow below it. The arrows are code-drawn triangles
+        // in the theme's colours, not the baked sprites: the
+        // sprites' pressed frames carry a vivid colony blue with
+        // no close hue in the menu palette, and the baked arrows
+        // leave wrong pixels against a kit-drawn strip. The
+        // up-arrow sits 25 px above the track (y 15..34 for the
+        // colony's track), the down-arrow 5 px below its bottom
+        // (y 316..337); both are 10 px wide, starting 2 px left
+        // of the strip. The arrows always draw, even when the
+        // list fits: the colony shows both arrows with a single
+        // colony.
+        void Draw_Arrows() const;
 
       private:
         int16_t x_;

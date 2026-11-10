@@ -2353,6 +2353,74 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(test::fakes::g_fill_calls.empty());
     }
 
+    DOCTEST_TEST_CASE("scroll bar draws both arrows as triangles in the colony's positions") {
+        using namespace test_ui_kit_detail;
+        Fake_Theme theme;
+        // The colony's track: x 621..626, y 40..311 (271, the
+        // strip between the scroll arrows at y 15..34 and
+        // y 316..337).
+        const ui_kit::Scroll_Bar bar(621, 6, 40, 271, theme);
+        test::fakes::Reset_All_();
+        bar.Draw_Arrows();
+        // Twenty up rows and twenty-two down rows, three fills
+        // each (bright row, left edge, right edge), plus one full
+        // edge row for each tip and each base.
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 130);
+        // Every fill stays inside the arrow strip (x 619..628)
+        // and inside the two arrow bands (y 15..34, y 316..337):
+        // no stray pixels beside the arrows.
+        for (const test::fakes::Fill_Call& fill :
+            test::fakes::g_fill_calls) {
+            DOCTEST_CHECK(fill.x1 >= 619);
+            DOCTEST_CHECK(fill.x2 <= 628);
+            // Doctest forbids || inside a check, so the band and
+            // colour tests are computed first, then checked.
+            const bool in_arrow_band = (fill.y1 >= 15 && fill.y1 <= 34) ||
+                (fill.y1 >= 316 && fill.y1 <= 337);
+            DOCTEST_CHECK(in_arrow_band);
+            const bool arrow_color = fill.color == 249 ||
+                fill.color == 111;
+            DOCTEST_CHECK(arrow_color);
+        }
+        // The up-arrow's tip row: a 2 px bright row at x 623..624,
+        // both pixels edged.
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 15);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 623);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x2 == 624);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 249);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[60].y1 == 15);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[60].x1 == 623);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[60].x2 == 624);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[60].color == 111);
+        // The up-arrow's base row: the full 10 px, x 619..628.
+        DOCTEST_CHECK(test::fakes::g_fill_calls[57].y1 == 34);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[57].x1 == 619);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[57].x2 == 628);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[57].color == 249);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[61].y1 == 34);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[61].x1 == 619);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[61].x2 == 628);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[61].color == 111);
+        // The down-arrow's base row: the full 10 px, x 619..628.
+        DOCTEST_CHECK(test::fakes::g_fill_calls[62].y1 == 316);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[62].x1 == 619);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[62].x2 == 628);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[62].color == 249);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[128].y1 == 316);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[128].x1 == 619);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[128].x2 == 628);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[128].color == 111);
+        // The down-arrow's tip row: a 2 px bright row at x 623..624.
+        DOCTEST_CHECK(test::fakes::g_fill_calls[125].y1 == 337);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[125].x1 == 623);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[125].x2 == 624);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[125].color == 249);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[129].y1 == 337);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[129].x1 == 623);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[129].x2 == 624);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[129].color == 111);
+    }
+
     DOCTEST_TEST_CASE("tab bar places fixed-size sort tabs at the colony's positions") {
         using namespace test_ui_kit_detail;
         Fake_Theme theme;
