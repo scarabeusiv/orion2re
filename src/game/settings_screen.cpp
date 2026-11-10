@@ -59,14 +59,14 @@ namespace SETTINGS_SCREEN {
         // Everything else stays engine-drawn Fill/Box in
         // menu-palette indices, the same technique the game itself
         // uses for its chrome:
-        // - Border, list panel, header plates, description box,
+        // - Border, list panel, header plates, info area,
         //   scrollbar track/thumb: baked into the 640x480
         //   background (anims[0]); colsum.cpp draws no boxes
         //   itself, so there is no separable sprite for any of them.
         //   The toggles are the colony's BUILDING toggle (the
         //   derived buy-button frames, game/ui_kit.h: Button,
-        //   Toggle kind); the dropdown values are plain text in the
-        //   BUILDING column, like the colony's building name.
+        //   Toggle kind); the dropdowns are framed bevelled
+        //   controls in the BUILDING column, sized to their value.
         // - Category selectors: COLSUM anims[4..10] are the sort
         //   tabs' frames (Name, Population, Food, ...), but their
         //   labels are baked in and do not match Game Internals /
@@ -188,18 +188,16 @@ namespace SETTINGS_SCREEN {
         constexpr int16_t TOGGLE_X = 599;
         constexpr int16_t TOGGLE_W = 19;
         constexpr int16_t TOGGLE_H = 29;
-        // Description box: spans the whole width of the window,
-        // like the colony screen's bottom info area — the selected
-        // row's description lives here, with a "Requires restart."
-        // line for the settings it applies to and the status line
-        // below it. No permanent restart legend anywhere else.
-        // Its top comes from the kit layout (4 px below the panel,
-        // the colony's list-to-info gap) and its bottom sits
-        // the theme's info-to-bar gap above the bottom bar, so the
-        // box fills the space between the list and the bar. The
-        // text keeps a 6 px top pad inside the box. Its x and width
-        // come from the window frame's content rect, at the draw site.
-        constexpr int16_t HELP_PAD_TOP = 6;
+        // Info area: the colony's bottom-left info box, not a
+        // whole-width box -- the selected row's description lives
+        // here, with a "Requires restart." line for the settings
+        // it applies to and the status line below it. No permanent
+        // restart legend anywhere else. Its top comes from the kit
+        // layout (4 px below the panel, the colony's list-to-info
+        // gap) and its bottom sits the theme's info-to-bar gap
+        // above the bottom bar. The text starts a pixel below the
+        // top, where the colony's planet text starts, and wraps at
+        // the icons box's right edge (INFO_TEXT_WIDTH).
         constexpr int16_t HELP_LINE_HEIGHT = 15;
         // Bottom bar: the category selectors on the left, MORE
         // and RETURN side by side on the right, all on one line —
@@ -219,7 +217,14 @@ namespace SETTINGS_SCREEN {
         constexpr int16_t SHOW_MORE_W = 69;
         constexpr int16_t RETURN_X = 548;
         constexpr int16_t RETURN_W = 76;
-        constexpr int16_t TEXT_WIDTH = 608;
+        // The info area's text width: the description lives in the
+        // colony's bottom-left info box (the planet-info and icons
+        // regions, x 19..369), not across the whole window -- so
+        // the text wraps at the icons box's right edge, like the
+        // colony's planet text stays inside its own box. The
+        // galaxy-map and Reserve regions stay empty, like the
+        // colony's info area leaves them to their own content.
+        constexpr int16_t INFO_TEXT_WIDTH = 350;
 
         // Colony chrome, in menu-palette indices (MAINMENU.LBX
         // entries 1/2 palette: 230-249 is a blue-grey ramp).
@@ -290,8 +295,9 @@ namespace SETTINGS_SCREEN {
         // colony's BUILDING toggle (the derived buy-button frames:
         // grey off, blue on with its white starburst), disabled is
         // the bare cell with no fill, like the colony's no-button
-        // state. Dropdowns are plain text in the BUILDING column
-        // with a "v" chevron, like the colony's building name.
+        // state. Dropdowns are framed bevelled controls in the
+        // BUILDING column, sized to their value with a chevron --
+        // plain text with a "v" does not read as a control.
 
         enum e_apply_result {
             APPLY_LIVE,
@@ -466,19 +472,98 @@ namespace SETTINGS_SCREEN {
                 ROWS_PER_PAGE, g_theme->Spacing());
         }
 
-        // The list's columns, from the header plates: SETTING /
-        // VALUE, like the colony list's NAME / FARMERS / ... The
-        // divider between them follows the SETTING plate's right
-        // edge, like the colony's dividers follow their columns.
-        // Only call once g_theme is built (Settings_Screen builds
-        // it before any field rebuild or draw).
-        ui_kit::Column_Layout Make_List_Columns(
+        // Paint out the colony background's baked list grid in the
+        // list area: the background art carries the colony listing's
+        // grid -- vertical dividers at the colony's column grooves
+        // (98/233/375/509, colsum.cpp) and a dithered bevel band at
+        // the bottom of every row. The settings rows are text lines,
+        // not cells, so the grid goes: the panel's own interior is
+        // copied over it from the background next to it (the
+        // interior is flat with a sparse speckle, so a nearby copy
+        // is seamless). The bands run in segments between the
+        // grooves, with the groove columns through each band
+        // painted from the interior beside them; the dividers run
+        // in segments between the bands. No copy ever samples a
+        // band row as its source: a band's own rows are bevel,
+        // not interior.
+        // The last row keeps its band: it is the panel's footing,
+        // like the colony's. Only call on the baked background:
+        // without one there is no baked grid to paint out.
+        void Paint_Out_Baked_Grid(const ui_kit::Frame& background,
             const ui_kit::List_Layout& layout) {
-            return ui_kit::Column_Layout(
-                {ui_kit::Column{HEADER_SETTING_X, HEADER_SETTING_W},
-                 ui_kit::Column{HEADER_VALUE_X, HEADER_VALUE_W}},
-                layout.first_row_y(),
-                (int16_t)(layout.panel_y() + layout.panel_h() - 1));
+            // The colony's column grooves.
+            static constexpr int16_t kDividers[] = {98, 233, 375, 509};
+            static constexpr int16_t kDivider_W = 3;
+            // The bevel band at a row's bottom: 6 rows tall
+            // (bottom - 5 .. bottom), copied from the 6 interior
+            // rows just above it.
+            static constexpr int16_t kBand_H = 6;
+            // The bands, in x segments between the dividers: the
+            // panel interior from the left border to the right
+            // bevel (x 12..617), split at each groove.
+            static constexpr int16_t kBand_Segments[][2] = {
+                {12, 97}, {101, 232}, {236, 374}, {378, 508},
+                {512, 617},
+            };
+            for (int index = 0; index + 1 < ROWS_PER_PAGE; ++index) {
+                const int16_t bottom = (int16_t)(
+                    layout.row_y(index) + layout.row_height() - 1);
+                const int16_t band_top = (int16_t)(bottom - kBand_H + 1);
+                const int16_t src_top = (int16_t)(band_top - kBand_H);
+                for (const auto& segment : kBand_Segments) {
+                    background.Draw_Region(segment[0], src_top,
+                        (int16_t)(segment[1] - segment[0] + 1), kBand_H,
+                        segment[0], band_top);
+                }
+                // The grooves through this band: the band paint
+                // above copies only the segments between the
+                // grooves, so the groove columns keep their baked
+                // pixels here. Paint them from the interior beside
+                // them, six rows up -- the band's own rows are
+                // bevel, not interior, so the source is the
+                // interior rows just above the band.
+                for (const int16_t divider : kDividers) {
+                    background.Draw_Region((int16_t)(divider - 8),
+                        src_top, kDivider_W, kBand_H,
+                        divider, band_top);
+                }
+            }
+            // The dividers, in y segments between the bands: from
+            // just below the header plates to the last painted
+            // band's top, split at each band (the last segment ends
+            // where the last row's band -- the footing -- begins).
+            // The grooves through the bands are painted above, so
+            // these segments skip the band rows: the source there
+            // would sample the bevel itself. The source is the
+            // interior 8 px left of the groove.
+            int16_t segment_top =
+                (int16_t)(HEADER_Y + HEADER_HEIGHT);
+            for (int index = 0; index + 1 < ROWS_PER_PAGE; ++index) {
+                const int16_t bottom = (int16_t)(
+                    layout.row_y(index) + layout.row_height() - 1);
+                const int16_t segment_bottom =
+                    (int16_t)(bottom - kBand_H);
+                for (const int16_t divider : kDividers) {
+                    background.Draw_Region((int16_t)(divider - 8),
+                        segment_top, kDivider_W,
+                        (int16_t)(segment_bottom - segment_top + 1),
+                        divider, segment_top);
+                }
+                segment_top = (int16_t)(bottom + 1);
+            }
+            // The last segment: below the last painted band to
+            // the footing (the last row's band top - 1).
+            const int16_t last_bottom = (int16_t)(
+                layout.row_y(ROWS_PER_PAGE - 1) +
+                layout.row_height() - 1);
+            const int16_t last_segment_bottom =
+                (int16_t)(last_bottom - kBand_H);
+            for (const int16_t divider : kDividers) {
+                background.Draw_Region((int16_t)(divider - 8),
+                    segment_top, kDivider_W,
+                    (int16_t)(last_segment_bottom - segment_top + 1),
+                    divider, segment_top);
+            }
         }
 
         // MORE button geometry follows the theme's derived frame
@@ -620,12 +705,17 @@ namespace SETTINGS_SCREEN {
             return truncated + "...";
         }
 
-        // Greedy word wrap into at most two lines of the given pixel
-        // width. Anything past the second line is truncated with "...".
+        // Greedy word wrap into at most three lines of the given pixel
+        // width. Anything past the third line is truncated with "...".
+        // The info box fits three description lines plus the restart
+        // note and the status line in its height.
         void Wrap_Text(const std::string& text, int16_t max_width,
-            std::string* line1, std::string* line2) {
+            std::string* line1, std::string* line2, std::string* line3) {
             *line1 = "";
             *line2 = "";
+            *line3 = "";
+            std::string* lines[3] = {line1, line2, line3};
+            int line = 0;
             std::string current;
             size_t word_start = 0;
             while (word_start <= text.size()) {
@@ -639,11 +729,12 @@ namespace SETTINGS_SCREEN {
                     current = candidate;
                 } else if (current.empty()) {
                     current = Truncate_To_Width(word, max_width);
-                } else if (line1->empty()) {
-                    *line1 = current;
+                } else if (line < 2) {
+                    *lines[line] = current;
+                    ++line;
                     current = word;
                 } else {
-                    *line2 = Truncate_To_Width(current, max_width);
+                    *lines[line] = Truncate_To_Width(current, max_width);
                     return;
                 }
                 if (word_end == text.size()) {
@@ -651,11 +742,7 @@ namespace SETTINGS_SCREEN {
                 }
                 word_start = word_end + 1;
             }
-            if (line1->empty()) {
-                *line1 = current;
-            } else {
-                *line2 = current;
-            }
+            *lines[line] = current;
         }
 
         std::string Join_Ids(const std::vector<std::string>& ids) {
@@ -1567,21 +1654,27 @@ namespace SETTINGS_SCREEN {
             fonts::Set_Font_Style(4, &g_normal_colors);
 
             // List panel, like the colony list: the kit draws the
-            // dark interior, the thin grey border and the framed
-            // row slots -- light bevel lines, like the colony's
-            // cells -- with 1 px of empty background between them,
-            // and the column divider between SETTING and VALUE,
-            // like the colony list's grooves between its columns.
+            // dark interior, the thin grey border and the panel
+            // footing, with 1 px of empty background between them.
+            // The rows are text lines on the panel, not framed
+            // cells: no per-row boxes and no column dividers --
+            // the colony's squares were illustrations of the
+            // style, not boxes to draw on the settings. The baked
+            // grid (the background's own dividers and row bands)
+            // is painted out with the panel's own interior, so the
+            // rows read as text lines on the baked texture.
             const ui_kit::List_Layout layout = Make_List_Layout();
             // On the baked background the rows show the colony
             // listing's own bitmap texture (the baked panel), not a
             // flat fill: skip the panel's interior fill and draw
-            // only the border and the row frame lines on top of it.
-            // Without a background (the kit-frame fallback) the
-            // fill is the panel.
+            // only the border, the footing and the right bevel on
+            // top of it. Without a background (the kit-frame
+            // fallback) the fill is the panel.
             ui_kit::Draw_List_Background(*g_theme, layout,
-                background.Is_Null());
-            ui_kit::Draw_List_Columns(*g_theme, Make_List_Columns(layout));
+                background.Is_Null(), false);
+            if (!background.Is_Null()) {
+                Paint_Out_Baked_Grid(background, layout);
+            }
             // The panel fill above covers the scrollbar strip with
             // the panel interior. On the baked background the strip
             // is the colony's scrollbar track (a black channel with
@@ -1634,8 +1727,15 @@ namespace SETTINGS_SCREEN {
             // there as thin mid-grey strips.
             const ui_kit::List_Style list_style = g_theme->List_Style();
             if (!background.Is_Null()) {
+                // The band fill stops 3 px short of the scrollbar
+                // strip: the colony's up-arrow sits in the strip at
+                // the plates' height (x 619..628, y 15..34), and
+                // the fill used to cover it. The plates' side
+                // slivers (x 11..12, 616..618) and the inter-plate
+                // gap are still covered; the one remaining pixel
+                // column (x 619) is the baked plate's own edge.
                 graphics::Fill(frame.content_x(), HEADER_Y,
-                    frame.content_right() - 1,
+                    (int16_t)(SCROLL_X - 3),
                     HEADER_Y + HEADER_HEIGHT - 1, PANEL_INTERIOR);
             }
             const auto draw_header_plate = [&](int16_t x, int16_t w, const char* label) {
@@ -1741,16 +1841,17 @@ namespace SETTINGS_SCREEN {
                                         : ui_kit::Button_State::Rest);
                     toggle.Draw();
                 } else if (row.widget == config::SETTINGS_WIDGET_DROPDOWN) {
-                    // Dropdown: the value as plain text in the
-                    // BUILDING column, like the colony's building
-                    // name, with a "v" chevron marking it as a
-                    // popup; blue while its popup is open (the
-                    // Resolution popup). No bordered cell: the
-                    // colony's values are bare text. The row click
-                    // (Handle_Row_Click) still opens the popup.
-                    // The list itself is the shared
-                    // fields::Get_List_Field picker; its frame is
-                    // that picker's, not the settings screen's.
+                    // Dropdown: a real framed control in the
+                    // BUILDING column -- a colony-style bevelled
+                    // button showing the value with a chevron --
+                    // not plain text. The row click
+                    // (Handle_Row_Click) still opens the popup (the
+                    // shared fields::Get_List_Field picker, or the
+                    // Resolution popup for the Resolution row); the
+                    // control is the trigger, sized to its value in
+                    // the BUILDING name's font (style 1), blue
+                    // while its popup is open (the Resolution
+                    // popup redraws the screen behind it).
                     std::string value_text;
                     if (Is_Resolution_Row(row)) {
                         int width = 0;
@@ -1765,18 +1866,58 @@ namespace SETTINGS_SCREEN {
                             : "?";
                     }
                     // Style 1, the colony BUILDING name's font:
-                    // style 4's "overview v" is ~90 px and truncates
+                    // style 4's "overview" is ~90 px and truncates
                     // in the 86 px BUILDING column, while style 1
                     // fits it like the colony's building names.
-                    fonts::Set_Font_Style(1,
-                        (Is_Resolution_Row(row) &&
-                            g_state.resolution_popup_open)
-                            ? &g_colony_highlight_colors
-                            : &g_colony_dim_colors);
+                    fonts::Set_Font_Style(1, &g_colony_dim_colors);
+                    const int16_t chevron_w =
+                        fonts::Get_String_Width("v");
+                    const int16_t chrome =
+                        (int16_t)(4 + 4 + chevron_w + 4);
                     value_text = Truncate_To_Width(value_text,
-                        VALUE_WIDTH - fonts::Get_String_Width(" v"));
-                    value_text += " v";
-                    fonts::Print(VALUE_X, text_y, value_text.c_str());
+                        (int16_t)(VALUE_WIDTH - chrome));
+                    const int16_t text_w =
+                        fonts::Get_String_Width(value_text.c_str());
+                    const int16_t cell_w =
+                        (int16_t)(text_w + chrome);
+                    const int16_t cell_y = (int16_t)(y + 5);
+                    const int16_t cell_h = 20;
+                    const bool popup_open = Is_Resolution_Row(row) &&
+                        g_state.resolution_popup_open;
+                    const ui_kit::Button_Style button_style =
+                        g_theme->Button_Style();
+                    graphics::Fill(VALUE_X, cell_y,
+                        (int16_t)(VALUE_X + cell_w - 1),
+                        (int16_t)(cell_y + cell_h - 1),
+                        popup_open ? button_style.primary_face
+                                   : button_style.cell_interior);
+                    // Raised bevel: light on the top and left, shade
+                    // on the bottom and right, like the header
+                    // plates.
+                    graphics::Fill(VALUE_X, cell_y,
+                        (int16_t)(VALUE_X + cell_w - 1), cell_y,
+                        list_style.frame_light);
+                    graphics::Fill(VALUE_X, cell_y, VALUE_X,
+                        (int16_t)(cell_y + cell_h - 1),
+                        list_style.frame_light);
+                    graphics::Fill(VALUE_X,
+                        (int16_t)(cell_y + cell_h - 1),
+                        (int16_t)(VALUE_X + cell_w - 1),
+                        (int16_t)(cell_y + cell_h - 1),
+                        list_style.frame_shade);
+                    graphics::Fill(
+                        (int16_t)(VALUE_X + cell_w - 1), cell_y,
+                        (int16_t)(VALUE_X + cell_w - 1),
+                        (int16_t)(cell_y + cell_h - 1),
+                        list_style.frame_shade);
+                    fonts::Set_Font_Style(1,
+                        popup_open ? &g_light_text_colors
+                                   : &g_colony_dim_colors);
+                    fonts::Print((int16_t)(VALUE_X + 4), text_y,
+                        value_text.c_str());
+                    fonts::Print(
+                        (int16_t)(VALUE_X + cell_w - 4 - chevron_w),
+                        text_y, "v");
                 } else {
                     // Info and edit values: text in the colony dim
                     // color, left-aligned in the BUILDING column,
@@ -1799,37 +1940,29 @@ namespace SETTINGS_SCREEN {
 
             Draw_Scroll_Bar(layout);
 
-            // Description box, spanning the whole width of the
-            // window like the colony screen's bottom info area
-            // (the "Large Terran" panel): the selected row's
-            // description, a "Requires restart." line for the
-            // settings it applies to, and the status line below.
-            // There is no permanent restart legend: the restart
-            // note lives here, only for the selected setting. The
-            // box top comes from the layout (4 px below the last
-            // row) and its bottom sits the theme's info-to-bar gap
-            // above the bottom bar.
+            // Info area: the colony's bottom-left info box, not a
+            // whole-width box -- the selected row's description
+            // lives here on the baked background (black, like the
+            // colony's planet-info box), with a "Requires
+            // restart." line for the settings it applies to and
+            // the status line below it. No box, no border: the
+            // colony's info area has none. The strip between the
+            // list panel and here, and between here and the bottom
+            // bar, is the baked background showing through, like
+            // the colony's. The planet/icons divider strip
+            // (x 93..101) is painted out in the text band, so the
+            // text reads as one block across the planet-info and
+            // icons regions; the galaxy-map and Reserve strips
+            // stay, like the colony's. There is no permanent
+            // restart legend: the restart note lives here, only
+            // for the selected setting.
             const ui_kit::Spacing spacing = g_theme->Spacing();
             const int16_t desc_y = layout.info_y();
             const int16_t desc_bottom =
                 (int16_t)(Bottom_Bar_Y() - 1 - spacing.info_to_bar);
-            const int16_t desc_h = (int16_t)(desc_bottom - desc_y + 1);
-            // On the baked background, the strip between the list
-            // panel and the description box shows the colony's info
-            // area; the settings screen leaves it black, like the
-            // fallback fill does.
             if (!background.Is_Null()) {
-                const int16_t panel_bottom =
-                    (int16_t)(layout.panel_y() + layout.panel_h() - 1);
-                graphics::Fill(frame.content_x(),
-                    (int16_t)(panel_bottom + 1),
-                    frame.content_right() - 1, (int16_t)(desc_y - 1), 0);
+                graphics::Fill(93, desc_y, 101, desc_bottom, 0);
             }
-            graphics::Fill(frame.content_x(), desc_y,
-                frame.content_right() - 1, desc_y + desc_h - 1,
-                PANEL_INTERIOR);
-            graphics::Box(frame.content_x(), desc_y, frame.content_w(),
-                desc_h, 1, PANEL_BORDER);
             std::string help_text;
             bool restart_required = false;
             if (mods_tab && Is_Mod_Row(g_state.selected)) {
@@ -1841,27 +1974,40 @@ namespace SETTINGS_SCREEN {
                 help_text = selected_row.description;
                 restart_required = selected_row.restart_required;
             }
+            // Style 4 is set before wrapping: the wrap measures
+            // in the font it prints in (the row loop leaves style
+            // 1 set for values).
+            fonts::Set_Font_Style(4, &g_colony_dim_colors);
             std::string help_line1;
             std::string help_line2;
-            Wrap_Text(help_text, TEXT_WIDTH, &help_line1, &help_line2);
-            fonts::Set_Font_Style(4, &g_colony_dim_colors);
-            const int16_t help_y = (int16_t)(desc_y + HELP_PAD_TOP);
-            fonts::Print(TITLE_X, help_y, help_line1.c_str());
+            std::string help_line3;
+            Wrap_Text(help_text, INFO_TEXT_WIDTH,
+                &help_line1, &help_line2, &help_line3);
+            // The text starts where the colony's planet text
+            // starts (a pixel below the info area's top), and the
+            // lines stack directly: the status sits under the
+            // last used line, so no blank line opens up when the
+            // description is short.
+            const int16_t help_y = (int16_t)(desc_y + 1);
+            int16_t next_y = help_y;
+            fonts::Print(TITLE_X, next_y, help_line1.c_str());
+            next_y = (int16_t)(next_y + HELP_LINE_HEIGHT);
             if (!help_line2.empty()) {
-                fonts::Print(TITLE_X, help_y + HELP_LINE_HEIGHT, help_line2.c_str());
+                fonts::Print(TITLE_X, next_y, help_line2.c_str());
+                next_y = (int16_t)(next_y + HELP_LINE_HEIGHT);
             }
-            // The status sits directly under the restart note when
-            // one is shown, so no blank line opens up otherwise.
-            int16_t status_y = (int16_t)(help_y + 2 * HELP_LINE_HEIGHT);
+            if (!help_line3.empty()) {
+                fonts::Print(TITLE_X, next_y, help_line3.c_str());
+                next_y = (int16_t)(next_y + HELP_LINE_HEIGHT);
+            }
             if (restart_required) {
                 fonts::Set_Font_Style(4, &g_colony_highlight_colors);
-                fonts::Print(TITLE_X, help_y + 2 * HELP_LINE_HEIGHT,
-                    "Requires restart.");
-                status_y = (int16_t)(help_y + 3 * HELP_LINE_HEIGHT);
+                fonts::Print(TITLE_X, next_y, "Requires restart.");
+                next_y = (int16_t)(next_y + HELP_LINE_HEIGHT);
             }
             fonts::Set_Font_Style(4, &g_colony_dim_colors);
-            fonts::Print(TITLE_X, status_y,
-                Truncate_To_Width(g_state.status, TEXT_WIDTH).c_str());
+            fonts::Print(TITLE_X, next_y,
+                Truncate_To_Width(g_state.status, INFO_TEXT_WIDTH).c_str());
 
             // Bottom bar: the category selectors on the left, like
             // the colony summary's sort buttons (Name / Population
@@ -1872,20 +2018,36 @@ namespace SETTINGS_SCREEN {
             // RETURN an Image button, like the colony RETURN. A
             // button held down draws its pressed state until
             // release.
-            // On the baked background, the bottom bar shows the
-            // colony's SORT band and the strip between the
-            // description box and the bar shows the colony's info
-            // area; the settings screen leaves both black, like the
-            // fallback fill does, and the tabs, MORE and RETURN
-            // draw on top of the bar.
+            // The bar is the colony's blue SORT band showing
+            // through from the baked background -- no black fill.
+            // The baked SORT label and sort icon sit under the
+            // SETTINGS label, so they are painted out first with
+            // the band's own background, tiled from the clean
+            // strip beside the icon (x 76..87, one vertical
+            // dither profile, identical in every column there);
+            // the first tab covers the baked Name tab, MORE and
+            // RETURN cover the rest, and the gaps between the tabs
+            // show the band through the kit's gap fills, like the
+            // colony's. That is also why the frame reads as going
+            // around the whole screen now: the black fill used to
+            // cut the band off from the frame at the bar's height.
             if (!background.Is_Null()) {
-                graphics::Fill(frame.content_x(),
-                    (int16_t)(desc_bottom + 1),
-                    frame.content_right() - 1,
-                    (int16_t)(Bottom_Bar_Y() - 1), 0);
-                graphics::Fill(frame.content_x(), Bottom_Bar_Y(),
-                    frame.content_right() - 1,
-                    (int16_t)(Bottom_Bar_End() - 1), 0);
+                const ui_kit::Tab_Bar bar_for_patch =
+                    Make_Tab_Bar(true);
+                const int16_t patch_x0 =
+                    (int16_t)(frame.content_x() - 4);
+                const int16_t patch_x1 = bar_for_patch.tabs().empty()
+                    ? (int16_t)(SHOW_MORE_X - 9)
+                    : (int16_t)(bar_for_patch.tabs()[0].x - 1);
+                const int16_t band_y = Bottom_Bar_Y();
+                const int16_t band_h = g_theme->Tab_Height();
+                for (int16_t x = patch_x0; x <= patch_x1;) {
+                    const int16_t w = (int16_t)std::min<int32_t>(
+                        12, patch_x1 - x + 1);
+                    background.Draw_Region(76, band_y, w, band_h,
+                        x, band_y);
+                    x = (int16_t)(x + w);
+                }
             }
             Make_Tab_Bar(true).Draw();
             const int16_t bar_y =
