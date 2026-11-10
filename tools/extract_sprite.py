@@ -412,9 +412,14 @@ def main(argv=None):
     if args.check:
         with tempfile.TemporaryDirectory(prefix="orion2re-sprites-") as tmp:
             written = extract_all(args.lbx, lbx_files, Path(tmp))
+            manifest, _ = load_manifest()
+            runtime = {s["id"] for s in manifest["sprites"]
+                       if s.get("runtime")}
             mismatches = []
             for path in written:
                 relative = path.relative_to(tmp)
+                if relative.parts[0] in runtime:
+                    continue
                 committed = OUTPUT_ROOT / relative
                 if not committed.exists():
                     mismatches.append(f"{relative}: missing committed file")

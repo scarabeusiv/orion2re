@@ -521,4 +521,23 @@ DOCTEST_TEST_SUITE("sprite art") {
         DOCTEST_CHECK(
             sprite_art::Load_Colony_Background(nullptr) == nullptr);
     }
+
+    DOCTEST_TEST_CASE("buy-button frames fail soft when the LBX is absent") {
+        using namespace test_sprite_art_detail;
+        // Same empty test VFS as the background case: no COLSUM.LBX,
+        // so both toggle frames come back null and the theme keeps
+        // the engine-drawn toggle instead of terminating.
+        Scoped_Test_Directory test_dir;
+        DOCTEST_REQUIRE(vfs::Init(test_dir.root_path().string().c_str()) == 1);
+
+        Scoped_Buffer_Pool pool(1024 * 1024);
+        const sprite_art::Buy_Button_Frames frames =
+            sprite_art::Load_Buy_Button_Frames(pool.payload);
+        DOCTEST_CHECK(frames.off == nullptr);
+        DOCTEST_CHECK(frames.on == nullptr);
+        const sprite_art::Buy_Button_Frames null_frames =
+            sprite_art::Load_Buy_Button_Frames(nullptr);
+        DOCTEST_CHECK(null_frames.off == nullptr);
+        DOCTEST_CHECK(null_frames.on == nullptr);
+    }
 } // DOCTEST_TEST_SUITE("sprite art")

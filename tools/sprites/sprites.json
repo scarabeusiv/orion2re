@@ -182,7 +182,8 @@
    "states": {
     "normal": 0
    },
-   "target_palette": "menu"
+   "target_palette": "menu",
+   "runtime": true
   },
   {
    "entry": 2,
@@ -195,7 +196,8 @@
    "states": {
     "normal": 0
    },
-   "target_palette": "menu"
+   "target_palette": "menu",
+   "runtime": true
   },
   {
    "entry": 3,
@@ -207,6 +209,35 @@
    "source_palette": "colony",
    "states": {
     "normal": 0
+   },
+   "target_palette": "menu",
+   "runtime": true
+  },
+  {
+   "entry": 11,
+   "id": "buy-button",
+   "runtime": true,
+   "size": [
+    19,
+    29
+   ],
+   "source_palette": "colony",
+   "states": {
+    "normal": 0,
+    "active": {
+     "frame": 1,
+     "overrides": {
+      "38": 138,
+      "39": 138,
+      "40": 138,
+      "50": 50,
+      "52": 103,
+      "54": 138,
+      "55": 138,
+      "56": 138,
+      "230": 138
+     }
+    }
    },
    "target_palette": "menu"
   }

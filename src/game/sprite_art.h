@@ -61,6 +61,17 @@ namespace sprite_art {
      */
     s_animation_header* Load_Colony_Background(void* allocation_base);
 
+    // Both buy-button toggle frames (COLSUM.LBX entry 11, row 0):
+    // off is frame 0 (grey), on is frame 1 (blue with its white
+    // starburst), 19x29 each, remapped to the installed palette.
+    // Both null when the entry is missing or malformed, or a pixel
+    // has no close hue -- the caller keeps its previous rendering.
+    struct Buy_Button_Frames {
+        s_animation_header* off = nullptr;
+        s_animation_header* on = nullptr;
+    };
+    Buy_Button_Frames Load_Buy_Button_Frames(void* allocation_base);
+
     /**
      * Draws a sub-rectangle of a frame at (dst_x, dst_y): the
      * (src_x, src_y, width, height) region of the frame's pixels.
