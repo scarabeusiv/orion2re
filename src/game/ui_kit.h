@@ -31,6 +31,7 @@
 // edge/face pair, with the remaining entries filled with the face.
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <vector>
 
@@ -77,6 +78,65 @@ namespace ui_kit {
         int16_t spacing_;
         s_colors normal_colors_;
         s_colors active_colors_;
+    };
+
+    // The bitmap-font implementation of Font: glyphs drawn by
+    // observation from the baked button text, bundled as JSON
+    // (data/base/fonts/Moo2Button.json -- see its provenance note
+    // and tools/build_moo2button_font.py). One file holds both
+    // states: normal (9 rows, dark core + AA) and pressed (11 rows,
+    // orange core 221 with 252 fill and 112 shadow), so the two
+    // button fonts are two Bitmap_Fonts over the same file, one per
+    // state. Loading is soft, like the sprite frames: a missing or
+    // malformed file leaves the font unloaded and every call falls
+    // back to the engine font, never a blank label. The active
+    // (blue-face) state has no baked reference, so it always falls
+    // back too.
+    class Bitmap_Font : public Font {
+      public:
+        enum class State { Normal, Pressed };
+
+        Bitmap_Font(State state, const Engine_Font& fallback);
+        // Loads fonts/<name>.json from the VFS (base.zip). Returns
+        // false when the file is missing or unreadable, leaving
+        // any previously loaded font in place; a file that opens
+        // but fails to parse unloads the font (see Load_From_Text).
+        bool Load(const char* name);
+        // Test seam: parses the JSON text directly. Parses into a
+        // fresh font and swaps it in only on success; on failure
+        // the font is unloaded and false is returned.
+        bool Load_From_Text(const char* text, size_t size);
+        [[nodiscard]] bool Is_Loaded() const;
+        int16_t Width(const char* text) const override;
+        int16_t Height() const override;
+        void Print(int16_t x, int16_t y, const char* text,
+            bool active) const override;
+
+      private:
+        struct Glyph {
+            int16_t advance = 0;
+            int16_t width = 0;
+            // Per state: rows of palette indices, -1 = transparent
+            // (null in the JSON). Normal rows == cap_height_;
+            // pressed rows == cap_height_ + descender_rows_. A
+            // pressed row may be wider than width (E's top bar
+            // reaches one column into the next cell); the row's own
+            // length is that state's width.
+            std::vector<std::vector<int16_t>> normal;
+            std::vector<std::vector<int16_t>> pressed;
+        };
+
+        bool Renderable(const char* text) const;
+        const std::vector<std::vector<int16_t>>* Rows(
+            const Glyph& glyph) const;
+
+        State state_;
+        const Engine_Font& fallback_;
+        bool loaded_ = false;
+        int16_t cap_height_ = 0;
+        int16_t descender_rows_ = 0;
+        int16_t space_advance_ = 0;
+        std::map<char, Glyph> glyphs_;
     };
 
     // One frame as the kit sees it: an opaque handle over a derived
@@ -452,6 +512,14 @@ namespace ui_kit {
         Engine_Font title_font_;
         Engine_Font button_font_;
         Engine_Font button_pressed_font_;
+        // The button-label bitmap fonts over the same file: normal
+        // glyphs for the rest label, pressed glyphs for the held
+        // label. Loaded in the constructor body; when the file is
+        // missing or malformed they stay unloaded and the engine
+        // fonts above render instead, so the theme never ships a
+        // blank label. Declared after the fallbacks they borrow.
+        Bitmap_Font button_bitmap_font_;
+        Bitmap_Font button_pressed_bitmap_font_;
         Engine_Font cell_font_;
         // The three sort frames, by tab index: 0 Name, 1 Population,
         // 2 Food. Tab_Frames_For_Tab clamps an out-of-range index to

@@ -1,10 +1,13 @@
 #include "pch.h"
 
 #include "fakes/fake_test_support.h"
+#include "game/animate.h"
+#include "game/video.h"
 
 // Minimal recording fakes for the fonts::/graphics:: surface ui_kit
-// uses: Set_Font_Style, Get_String_Width, Get_Font_Height, Print,
-// Fill, Box. Bodies copy the fields-runtime fake
+// uses: Set_Font_Style, Set_Font_Spacing, Get_String_Width,
+// Get_Font_Height, Print, Fill, Box. Bodies copy the
+// fields-runtime fake
 // (fake_fields_runtime.cpp), which this target cannot link: that
 // fake duplicates symbols the production set already defines
 // (compat.cpp's Query_Memory_Status / Show_Message_Box) and the
@@ -16,6 +19,10 @@ namespace fonts {
         if (new_colors != nullptr) {
             test::fakes::g_font_color = *new_colors;
         }
+    }
+
+    void __cdecl Set_Font_Spacing(int16_t spacing) {
+        test::fakes::g_font_spacing = spacing;
     }
 
     int16_t __cdecl Get_String_Width(const char* str) {
@@ -39,5 +46,24 @@ namespace graphics {
 
     void __cdecl Box(int16_t x, int16_t y, int16_t width, int16_t height, int16_t thickness, uint8_t color) {
         test::fakes::g_box_calls.push_back({x, y, width, height, thickness, color});
+    }
+
+    // Mirrors the real Dot (graphics.cpp) minus the platform lock
+    // and the scan list: clip when animate::clipping_flag == 1,
+    // then write the page. The real Dot does no bounds check
+    // beyond that clip; the fake adds one, so a test that prints
+    // off the page cannot write outside the Scoped_Video_Page.
+    void __cdecl Dot(int16_t x, int16_t y, uint8_t color) {
+        if (animate::clipping_flag == 1) {
+            if (x < video::screen_window_x1 || y < video::screen_window_y1 ||
+                x > video::screen_window_x2 || y > video::screen_window_y2) {
+                return;
+            }
+        }
+        if (x < 0 || x >= video::g_screen_res_x || y < 0 ||
+            y >= video::g_screen_res_y) {
+            return;
+        }
+        video::current_video_page[(size_t)y * (size_t)video::g_screen_res_x + (size_t)x] = color;
     }
 } // namespace graphics

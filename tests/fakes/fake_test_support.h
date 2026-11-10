@@ -61,6 +61,7 @@ namespace test::fakes {
     extern int16_t g_anim_full_store_flag;
 
     extern int16_t g_font_style;
+    extern int16_t g_font_spacing;
     extern int16_t g_font_height;
     extern uint16_t g_font_vertical_spacing;
     extern int16_t g_string_width;
