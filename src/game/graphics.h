@@ -103,6 +103,24 @@ namespace graphics {
     void __cdecl Tri_Interlaced_Fill(int16_t x1, int16_t y1, int16_t x2, int16_t y2, int16_t color1, int16_t color2, int16_t color3);
 
     /**
+     * Fills a rectangle with a deterministic Bayer-ordered dither:
+     * base colour with speckle-colour dots at density/16 of the
+     * pixels. density 0 = solid base, 16 = solid speckle. The
+     * pattern is fixed in screen space (4x4 Bayer matrix), so it
+     * never repeats like a tiled strip and never flickers -- the
+     * colony's baked surfaces are a speckle dither, not a flat
+     * fill, and this is how the kit reproduces that texture.
+     * @param x1 Left coordinate.
+     * @param y1 Top coordinate.
+     * @param x2 Right coordinate.
+     * @param y2 Bottom coordinate.
+     * @param base Palette index of the background colour.
+     * @param speckle Palette index of the speckle colour.
+     * @param density Speckle density in sixteenths (0..16).
+     */
+    void __cdecl Dithered_Fill(int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint8_t base, uint8_t speckle, uint8_t density);
+
+    /**
      * Draws a rectangular border.
      * @param x Left coordinate.
      * @param y Top coordinate.

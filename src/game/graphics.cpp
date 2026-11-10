@@ -181,6 +181,79 @@ namespace graphics {
         platform::Unlock_Appropriate_Render_Buffer();
     }
 
+    void __cdecl Dithered_Fill(int16_t x1, int16_t y1, int16_t x2, int16_t y2,
+        uint8_t base, uint8_t speckle, uint8_t density) {
+        // 4x4 Bayer threshold matrix: a speckle lands where the
+        // matrix value is below the density, so density 5 is 5/16
+        // speckles (~31%), 6 is 6/16 (~38%), 2 is 2/16 (~13%).
+        // Indexed by absolute screen coordinates, so the pattern
+        // is continuous across adjacent rects.
+        static const uint8_t kBayer[4][4] = {
+            {0, 8, 2, 10},
+            {12, 4, 14, 6},
+            {3, 11, 1, 9},
+            {15, 7, 13, 5},
+        };
+        if (density == 0) {
+            Fill(x1, y1, x2, y2, base);
+            return;
+        }
+        if (density >= 16) {
+            Fill(x1, y1, x2, y2, speckle);
+            return;
+        }
+        video::g_screen_res_x = platform::Lock_Appropriate_Render_Buffer();
+
+        if (x2 < x1) {
+            strings::Swap_Short(&x1, &x2);
+        }
+        if (y2 < y1) {
+            strings::Swap_Short(&y1, &y2);
+        }
+
+        const int16_t max_x = (int16_t)(video::g_screen_res_x - 1);
+        const int16_t max_y = (int16_t)(video::g_screen_res_y - 1);
+
+        if (x1 > max_x || x2 < 0 || y1 > max_y || y2 < 0) {
+            platform::Unlock_Appropriate_Render_Buffer();
+            return;
+        }
+
+        if (x1 < 0) x1 = 0;
+        if (y1 < 0) y1 = 0;
+        if (x2 > max_x) x2 = max_x;
+        if (y2 > max_y) y2 = max_y;
+
+        if (animate::clipping_flag == 1) {
+            if (x1 >= video::screen_window_x2 || x2 <= video::screen_window_x1 ||
+                y1 >= video::screen_window_y2 || y2 <= video::screen_window_y1) {
+                platform::Unlock_Appropriate_Render_Buffer();
+                return;
+            }
+
+            if (x1 < video::screen_window_x1) x1 = video::screen_window_x1;
+            if (y1 < video::screen_window_y1) y1 = video::screen_window_y1;
+            if (x2 > video::screen_window_x2) x2 = video::screen_window_x2;
+            if (y2 > video::screen_window_y2) y2 = video::screen_window_y2;
+        }
+
+        if (video::screen_refresh_flag >= 2) {
+            setvesa::Add_Square_To_Scan_List(x1, y1, x2, y2);
+        }
+
+        uint8_t* framebuffer = video::current_video_page;
+        const int32_t stride = video::g_screen_res_x;
+        for (int16_t y = y1; y <= y2; ++y) {
+            uint8_t* row = framebuffer + (int32_t)y * stride + x1;
+            const uint8_t* bayer_row = kBayer[y & 3];
+            for (int16_t x = x1; x <= x2; ++x) {
+                row[x - x1] = (bayer_row[x & 3] < density) ? speckle : base;
+            }
+        }
+
+        platform::Unlock_Appropriate_Render_Buffer();
+    }
+
     void __cdecl Tint_Fill(int16_t x1, int16_t y1, int16_t x2, int16_t y2, int16_t tint_color) {
         video::g_screen_res_x = platform::Lock_Appropriate_Render_Buffer();
 

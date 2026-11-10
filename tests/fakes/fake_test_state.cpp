@@ -23,6 +23,7 @@ namespace test::fakes {
     std::vector<Forced_Cursor_Pos_Call> g_forced_cursor_pos_calls;
     std::vector<Line_Call> g_line_calls;
     std::vector<Fill_Call> g_fill_calls;
+    std::vector<Dithered_Fill_Call> g_dithered_fill_calls;
     std::vector<Box_Call> g_box_calls;
 
     int16_t g_anim_width = 20;
@@ -68,6 +69,7 @@ namespace test::fakes {
         g_forced_cursor_pos_calls.clear();
         g_line_calls.clear();
         g_fill_calls.clear();
+        g_dithered_fill_calls.clear();
         g_box_calls.clear();
 
         g_anim_width = 20;
