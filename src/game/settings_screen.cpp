@@ -1627,6 +1627,17 @@ namespace SETTINGS_SCREEN {
             const ui_kit::Window_Frame frame = Make_Window_Frame();
             graphics::Fill(0, 0, 639, 479, 0);
             frame.Draw(nullptr);
+            // The colony's frame top is dark (20, 36, 44, 52 at
+            // y 0..3) and the plates' top bevel is bright, so the
+            // plates read as raised against a dark frame. The kit
+            // frame's top band is bright (72..116), so the plates
+            // blend into it. Darken the top band to the colony's
+            // profile -- menu-palette greys closest to the
+            // colony's -- so the header plates stand out.
+            graphics::Fill(0, 0, 639, 0, 84);
+            graphics::Fill(0, 1, 639, 1, 230);
+            graphics::Fill(0, 2, 639, 2, 230);
+            graphics::Fill(0, 3, 639, 3, 233);
             fonts::Set_Font_Style(4, &g_normal_colors);
 
             // List panel, like the colony list: the kit draws the
@@ -1715,6 +1726,13 @@ namespace SETTINGS_SCREEN {
                 graphics::Fill(x, HEADER_Y, x + w - 1,
                     HEADER_Y + HEADER_HEIGHT - 1,
                     list_style.plate_face);
+                // The colony's plates are a speckle dither, not a
+                // flat fill: ~40% lighter speckles over the face
+                // grey. A flat face reads as a plain bar; the
+                // dither gives the plates the colony's texture.
+                graphics::Dithered_Fill(x + 1, HEADER_Y + 1,
+                    x + w - 2, HEADER_Y + HEADER_HEIGHT - 2,
+                    list_style.plate_face, list_style.border, 6);
                 // Raised bevel: light on the top and left, shade on
                 // the bottom and right, like the colony's plates.
                 graphics::Fill(x, HEADER_Y, x + w - 1, HEADER_Y,
