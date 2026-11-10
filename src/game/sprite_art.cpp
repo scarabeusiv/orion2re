@@ -308,40 +308,254 @@ namespace sprite_art {
         // in 8-bit RGB), like tools/extract_sprite.py
         // REMAP_FAIL_DISTANCE.
         constexpr int32_t kRemap_Fail_Distance_Sq = 64 * 64;
+
+        // Loads one LBX entry's payload into the pool (the entry is
+        // read whole; the caller parses it). Soft: a missing file or
+        // entry, or a failed allocation/read, returns null and sets
+        // no size. The library name is given here rather than via
+        // COLONY::COLSUM_LBX: colony.cpp is not linked into the
+        // sprite-art test target, and the name is stable.
+        uint8_t* Load_LBX_Entry_Payload(void* allocation_base,
+            const char* lbx_name, int entry_index, int32_t* entry_size) {
+            s_vfs_file* file = vfs::fopen_lbx(lbx_name, entry_index);
+            if (file == nullptr) {
+                return nullptr;
+            }
+            const int32_t size = vfs::fsize(file);
+            if (size <= 0) {
+                vfs::fclose(file);
+                return nullptr;
+            }
+            auto* payload = (uint8_t*)allocate::Allocate_Next_Block(
+                allocation_base, (uint32_t)size);
+            if (payload == nullptr) {
+                vfs::fclose(file);
+                return nullptr;
+            }
+            if (vfs::fread(payload, 1, (size_t)size, file) !=
+                (size_t)size) {
+                vfs::fclose(file);
+                return nullptr;
+            }
+            vfs::fclose(file);
+            *entry_size = size;
+            return payload;
+        }
+
+        // Reads an LBX entry's embedded palette (after the header and
+        // the frame table: a start/count header then count
+        // s_palette_entry records, [changed, r, g, b], 6-bit values)
+        // into 8-bit RGB, like tools/extract_sprite.py load_palette
+        // (embedded). Entries outside [start, start+count) stay
+        // black. False on a malformed header.
+        bool Read_Embedded_Palette(const uint8_t* payload,
+            int32_t entry_size, int16_t frame_count,
+            uint8_t palette[256][3]) {
+            const int32_t palette_header_at = 12 + (frame_count + 1) * 4;
+            if (entry_size < palette_header_at + 4) {
+                return false;
+            }
+            const int16_t palette_start =
+                Read_I16(payload + palette_header_at);
+            const int16_t palette_count =
+                Read_I16(payload + palette_header_at + 2);
+            if (palette_start < 0 || palette_count <= 0 ||
+                palette_start + palette_count > 256 ||
+                entry_size < palette_header_at + 4 + palette_count * 4) {
+                return false;
+            }
+            for (int i = 0; i < 256; ++i) {
+                palette[i][0] = 0;
+                palette[i][1] = 0;
+                palette[i][2] = 0;
+            }
+            const uint8_t* palette_raw = payload + palette_header_at + 4;
+            for (int16_t i = 0; i < palette_count; ++i) {
+                const uint8_t* rec = palette_raw + i * 4;
+                palette[palette_start + i][0] = (uint8_t)(rec[1] * 4);
+                palette[palette_start + i][1] = (uint8_t)(rec[2] * 4);
+                palette[palette_start + i][2] = (uint8_t)(rec[3] * 4);
+            }
+            return true;
+        }
+
+        // The installed palette in 8-bit RGB: video::current_palette
+        // holds the same 6-bit values.
+        void Build_Menu_Palette(uint8_t palette[256][3]) {
+            for (int i = 0; i < 256; ++i) {
+                palette[i][0] =
+                    (uint8_t)(video::current_palette[i].r * 4);
+                palette[i][1] =
+                    (uint8_t)(video::current_palette[i].g * 4);
+                palette[i][2] =
+                    (uint8_t)(video::current_palette[i].b * 4);
+            }
+        }
+
+        // A native bitmap frame in the layout
+        // bitmap::Create_Bitmap_Header produces (a 12-byte header, one
+        // frame, draw mode BITMAP, frame data at offset 16,
+        // width*height index bytes padded to a multiple of 4), zeroed.
+        // Built field by field here so the test target, which does
+        // not link bitmap.cpp, can still exercise it -- and without
+        // the helper's side effect of setting the global
+        // animate::animation_header.
+        s_animation_header* Alloc_Bitmap_Frame(void* allocation_base,
+            int16_t width, int16_t height) {
+            const int32_t bitmap_size =
+                ((int32_t)width * height + (int32_t)kBitmapFrameDataOffset +
+                    3) / 4 * 4;
+            if (bitmap_size <= 0) {
+                return nullptr;
+            }
+            auto* frame = (s_animation_header*)allocate::Allocate_Next_Block(
+                allocation_base, (uint32_t)bitmap_size);
+            if (frame == nullptr) {
+                return nullptr;
+            }
+            frame->width = width;
+            frame->height = height;
+            frame->current_frame = 0;
+            frame->frame_count = 1;
+            frame->loop_frame = 0;
+            frame->keyframe_interval = 0;
+            frame->unknown_0xa = 0;
+            frame->flags = (undefined1)ANIMATION_DRAW_MODE_BITMAP;
+            Set_Animation_Frame_Offset_(frame, 0, kBitmapFrameDataOffset);
+            uint8_t* out_pixels = (uint8_t*)frame + kBitmapFrameDataOffset;
+            for (int32_t i = 0; i < (int32_t)width * height; ++i) {
+                out_pixels[i] = 0;
+            }
+            return frame;
+        }
+
+        // Nearest-RGB remap from a source palette to the installed
+        // one, built lazily per source index. Index 0 stays 0 (the
+        // transparency anchor, like the tool). An optional override
+        // table (source -> target pairs, like the manifest's
+        // per-state overrides) wins over the nearest match. A source
+        // index with no close hue in the installed palette maps to
+        // -1 and fails the whole load.
+        struct Remapper {
+            const uint8_t (*source_palette)[3];
+            const uint8_t (*menu_palette)[3];
+            // [2*n] source,target pairs, or null for none.
+            const int16_t* overrides = nullptr;
+            int16_t override_count = 0;
+            int16_t cache[256];
+
+            Remapper(const uint8_t (*source)[3],
+                const uint8_t (*menu)[3], const int16_t* ovr = nullptr,
+                int16_t ovr_count = 0)
+                : source_palette(source), menu_palette(menu),
+                  overrides(ovr), override_count(ovr_count) {
+                for (int i = 0; i < 256; ++i) {
+                    cache[i] = -1;
+                }
+                cache[0] = 0;
+            }
+
+            int16_t Map(uint8_t source) {
+                if (cache[source] >= 0) {
+                    return cache[source];
+                }
+                if (overrides != nullptr) {
+                    for (int16_t i = 0; i < override_count; ++i) {
+                        if (overrides[i * 2] == source) {
+                            cache[source] = overrides[i * 2 + 1];
+                            return cache[source];
+                        }
+                    }
+                }
+                const uint8_t* rgb = source_palette[source];
+                int32_t best = 0;
+                int32_t best_dist_sq = -1;
+                for (int i = 0; i < 256; ++i) {
+                    const int32_t dr =
+                        (int32_t)rgb[0] - menu_palette[i][0];
+                    const int32_t dg =
+                        (int32_t)rgb[1] - menu_palette[i][1];
+                    const int32_t db =
+                        (int32_t)rgb[2] - menu_palette[i][2];
+                    const int32_t dist_sq = dr * dr + dg * dg + db * db;
+                    if (best_dist_sq < 0 || dist_sq < best_dist_sq) {
+                        best = i;
+                        best_dist_sq = dist_sq;
+                    }
+                }
+                if (best_dist_sq > kRemap_Fail_Distance_Sq) {
+                    return -1;
+                }
+                cache[source] = (int16_t)best;
+                return cache[source];
+            }
+        };
+
+        // Decodes one RLE frame (like tools/extract_sprite.py
+        // decode_frame) into out_pixels (already zeroed), remapping
+        // each source index through the remapper. The frame starts
+        // with a 2-byte field, start_y at offset 2, then
+        // (pixel_count, skip) int16 runs from offset 4. A zero count
+        // skips rows; otherwise pixel_count bytes land at row y,
+        // column skip. Runs are padded to an even byte offset.
+        // False on a malformed stream or a pixel with no close hue.
+        bool Decode_RLE_Frame(const uint8_t* payload, int32_t entry_size,
+            uint32_t frame_offset, int16_t width, int16_t height,
+            uint8_t* out_pixels, Remapper& remap) {
+            const uint8_t* stream = payload + frame_offset;
+            const int32_t stream_size = entry_size - (int32_t)frame_offset;
+            if (stream_size < 4) {
+                return false;
+            }
+            const int16_t start_y = (int16_t)Read_U16(stream + 2);
+            int32_t pos = 4;
+            int16_t y = start_y;
+            while (y < height) {
+                if (pos + 4 > stream_size) {
+                    return false;
+                }
+                const int16_t pixel_count = Read_I16(stream + pos);
+                const int16_t skip = Read_I16(stream + pos + 2);
+                pos += 4;
+                if (pixel_count == 0) {
+                    if (skip <= 0) {
+                        return false;
+                    }
+                    y = (int16_t)(y + skip);
+                    continue;
+                }
+                if (pixel_count < 0 || skip < 0 ||
+                    skip + pixel_count > width || y < 0 || y >= height ||
+                    pos + pixel_count > stream_size) {
+                    return false;
+                }
+                uint8_t* dst = out_pixels + (int32_t)y * width + skip;
+                for (int16_t i = 0; i < pixel_count; ++i) {
+                    const int16_t target = remap.Map(stream[pos + i]);
+                    if (target < 0) {
+                        return false;
+                    }
+                    dst[i] = (uint8_t)target;
+                }
+                pos += pixel_count;
+                if (pos & 1) {
+                    ++pos;
+                }
+            }
+            return true;
+        }
     } // namespace
 
     s_animation_header* Load_Colony_Background(void* allocation_base) {
         if (allocation_base == nullptr) {
             return nullptr;
         }
-        // Load COLSUM.LBX entry 0 (the colony background) through
-        // the VFS, soft: a missing file or entry returns null
-        // instead of terminating (farload::Far_Reload_Next would
-        // call Error_Handler).
-        // The colony background's library, named here rather than
-        // via COLONY::COLSUM_LBX: colony.cpp is not linked into the
-        // sprite-art test target, and the name is stable.
-        s_vfs_file* file = vfs::fopen_lbx("COLSUM.LBX", 0);
-        if (file == nullptr) {
-            return nullptr;
-        }
-        const int32_t entry_size = vfs::fsize(file);
-        if (entry_size <= 0) {
-            vfs::fclose(file);
-            return nullptr;
-        }
-        auto* payload = (uint8_t*)allocate::Allocate_Next_Block(
-            allocation_base, (uint32_t)entry_size);
+        int32_t entry_size = 0;
+        uint8_t* payload = Load_LBX_Entry_Payload(allocation_base,
+            "COLSUM.LBX", 0, &entry_size);
         if (payload == nullptr) {
-            vfs::fclose(file);
             return nullptr;
         }
-        if (vfs::fread(payload, 1, (size_t)entry_size, file) !=
-            (size_t)entry_size) {
-            vfs::fclose(file);
-            return nullptr;
-        }
-        vfs::fclose(file);
 
         // Animation header: width, height, frame count. The colony
         // background is 640x480, one frame.
@@ -362,162 +576,116 @@ namespace sprite_art {
         if (frame_offset >= (uint32_t)entry_size) {
             return nullptr;
         }
-        // Embedded palette: after the header and the frame table, a
-        // start/count header then count s_palette_entry records
-        // ([changed, r, g, b], 6-bit values), like
-        // tools/extract_sprite.py load_palette (embedded).
-        const int32_t palette_header_at = 12 + (frame_count + 1) * 4;
-        if (entry_size < palette_header_at + 4) {
+        uint8_t colony_palette[256][3];
+        if (!Read_Embedded_Palette(payload, entry_size, frame_count,
+                colony_palette)) {
             return nullptr;
         }
-        const int16_t palette_start =
-            Read_I16(payload + palette_header_at);
-        const int16_t palette_count =
-            Read_I16(payload + palette_header_at + 2);
-        if (palette_start < 0 || palette_count <= 0 ||
-            palette_start + palette_count > 256 ||
-            entry_size < palette_header_at + 4 + palette_count * 4) {
-            return nullptr;
-        }
-        const uint8_t* palette_raw = payload + palette_header_at + 4;
-
-        // Colony palette in 8-bit RGB (6-bit values * 4, like the
-        // tool). Entries outside [start, start+count) stay black.
-        uint8_t colony_palette[256][3] = {};
-        for (int16_t i = 0; i < palette_count; ++i) {
-            const uint8_t* rec = palette_raw + i * 4;
-            colony_palette[palette_start + i][0] =
-                (uint8_t)(rec[1] * 4);
-            colony_palette[palette_start + i][1] =
-                (uint8_t)(rec[2] * 4);
-            colony_palette[palette_start + i][2] =
-                (uint8_t)(rec[3] * 4);
-        }
-        // Installed palette in 8-bit RGB the same way:
-        // video::current_palette holds the same 6-bit values.
         uint8_t menu_palette[256][3];
-        for (int i = 0; i < 256; ++i) {
-            menu_palette[i][0] =
-                (uint8_t)(video::current_palette[i].r * 4);
-            menu_palette[i][1] =
-                (uint8_t)(video::current_palette[i].g * 4);
-            menu_palette[i][2] =
-                (uint8_t)(video::current_palette[i].b * 4);
-        }
+        Build_Menu_Palette(menu_palette);
 
-        // Output frame, in the native bitmap layout (the same
-        // bytes bitmap::Create_Bitmap_Header produces: a 12-byte
-        // header, one frame, draw mode BITMAP, frame data at offset
-        // 16, width*height index bytes padded to a multiple of 4).
-        // Built field by field here so the test target, which does
-        // not link bitmap.cpp, can still exercise this function --
-        // and without the helper's side effect of setting the
-        // global animate::animation_header.
-        const int32_t bitmap_size =
-            ((int32_t)width * height + (int32_t)kBitmapFrameDataOffset +
-                3) / 4 * 4;
-        if (bitmap_size <= 0) {
-            return nullptr;
-        }
-        auto* frame = (s_animation_header*)allocate::Allocate_Next_Block(
-            allocation_base, (uint32_t)bitmap_size);
+        s_animation_header* frame =
+            Alloc_Bitmap_Frame(allocation_base, width, height);
         if (frame == nullptr) {
             return nullptr;
         }
-        frame->width = width;
-        frame->height = height;
-        frame->current_frame = 0;
-        frame->frame_count = 1;
-        frame->loop_frame = 0;
-        frame->keyframe_interval = 0;
-        frame->unknown_0xa = 0;
-        frame->flags = (undefined1)ANIMATION_DRAW_MODE_BITMAP;
-        Set_Animation_Frame_Offset_(frame, 0, kBitmapFrameDataOffset);
         uint8_t* out_pixels = (uint8_t*)frame + kBitmapFrameDataOffset;
-        for (int32_t i = 0; i < (int32_t)width * height; ++i) {
-            out_pixels[i] = 0;
-        }
-
-        // Remap table, built lazily per source index. Index 0 stays
-        // 0 (the transparency anchor, like the tool). A source
-        // index with no close hue in the installed palette fails
-        // the whole load.
-        int16_t remap[256];
-        for (int i = 0; i < 256; ++i) {
-            remap[i] = -1;
-        }
-        remap[0] = 0;
-        auto remap_index = [&](uint8_t source) -> int16_t {
-            if (remap[source] >= 0) {
-                return remap[source];
-            }
-            const uint8_t* rgb = colony_palette[source];
-            int32_t best = 0;
-            int32_t best_dist_sq = -1;
-            for (int i = 0; i < 256; ++i) {
-                const int32_t dr = (int32_t)rgb[0] - menu_palette[i][0];
-                const int32_t dg = (int32_t)rgb[1] - menu_palette[i][1];
-                const int32_t db = (int32_t)rgb[2] - menu_palette[i][2];
-                const int32_t dist_sq = dr * dr + dg * dg + db * db;
-                if (best_dist_sq < 0 || dist_sq < best_dist_sq) {
-                    best = i;
-                    best_dist_sq = dist_sq;
-                }
-            }
-            if (best_dist_sq > kRemap_Fail_Distance_Sq) {
-                return -1;
-            }
-            remap[source] = (int16_t)best;
-            return remap[source];
-        };
-
-        // Decode frame 0 (RLE, like tools/extract_sprite.py
-        // decode_frame): the frame starts with a 2-byte field,
-        // start_y at offset 2, then (pixel_count, skip) int16 runs
-        // from offset 4. A zero count skips rows; otherwise
-        // pixel_count bytes land at row y, column skip. Runs are
-        // padded to an even byte offset.
-        const uint8_t* stream = payload + frame_offset;
-        const int32_t stream_size = entry_size - (int32_t)frame_offset;
-        if (stream_size < 4) {
+        Remapper remap(colony_palette, menu_palette);
+        if (!Decode_RLE_Frame(payload, entry_size, frame_offset, width,
+                height, out_pixels, remap)) {
             return nullptr;
         }
-        const int16_t start_y = (int16_t)Read_U16(stream + 2);
-        int32_t pos = 4;
-        int16_t y = start_y;
-        while (y < height) {
-            if (pos + 4 > stream_size) {
-                return nullptr;
-            }
-            const int16_t pixel_count = Read_I16(stream + pos);
-            const int16_t skip = Read_I16(stream + pos + 2);
-            pos += 4;
-            if (pixel_count == 0) {
-                if (skip <= 0) {
-                    return nullptr;
-                }
-                y = (int16_t)(y + skip);
-                continue;
-            }
-            if (pixel_count < 0 || skip < 0 ||
-                skip + pixel_count > width || y < 0 || y >= height ||
-                pos + pixel_count > stream_size) {
-                return nullptr;
-            }
-            uint8_t* dst = out_pixels + (int32_t)y * width + skip;
-            for (int16_t i = 0; i < pixel_count; ++i) {
-                const int16_t target = remap_index(stream[pos + i]);
-                if (target < 0) {
-                    return nullptr;
-                }
-                dst[i] = (uint8_t)target;
-            }
-            pos += pixel_count;
-            if (pos & 1) {
-                ++pos;
-            }
-        }
         return frame;
+    }
+
+    // The buy-button toggle's active (on) frame overrides, like the
+    // manifest (tools/sprites/sprites.json, buy-button/active): the
+    // bright blues have no close hue in the menu palette, so they
+    // map to the menu's bright blue (138), the dark navy to 50 and
+    // the mid blues to 103. The off frame's grey ramp remaps cleanly
+    // with no overrides.
+    constexpr int16_t kBuy_Button_Active_Overrides[] = {
+        38, 138, 39, 138, 40, 138, 50, 50, 52, 103,
+        54, 138, 55, 138, 56, 138, 230, 138,
+    };
+
+    Buy_Button_Frames Load_Buy_Button_Frames(void* allocation_base) {
+        Buy_Button_Frames result;
+        if (allocation_base == nullptr) {
+            return result;
+        }
+        // The toggle frames (COLSUM entry 11, row 0): 19x29, two
+        // frames, off then on. Entry 11 carries no embedded palette
+        // (start 1, count 0), so the colony palette comes from
+        // entry 0, like tools/extract_sprite.py does.
+        int32_t entry_size = 0;
+        uint8_t* payload = Load_LBX_Entry_Payload(allocation_base,
+            "COLSUM.LBX", 11, &entry_size);
+        if (payload == nullptr) {
+            return result;
+        }
+        if (entry_size < 12) {
+            return result;
+        }
+        const int16_t width = Read_I16(payload + 0);
+        const int16_t height = Read_I16(payload + 2);
+        const int16_t frame_count = Read_I16(payload + 6);
+        if (width != 19 || height != 29 || frame_count < 2) {
+            return result;
+        }
+        if (entry_size < 12 + (frame_count + 1) * 4) {
+            return result;
+        }
+        const uint32_t frame_offsets[2] = {
+            Read_U32(payload + 12), Read_U32(payload + 16),
+        };
+        if (frame_offsets[0] >= (uint32_t)entry_size ||
+            frame_offsets[1] >= (uint32_t)entry_size) {
+            return result;
+        }
+        int32_t palette_size = 0;
+        uint8_t* palette_payload = Load_LBX_Entry_Payload(allocation_base,
+            "COLSUM.LBX", 0, &palette_size);
+        if (palette_payload == nullptr) {
+            return result;
+        }
+        if (palette_size < 12) {
+            return result;
+        }
+        const int16_t palette_frame_count = Read_I16(palette_payload + 6);
+        uint8_t colony_palette[256][3];
+        if (!Read_Embedded_Palette(palette_payload, palette_size,
+                palette_frame_count, colony_palette)) {
+            return result;
+        }
+        uint8_t menu_palette[256][3];
+        Build_Menu_Palette(menu_palette);
+
+        s_animation_header* off =
+            Alloc_Bitmap_Frame(allocation_base, width, height);
+        s_animation_header* on =
+            Alloc_Bitmap_Frame(allocation_base, width, height);
+        if (off == nullptr || on == nullptr) {
+            return result;
+        }
+        Remapper remap_off(colony_palette, menu_palette);
+        if (!Decode_RLE_Frame(payload, entry_size, frame_offsets[0],
+                width, height,
+                (uint8_t*)off + kBitmapFrameDataOffset, remap_off)) {
+            return result;
+        }
+        Remapper remap_on(colony_palette, menu_palette,
+            kBuy_Button_Active_Overrides,
+            (int16_t)(sizeof(kBuy_Button_Active_Overrides) /
+                sizeof(kBuy_Button_Active_Overrides[0]) / 2));
+        if (!Decode_RLE_Frame(payload, entry_size, frame_offsets[1],
+                width, height,
+                (uint8_t*)on + kBitmapFrameDataOffset, remap_on)) {
+            return result;
+        }
+        result.off = off;
+        result.on = on;
+        return result;
     }
 
     void Draw_Sprite_Frame_Region(const s_animation_header* frame,
