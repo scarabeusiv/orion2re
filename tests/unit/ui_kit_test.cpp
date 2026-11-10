@@ -1677,6 +1677,9 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(style.toggle_on_bright == 247);
         DOCTEST_CHECK(style.toggle_off_base == 236);
         DOCTEST_CHECK(style.toggle_off_bright == 246);
+        // The scrollbar corner dots are the colony's index 80,
+        // black in the colony palette, remapped to 0.
+        DOCTEST_CHECK(style.scroll_corner == 0);
         // The label fonts are engine font style 2 with 1 px
         // spacing: the baked RETURN text inks 9 rows (style 4
         // inks 12) and measures 41 px as style-2 widths with
@@ -1728,5 +1731,248 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(bare.Return_Frames().pressed.Is_Null());
         DOCTEST_CHECK(bare.Return_Frames().normal.Width() == 0);
         DOCTEST_CHECK(bare.Return_Frames().normal.Height() == 0);
+    }
+
+    DOCTEST_TEST_CASE("scroll bar models the colony's inverted slider") {
+        using namespace test_ui_kit_detail;
+        // Maximum first-visible row: 0 when everything fits,
+        // otherwise total - visible (the colony's num - 10).
+        DOCTEST_CHECK(ui_kit::Scroll_Bar::Max_Scroll(10, 10) == 0);
+        DOCTEST_CHECK(ui_kit::Scroll_Bar::Max_Scroll(11, 10) == 1);
+        DOCTEST_CHECK(ui_kit::Scroll_Bar::Max_Scroll(20, 10) == 10);
+        DOCTEST_CHECK(ui_kit::Scroll_Bar::Max_Scroll(5, 10) == 0);
+        DOCTEST_CHECK(ui_kit::Scroll_Bar::Max_Scroll(100, 10) == 90);
+        // The slider is inverted (COLSUM::Update_First): slider
+        // at max shows the first rows, slider at 0 the last.
+        DOCTEST_CHECK(ui_kit::Scroll_Bar::Slider_From_Top(0, 20, 10) == 10);
+        DOCTEST_CHECK(ui_kit::Scroll_Bar::Slider_From_Top(10, 20, 10) == 0);
+        DOCTEST_CHECK(ui_kit::Scroll_Bar::Slider_From_Top(3, 20, 10) == 7);
+        DOCTEST_CHECK(ui_kit::Scroll_Bar::Top_From_Slider(10, 20, 10) == 0);
+        DOCTEST_CHECK(ui_kit::Scroll_Bar::Top_From_Slider(0, 20, 10) == 10);
+        DOCTEST_CHECK(ui_kit::Scroll_Bar::Top_From_Slider(7, 20, 10) == 3);
+        // Out-of-range sliders clamp: below 0 shows the first
+        // rows, above max the last.
+        DOCTEST_CHECK(ui_kit::Scroll_Bar::Top_From_Slider(-5, 20, 10) == 10);
+        DOCTEST_CHECK(ui_kit::Scroll_Bar::Top_From_Slider(99, 20, 10) == 0);
+        // Visible while the list is at least as long as the
+        // window, colsum's rule (num_colonies >= 10).
+        DOCTEST_CHECK(ui_kit::Scroll_Bar::Visible(10, 10));
+        DOCTEST_CHECK_FALSE(ui_kit::Scroll_Bar::Visible(9, 10));
+        DOCTEST_CHECK(ui_kit::Scroll_Bar::Visible(11, 10));
+    }
+
+    DOCTEST_TEST_CASE("scroll bar thumb follows colsum's formula with no minimum height") {
+        using namespace test_ui_kit_detail;
+        Fake_Theme theme;
+        // The colony's track: x 621..626, y 40..311 (271, the
+        // strip between the scroll arrows).
+        const ui_kit::Scroll_Bar bar(621, 6, 40, 271, theme);
+        DOCTEST_CHECK(bar.track_y() == 40);
+        DOCTEST_CHECK(bar.track_bottom() == 311);
+        // Exactly ten colonies: the thumb spans the whole track.
+        DOCTEST_CHECK(bar.Thumb_Top(0, 10, 10) == 40);
+        DOCTEST_CHECK(bar.Thumb_Bottom(0, 10, 10) == 311);
+        // Twenty colonies: half the list visible, the thumb half
+        // the track, at the top or the bottom.
+        DOCTEST_CHECK(bar.Thumb_Top(0, 20, 10) == 40);
+        DOCTEST_CHECK(bar.Thumb_Bottom(0, 20, 10) == 175);
+        DOCTEST_CHECK(bar.Thumb_Top(10, 20, 10) == 175);
+        DOCTEST_CHECK(bar.Thumb_Bottom(10, 20, 10) == 311);
+        // Twelve colonies, scrolled to the top: 271 * 10 / 12 =
+        // 225 px of thumb.
+        DOCTEST_CHECK(bar.Thumb_Top(0, 12, 10) == 40);
+        DOCTEST_CHECK(bar.Thumb_Bottom(0, 12, 10) == 265);
+        // A hundred colonies: a 27 px thumb, no floor.
+        DOCTEST_CHECK(bar.Thumb_Top(0, 100, 10) == 40);
+        DOCTEST_CHECK(bar.Thumb_Bottom(0, 100, 10) == 67);
+        DOCTEST_CHECK(bar.Thumb_Top(90, 100, 10) == 283);
+        DOCTEST_CHECK(bar.Thumb_Bottom(90, 100, 10) == 311);
+        // A thousand colonies: the thumb is 2 px tall -- colsum
+        // has no minimum height, and neither does the kit (the
+        // settings screen's old 8 px floor was its own invention).
+        DOCTEST_CHECK(bar.Thumb_Top(0, 1000, 10) == 40);
+        DOCTEST_CHECK(bar.Thumb_Bottom(0, 1000, 10) == 42);
+        DOCTEST_CHECK(bar.Thumb_Bottom(0, 1000, 10) -
+                bar.Thumb_Top(0, 1000, 10) == 2);
+    }
+
+    DOCTEST_TEST_CASE("scroll bar draws the thumb bevel and single corner dots") {
+        using namespace test_ui_kit_detail;
+        Fake_Theme theme;
+        // A distinctive corner colour, so the dots prove they
+        // come from the theme and are not the thumb's face.
+        theme.buttons.scroll_corner = 9;
+        const ui_kit::Scroll_Bar bar(621, 6, 40, 271, theme);
+
+        // Scrolled to the bottom (top 10 of 20): the thumb sits
+        // at 175..311, so the track top at y 40 carries only the
+        // two corner dots -- not the full row the settings screen
+        // used to draw there.
+        test::fakes::Reset_All_();
+        bar.Draw(10, 20, 10);
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 9);
+        // Face, then the bevel: bright top/left, dark
+        // bottom/right, colsum's Draw_Bar_Indicator.
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 238);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 621);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 175);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x2 == 626);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y2 == 311);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 243);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].y1 == 175);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].y2 == 175);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 243);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].x1 == 621);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].x2 == 621);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].color == 232);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[3].y1 == 311);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[4].color == 232);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[4].x1 == 626);
+        // The corner dots are single pixels at the track's
+        // corners, in the theme's corner colour.
+        for (size_t index = 5; index < 9; ++index) {
+            DOCTEST_CHECK(test::fakes::g_fill_calls[index].color == 9);
+        }
+        DOCTEST_CHECK(test::fakes::g_fill_calls[5].x1 == 621);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[5].y1 == 40);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[5].x2 == 621);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[5].y2 == 40);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[6].x1 == 626);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[6].y1 == 40);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[7].x1 == 621);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[7].y1 == 311);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[8].x1 == 626);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[8].y1 == 311);
+        // Nothing else touches the track top row: no full-row
+        // line across the strip.
+        for (const test::fakes::Fill_Call& fill :
+            test::fakes::g_fill_calls) {
+            if (fill.y1 == 40) {
+                DOCTEST_CHECK(fill.x1 == fill.x2);
+            }
+        }
+
+        // Scrolled to the top: the thumb sits at 40..175, so the
+        // track bottom at y 311 carries only the two dots.
+        test::fakes::Reset_All_();
+        bar.Draw(0, 20, 10);
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 9);
+        for (const test::fakes::Fill_Call& fill :
+            test::fakes::g_fill_calls) {
+            if (fill.y1 == 311) {
+                DOCTEST_CHECK(fill.x1 == fill.x2);
+            }
+        }
+
+        // A list shorter than the window draws nothing.
+        test::fakes::Reset_All_();
+        bar.Draw(0, 5, 10);
+        DOCTEST_CHECK(test::fakes::g_fill_calls.empty());
+    }
+
+    DOCTEST_TEST_CASE("tab bar places fixed-size sort tabs at the colony's positions") {
+        using namespace test_ui_kit_detail;
+        Fake_Theme theme;
+        // The colony's sort strip: tabs at x 89..530, y 446,
+        // fixed-size sprites 1 px apart.
+        ui_kit::Tab_Bar bar(89, 446, 530, theme);
+        bar.Add_Fixed_Tab("Name", 50, true);
+        bar.Add_Fixed_Tab("Population", 78, false);
+        bar.Add_Fixed_Tab("Food", 42, false);
+        bar.Add_Fixed_Tab("Industry", 63, false);
+        bar.Add_Fixed_Tab("Science", 66, false);
+        bar.Add_Fixed_Tab("Producing", 86, false);
+        bar.Add_Fixed_Tab("BC", 50, false);
+
+        DOCTEST_REQUIRE(bar.tabs().size() == 7);
+        const int16_t expected_x[] = {89, 140, 219, 262, 326, 393, 480};
+        const int16_t expected_w[] = {50, 78, 42, 63, 66, 86, 50};
+        for (size_t index = 0; index < 7; ++index) {
+            DOCTEST_CHECK(bar.tabs()[index].x == expected_x[index]);
+            DOCTEST_CHECK(bar.tabs()[index].width == expected_w[index]);
+            DOCTEST_CHECK(bar.tabs()[index].natural_width ==
+                expected_w[index]);
+        }
+        DOCTEST_CHECK(bar.End_X() == 530);
+        // BC is the reason the widths are fixed: its label is
+        // short (the fake font gives 20 px + 16 padding = 36),
+        // but the sprite is 50 wide -- the proportional fill
+        // would shrink it and drift every tab after Name.
+        DOCTEST_CHECK(bar.tabs()[6].natural_width == 50);
+    }
+
+    DOCTEST_TEST_CASE("colony list layout matches the colony summary screen") {
+        using namespace test_ui_kit_detail;
+        const s_colors title = {{234, 238, 240, 242, 243, 244, 246, 247}};
+        ui_kit::Colony_Theme theme(ui_kit::Frame(), ui_kit::Frame(),
+            ui_kit::Frame(), ui_kit::Frame(), ui_kit::Frame(),
+            ui_kit::Frame(), ui_kit::Frame(), ui_kit::Frame(), title);
+
+        // The colony's list, measured from the rendered screen:
+        // header plates y 4..31, first row at 35, rows on a 31 px
+        // pitch, panel 4..347, content edge at 619. The panel is
+        // 11..619 (609 wide): its right edge is the bevel at
+        // 617..619 and the scrollbar strip (620..627) sits outside
+        // it, on black -- not the settings panel's 11..627, which
+        // takes the strip inside.
+        const ui_kit::List_Layout layout(11, 4, 609, 619, 4, 28, 10,
+            theme.Spacing());
+        DOCTEST_CHECK(layout.first_row_y() == 35);
+        DOCTEST_CHECK(layout.row_y(0) == 35);
+        DOCTEST_CHECK(layout.row_y(1) == 66);
+        DOCTEST_CHECK(layout.row_y(9) == 314);
+        DOCTEST_CHECK(layout.panel_h() == 344);
+        DOCTEST_CHECK(layout.panel_y() + layout.panel_h() - 1 == 347);
+        DOCTEST_CHECK(layout.scroll_track_y() == 35);
+        DOCTEST_CHECK(layout.scroll_track_h() == 309);
+        DOCTEST_CHECK(layout.info_y() == 352);
+
+        // The background frames the colony rows the same way:
+        // row 0 light at 35, shade at 36; last row 314..343 with
+        // its trailing shade at 343; footing shade/shade/light
+        // at 344/345/346.
+        Fake_Theme fake;
+        test::fakes::Reset_All_();
+        ui_kit::Draw_List_Background(fake, layout);
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 54);
+        // The panel fill and border stop at the content edge, 619:
+        // the scrollbar strip beyond it stays black.
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x2 == 619);
+        DOCTEST_REQUIRE(test::fakes::g_box_calls.size() == 1);
+        DOCTEST_CHECK(test::fakes::g_box_calls[0].width == 609);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].y1 == 35);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 241);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].y1 == 36);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 235);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[46].y1 == 314);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[46].color == 241);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[50].y1 == 343);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[50].color == 235);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[51].y1 == 344);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[51].color == 235);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[52].y1 == 345);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[52].color == 235);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[53].y1 == 346);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[53].color == 241);
+
+        // The dividers land on the baked grooves: 98..100,
+        // 233..235, 375..377, 509..511, over the rows only.
+        test::fakes::Reset_All_();
+        const ui_kit::Column_Layout columns(
+            {{11, 87}, {101, 132}, {236, 139}, {378, 131}, {512, 87}},
+            layout.first_row_y(),
+            (int16_t)(layout.row_y(9) + layout.row_height() - 1));
+        ui_kit::Draw_List_Columns(fake, columns);
+        DOCTEST_REQUIRE(test::fakes::g_fill_calls.size() == 12);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].x1 == 98);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].color == 233);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y1 == 35);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[0].y2 == 343);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].x1 == 99);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[1].color == 235);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].x1 == 100);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[2].color == 232);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[9].x1 == 509);
+        DOCTEST_CHECK(test::fakes::g_fill_calls[9].color == 233);
     }
 } // DOCTEST_TEST_SUITE("ui kit")
