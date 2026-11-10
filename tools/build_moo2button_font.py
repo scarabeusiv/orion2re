@@ -48,10 +48,21 @@ How each glyph was obtained (see the JSON's provenance field):
   cap height; O 7 wide, the same width as U, rounded top and bottom
   like U's bottom curve). O follows U's AA conventions exactly (left
   edge AA 17, bottom-corner AA 72, inner-corner AA 15), plus a 17
-  down both outer stem edges so the O reads smooth, not hard-edged;
-  M's vertex carries the AA 72s that flank U's bottom bar, its V
-  arms reach the top row (a hollow top reads as a damaged M), and
-  its stems carry 72s down their inner edges. Their pressed states
+  down both outer stem edges so the O reads smooth, not hard-edged.
+  M is an open-top M: two 2 px stems, V arms that step in from the
+  stems' inner edges (cols 2, 5) for two rows, then a vertex (cols
+  3, 4) at rows 3-4, empty below; the top row is stems only. An
+  open top is what an M IS, not damage. The 2026-11-10 eba950e
+  attempt (V arms reaching the top row, core at cols 2, 5 in rows
+  0-3) turned the M into an H -- two 3 px stems plus a horizontal
+  bar at rows 4-5 -- and was reverted. No inner-edge AA below the
+  vertex: the AA values (72 etc.) are dark enough to read as ink,
+  so AA at cols 2, 5 below the vertex fills the middle and reads as
+  a bar. The vertex carries the AA 72s that flank U's bottom bar
+  (row 4 only). The 'damaged' look is pixelation, not shape: the
+  MORE label's AA is sparse and dark against the baked RETURN's
+  full mid-grey halo; full parity needs a font AA halo pass, a
+  design decision, not done here. Their pressed states
   follow the measured pressed conventions (11 rows, orange core 221
   with 252 fill inside the strokes, 223 bright edges, top and bottom
   rows all core).
@@ -169,18 +180,18 @@ GLYPHS = {
         "width": 8,
         "bitmap": {
             "normal": [
+                [0, 0, None, None, None, None, 0, 0],
                 [0, 0, 0, None, None, 0, 0, 0],
                 [0, 0, 0, None, None, 0, 0, 0],
-                [0, 0, 0, None, None, 0, 0, 0],
-                [0, 0, 0, None, None, 0, 0, 0],
+                [0, 0, None, 0, 0, None, 0, 0],
                 [0, 0, 72, 0, 0, 72, 0, 0],
-                [0, 0, 72, 0, 0, 72, 0, 0],
-                [0, 0, 72, None, None, 72, 0, 0],
-                [0, 0, 72, None, None, 72, 0, 0],
-                [0, 0, 72, None, None, 72, 0, 0],
+                [0, 0, None, None, None, None, 0, 0],
+                [0, 0, None, None, None, None, 0, 0],
+                [0, 0, None, None, None, None, 0, 0],
+                [0, 0, None, None, None, None, 0, 0],
             ],
             "pressed": [
-                [221, 252, 221, None, None, None, 221, 252, 221],
+                [221, 221, None, None, None, None, None, 221, 221],
                 [221, 252, 221, None, None, None, 221, 252, 221],
                 [221, 252, 221, 223, None, 223, 221, 252, 221],
                 [221, 252, 221, 223, None, 223, 221, 252, 221],

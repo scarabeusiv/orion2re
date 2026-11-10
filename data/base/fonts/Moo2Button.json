@@ -194,10 +194,10 @@
      [
       0,
       0,
-      0,
       null,
       null,
-      0,
+      null,
+      null,
       0,
       0
      ],
@@ -224,10 +224,10 @@
      [
       0,
       0,
-      0,
-      null,
       null,
       0,
+      0,
+      null,
       0,
       0
      ],
@@ -244,40 +244,40 @@
      [
       0,
       0,
-      72,
-      0,
-      0,
-      72,
+      null,
+      null,
+      null,
+      null,
       0,
       0
      ],
      [
       0,
       0,
-      72,
       null,
       null,
-      72,
+      null,
+      null,
       0,
       0
      ],
      [
       0,
       0,
-      72,
       null,
       null,
-      72,
+      null,
+      null,
       0,
       0
      ],
      [
       0,
       0,
-      72,
       null,
       null,
-      72,
+      null,
+      null,
       0,
       0
      ]
@@ -285,13 +285,13 @@
     "pressed": [
      [
       221,
-      252,
       221,
       null,
       null,
       null,
+      null,
+      null,
       221,
-      252,
       221
      ],
      [
