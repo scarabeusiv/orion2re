@@ -992,6 +992,29 @@ DOCTEST_TEST_SUITE("ui kit") {
         DOCTEST_CHECK(test::fakes::g_print_calls[0].y == 8);
         DOCTEST_CHECK(test::fakes::g_print_calls[0].text_copy == "Settings");
     }
+
+    DOCTEST_TEST_CASE("colony theme hands out its baked background") {
+        using namespace test_ui_kit_detail;
+        const s_colors title = {{234, 238, 240, 242, 243, 244, 246, 247}};
+        // No background: the theme hands out a null frame, and the
+        // screen falls back to the kit's drawn frame.
+        ui_kit::Colony_Theme bare(ui_kit::Frame(), ui_kit::Frame(),
+            ui_kit::Frame(), ui_kit::Frame(), ui_kit::Frame(),
+            ui_kit::Frame(), ui_kit::Frame(), ui_kit::Frame(), title);
+        DOCTEST_CHECK(bare.Background().Is_Null());
+        // With a background: the theme hands out that frame, at its
+        // native size, so the screen draws on it.
+        const std::string background = Make_Frame(640, 480, 230);
+        ui_kit::Colony_Theme theme(ui_kit::Frame(), ui_kit::Frame(),
+            ui_kit::Frame(), ui_kit::Frame(), ui_kit::Frame(),
+            ui_kit::Frame(), ui_kit::Frame(), ui_kit::Frame(), title,
+            ui_kit::Frame(
+                (const s_animation_header*)background.data()));
+        DOCTEST_CHECK_FALSE(theme.Background().Is_Null());
+        DOCTEST_CHECK(theme.Background().Width() == 640);
+        DOCTEST_CHECK(theme.Background().Height() == 480);
+    }
+
     DOCTEST_TEST_CASE("colony spacing lays list rows out on a 31 px pitch with a 1 px gap") {
         using namespace test_ui_kit_detail;
         const s_colors title = {{234, 238, 240, 242, 243, 244, 246, 247}};

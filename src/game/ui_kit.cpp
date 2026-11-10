@@ -567,11 +567,20 @@ namespace ui_kit {
             left_slice, middle_column, right_slice);
     }
 
+    void Frame::Draw_Region(int16_t src_x, int16_t src_y, int16_t width,
+        int16_t height, int16_t dst_x, int16_t dst_y) const {
+        if (frame_ == nullptr) {
+            return;
+        }
+        sprite_art::Draw_Sprite_Frame_Region(frame_, src_x, src_y, width,
+            height, dst_x, dst_y);
+    }
+
     Colony_Theme::Colony_Theme(Frame name_normal, Frame name_active,
         Frame population_normal, Frame population_active,
         Frame food_normal, Frame food_active,
         Frame return_normal, Frame return_pressed,
-        const s_colors& title_colors)
+        const s_colors& title_colors, Frame background)
         // Tab labels are engine font style 2: the baked colony
         // labels measure as style 2 (widths within 1-2 px per
         // label, ink 8-9 rows tall). Button labels are the
@@ -594,7 +603,8 @@ namespace ui_kit {
           tab_normal_{name_normal, population_normal, food_normal},
           tab_active_{name_active, population_active, food_active},
           return_normal_(return_normal),
-          return_pressed_(return_pressed) {
+          return_pressed_(return_pressed),
+          background_(background) {
         // Loading is soft: a missing or malformed file leaves the
         // bitmap fonts unloaded and the engine fonts above render
         // instead (vfs::fopen returns null in the tests, where no
@@ -729,6 +739,10 @@ namespace ui_kit {
         return style;
     }
 
+    ui_kit::Frame Colony_Theme::Background() const {
+        return background_;
+    }
+
     ui_kit::Image_Button_Frames Colony_Theme::Return_Frames() const {
         ui_kit::Image_Button_Frames frames;
         frames.normal = return_normal_;
@@ -754,6 +768,17 @@ namespace ui_kit {
 
     std::unique_ptr<Colony_Theme> Load_Colony_Theme(
         void* allocation_base, const s_colors& title_colors) {
+        // The baked colony background: extracted from the user's own
+        // game data at run time first (works in a fresh build, where
+        // no .bin is bundled), falling back to the derived .bin when
+        // it is bundled. A null background means the screen falls
+        // back to the kit's drawn frame.
+        Frame background(
+            sprite_art::Load_Colony_Background(allocation_base));
+        if (background.Is_Null()) {
+            background = Frame(sprite_art::Load_Sprite_Frame(
+                "colony-background", "normal", allocation_base));
+        }
         return std::make_unique<Colony_Theme>(
             Frame(sprite_art::Load_Sprite_Frame("sort-name", "normal",
                 allocation_base)),
@@ -771,7 +796,7 @@ namespace ui_kit {
                 allocation_base)),
             Frame(sprite_art::Load_Sprite_Frame("return", "pressed",
                 allocation_base)),
-            title_colors);
+            title_colors, background);
     }
 
     Button::Button(int16_t x, int16_t y, int16_t w, int16_t h,
