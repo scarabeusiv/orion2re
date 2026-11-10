@@ -183,6 +183,15 @@ namespace ui_kit {
         // palette), so the dots are black-on-black on the colony's
         // own black track; the nearest menu index is 0, exact.
         constexpr uint8_t kScroll_Corner = 0;
+        // Scrollbar arrows, in menu-palette indices: the colony's
+        // arrows are bright triangles with blue edges -- the
+        // bright centre (204, 204, 204) is menu 249 (distance
+        // 8.0), the edge (28, 28, 96) menu 111 (distance 35.3)
+        // and the darker edge (20, 20, 56) menu 84 (distance
+        // 12.6). The arrow is drawn as a triangle of the bright
+        // index with a 1 px edge around it, like the colony's.
+        constexpr uint8_t kScroll_Arrow_Edge = 111;
+        constexpr uint8_t kScroll_Arrow_Bright = 249;
         // The metal button's three slices, cut from the derived
         // RETURN frame (COLSUM entry 1, 85x26): the left dome
         // (columns 0..16) and the right dome (columns 60..84) are
@@ -799,17 +808,26 @@ namespace ui_kit {
 
     std::unique_ptr<Colony_Theme> Load_Colony_Theme(
         void* allocation_base, const s_colors& title_colors) {
-        // The baked colony background: extracted from the user's own
-        // game data at run time first (works in a fresh build, where
-        // no .bin is bundled), falling back to the derived .bin when
-        // it is bundled. A null background means the screen falls
-        // back to the kit's drawn frame.
-        Frame background(
-            sprite_art::Load_Colony_Background(allocation_base));
-        if (background.Is_Null()) {
-            background = Frame(sprite_art::Load_Sprite_Frame(
-                "colony-background", "normal", allocation_base));
-        }
+        // No baked background: the settings screen paints its own
+        // background with the kit (frame, panel, plates, scrollbar,
+        // info box, bottom band, all code-drawn). Painting over the
+        // colony's baked 640x480 background left seams -- a black
+        // gap beside the VALUE plate, a repeating pattern from a
+        // tiled plate face, speckled texture behind the description
+        // text, notches in the frame, wrong pixels around the
+        // scroll arrows -- and the screen needs coherence over the
+        // baked texture. The loader stays (sprite_art_test pins
+        // it) and the manifest entry stays; nothing loads it here.
+        // No derived sort-tab frames either: the tabs use the
+        // theme's fallback (a flat fill with a border: bright blue
+        // 138 active, dark navy 50 at rest). The derived frames
+        // cannot match the colony's bright vivid blue in the menu
+        // palette -- their top and bottom rows are grey (239) and
+        // their bands dark (103/50), so the active tab reads muted
+        // dark blue, while the colony's active tab reads bright
+        // vivid blue -- and the menu palette's brightest blue is
+        // 138, so a flat 138 face is the brightest the active tab
+        // can be.
         // The colony BUILDING toggle, extracted at run time from
         // the user's own game data (COLSUM entry 11). Both null when
         // the entry is missing: the toggle falls back to the
@@ -817,23 +835,12 @@ namespace ui_kit {
         const sprite_art::Buy_Button_Frames toggle =
             sprite_art::Load_Buy_Button_Frames(allocation_base);
         return std::make_unique<Colony_Theme>(
-            Frame(sprite_art::Load_Sprite_Frame("sort-name", "normal",
-                allocation_base)),
-            Frame(sprite_art::Load_Sprite_Frame("sort-name", "active",
-                allocation_base)),
-            Frame(sprite_art::Load_Sprite_Frame("sort-population",
-                "normal", allocation_base)),
-            Frame(sprite_art::Load_Sprite_Frame("sort-population",
-                "active", allocation_base)),
-            Frame(sprite_art::Load_Sprite_Frame("sort-food", "normal",
-                allocation_base)),
-            Frame(sprite_art::Load_Sprite_Frame("sort-food", "active",
-                allocation_base)),
+            Frame(), Frame(), Frame(), Frame(), Frame(), Frame(),
             Frame(sprite_art::Load_Sprite_Frame("return", "normal",
                 allocation_base)),
             Frame(sprite_art::Load_Sprite_Frame("return", "pressed",
                 allocation_base)),
-            title_colors, background,
+            title_colors, Frame(),
             Frame(toggle.off), Frame(toggle.on));
     }
 
@@ -1460,6 +1467,56 @@ namespace ui_kit {
         graphics::Fill(x_, bottom, x_, bottom, style.scroll_corner);
         graphics::Fill(right, bottom, right, bottom,
             style.scroll_corner);
+    }
+
+    void Scroll_Bar::Draw_Arrows() const {
+        // The arrows are triangles, 10 px wide, in the colony's
+        // positions: the up-arrow's tip at the track's top minus
+        // 25 (y 15 for the colony's track), widening to the
+        // strip's width at its base (y 34); the down-arrow mirrors
+        // it, its base at the track's bottom plus 5 (y 316)
+        // narrowing to its tip at y 337. Both start 2 px left of
+        // the strip, so the triangle is centred on it. The
+        // half-width runs 0 at the tip to 4 at the base,
+        // proportionally over the arrow's height. The triangle is
+        // the bright index with a 1 px edge around it: the edge
+        // rows and the edge columns of each row draw the edge
+        // index, the inside the bright one.
+        const int16_t ax = (int16_t)(x_ - 2);
+        const int16_t up_tip = (int16_t)(track_y_ - 25);
+        const int16_t up_base = (int16_t)(track_y_ - 6);
+        for (int16_t row = up_tip; row <= up_base; ++row) {
+            const int16_t half = (int16_t)((row - up_tip) * 4 /
+                (up_base - up_tip));
+            const int16_t left = (int16_t)(ax + 5 - half - 1);
+            const int16_t right = (int16_t)(ax + 5 + half);
+            graphics::Fill(left, row, right, row,
+                kScroll_Arrow_Bright);
+            graphics::Fill(left, row, left, row, kScroll_Arrow_Edge);
+            graphics::Fill(right, row, right, row,
+                kScroll_Arrow_Edge);
+        }
+        graphics::Fill((int16_t)(ax + 4), up_tip, (int16_t)(ax + 5),
+            up_tip, kScroll_Arrow_Edge);
+        graphics::Fill(ax, up_base, (int16_t)(ax + 9), up_base,
+            kScroll_Arrow_Edge);
+        const int16_t down_base = (int16_t)(track_bottom() + 5);
+        const int16_t down_tip = (int16_t)(track_bottom() + 26);
+        for (int16_t row = down_base; row <= down_tip; ++row) {
+            const int16_t half = (int16_t)((down_tip - row) * 4 /
+                (down_tip - down_base));
+            const int16_t left = (int16_t)(ax + 5 - half - 1);
+            const int16_t right = (int16_t)(ax + 5 + half);
+            graphics::Fill(left, row, right, row,
+                kScroll_Arrow_Bright);
+            graphics::Fill(left, row, left, row, kScroll_Arrow_Edge);
+            graphics::Fill(right, row, right, row,
+                kScroll_Arrow_Edge);
+        }
+        graphics::Fill(ax, down_base, (int16_t)(ax + 9), down_base,
+            kScroll_Arrow_Edge);
+        graphics::Fill((int16_t)(ax + 4), down_tip, (int16_t)(ax + 5),
+            down_tip, kScroll_Arrow_Edge);
     }
 
     void Draw_List_Background(const Theme& theme,

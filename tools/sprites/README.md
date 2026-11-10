@@ -96,17 +96,21 @@ Contents:
   per-row texture -- no repeating pattern reproduces them), the
   list panel, the info area, the SORT band (SORT label + icon,
   the seven sort tabs, RETURN) and the scrollbar track (a black
-  channel at x 621..625). The settings screen renders on this
-  same background, and the colony render too: the background is
-  the base, the kit draws only the dynamic elements on top of
-  it. The .bin is NOT committed (extract from the LBX, do not
-  copy bitmaps to git): the game extracts it at run time from
-  the user's own game data
-  (`sprite_art::Load_Colony_Background`), falling back to the
-  derived .bin when one is bundled. The manifest entry is the
-  source of truth for the derivation (and the run-time extractor
-  mirrors it: entry 0, frame 0, embedded colony palette ->
-  installed palette, index 0 preserved, fail over distance 64).
+  channel at x 621..625). The colony render uses it as its base.
+  The settings screen does NOT: it paints its own background
+  with the kit (frame, panel, plates, scrollbar, info box,
+  bottom band, all code-drawn), because painting over the baked
+  background left seams -- a black gap beside the VALUE plate, a
+  repeating pattern from a tiled plate face, speckled texture
+  behind the description text, notches in the frame, wrong pixels
+  around the scroll arrows. The .bin is NOT committed (extract
+  from the LBX, do not copy bitmaps to git). The loader
+  (`sprite_art::Load_Colony_Background`) and the manifest entry
+  stay -- the loader is pinned by its test -- but nothing loads
+  the background at run time now. The manifest entry is the
+  source of truth for the derivation (entry 0, frame 0, embedded
+  colony palette -> installed palette, index 0 preserved, fail
+  over distance 64).
 
 - `scroll-arrow-up`, `scroll-arrow-down` — COLSUM.LBX entries 2
   (10x20) and 3 (11x22), the scrollbar's up/down arrow buttons,
@@ -121,21 +125,20 @@ Contents:
   own buttons, drawn by the field system at (619, 15) and
   (619, 316) -- above and below the scroll track (y 40..311),
   not at the kit Scroll_Bar's track ends -- so the colony render
-  draws them at those positions; the settings scrollbar is a
-  drag thumb with no arrow buttons and does not use them.
+  draws them at those positions; the settings screen draws its own arrows with the kit
+  (Scroll_Bar::Draw_Arrows, code-drawn triangles in the theme's colours)
+  at the same positions and does not use these sprites.
 
 ## What cannot be derived from game art
 
 - Border, list panel, header plates, description box, toggle
   squares, scrollbar thumb: the colony's are baked into the
   640x480 colony background art (COLSUM.LBX entry 0), so no
-  separable sprite exists for them -- but the background itself
-  is now used as the base (see `colony-background` above), so
-  they come from the baked art instead of engine-drawn Fill/Box.
-  They stay engine-drawn only when the background fails to load
-  (the fallback). The scrollbar thumb is dynamic (it moves with
-  the scroll position), so it stays kit-drawn on top of the
-  background's track.
+  separable sprite exists for them -- and the settings screen no
+  longer renders on that background (see `colony-background`
+  above), so they are engine-drawn Fill/Box in theme colours,
+  in the colony's style. The scrollbar thumb is dynamic (it
+  moves with the scroll position), so it stays kit-drawn.
 - Dropdown popup: no popup-window sprite exists; the game's own
   modal lists are engine-drawn. The resolution popup stays
   engine-drawn.
