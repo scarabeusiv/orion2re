@@ -44,6 +44,14 @@ namespace graphics {
         test::fakes::g_fill_calls.push_back({x1, y1, x2, y2, color});
     }
 
+    void __cdecl Dithered_Fill(int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint8_t base, uint8_t speckle, uint8_t density) {
+        test::fakes::g_dithered_fill_calls.push_back({x1, y1, x2, y2, base, speckle, density});
+    }
+
+    void __cdecl Dithered_Box(int16_t x, int16_t y, int16_t width, int16_t height, int16_t thickness, uint8_t base, uint8_t speckle, uint8_t density) {
+        test::fakes::g_dithered_box_calls.push_back({x, y, width, height, thickness, base, speckle, density});
+    }
+
     void __cdecl Box(int16_t x, int16_t y, int16_t width, int16_t height, int16_t thickness, uint8_t color) {
         test::fakes::g_box_calls.push_back({x, y, width, height, thickness, color});
     }
