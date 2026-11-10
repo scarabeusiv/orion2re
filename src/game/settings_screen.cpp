@@ -63,10 +63,10 @@ namespace SETTINGS_SCREEN {
         //   scrollbar track/thumb: baked into the 640x480
         //   background (anims[0]); colsum.cpp draws no boxes
         //   itself, so there is no separable sprite for any of them.
-        //   The toggle squares and dropdown cells are kit buttons
-        //   instead (game/ui_kit.h: Button, Toggle/Cell kinds):
-        //   the colony list's value cell, engine-drawn in the
-        //   panel's own border/interior colours.
+        //   The toggles are the colony's BUILDING toggle (the
+        //   derived buy-button frames, game/ui_kit.h: Button,
+        //   Toggle kind); the dropdown values are plain text in the
+        //   BUILDING column, like the colony's building name.
         // - Category selectors: COLSUM anims[4..10] are the sort
         //   tabs' frames (Name, Population, Food, ...), but their
         //   labels are baked in and do not match Game Internals /
@@ -125,11 +125,19 @@ namespace SETTINGS_SCREEN {
         //   fields::down_mouse_button on the RETURN field and the
         //   auto function redraws the screen on every hold tick, so
         //   the draw picks the pressed frame until release.
+        // The columns map to the colony listing's: the star name
+        // (NAME column) is the option, the BUILDING column is the
+        // value. The value column is the colony's BUILDING column
+        // (512..597, 86 px, toggle at 599); the name column spans
+        // the left block (13..508), from the NAME column's left edge
+        // to the BUILDING divider (509). The name text starts at
+        // TITLE_X, like the colony's star name; the value text
+        // starts at VALUE_X, like the colony's building name.
         constexpr int16_t TITLE_X = 19;
         constexpr int16_t TITLE_Y = 8;
-        constexpr int16_t TITLE_WIDTH = 348;
-        constexpr int16_t VALUE_X = 372;
-        constexpr int16_t VALUE_WIDTH = 244;
+        constexpr int16_t TITLE_WIDTH = 489;
+        constexpr int16_t VALUE_X = 512;
+        constexpr int16_t VALUE_WIDTH = 86;
         // List panel: its x and width come from the window frame's
         // content rect (Make_List_Layout); its y is this screen's
         // (below the title), and its height, first-row y, row pitch
@@ -154,10 +162,13 @@ namespace SETTINGS_SCREEN {
         // match the colony's rows (first row 57 -> 38).
         constexpr int16_t HEADER_Y = 4;
         constexpr int16_t HEADER_HEIGHT = 31;
+        // The plates align to the columns: SETTING spans the left
+        // block (13..508, covering the colony's NAME..SCIENTISTS
+        // plates), VALUE is the BUILDING plate (512..597).
         constexpr int16_t HEADER_SETTING_X = 13;
-        constexpr int16_t HEADER_SETTING_W = 351;
-        constexpr int16_t HEADER_VALUE_X = 368;
-        constexpr int16_t HEADER_VALUE_W = 248;
+        constexpr int16_t HEADER_SETTING_W = 496;
+        constexpr int16_t HEADER_VALUE_X = 512;
+        constexpr int16_t HEADER_VALUE_W = 86;
         constexpr int ROWS_PER_PAGE = 10;
         constexpr int16_t ROW_TEXT_Y_OFFSET = 8;
         // Colony-list scrollbar, like COLSUM's: a 5-wide vertical
@@ -170,14 +181,13 @@ namespace SETTINGS_SCREEN {
         constexpr int16_t SCROLL_W = 5;
         constexpr int16_t ROW_FIELD_X_END = SCROLL_X - 2;
 
-        // Selector column: every row's selector (toggle square,
-        // dropdown cell, value) ends at this right edge, like the
-        // colony list's cells all end at their column's right edge.
-        // The name stays left at TITLE_X; the selector is right.
-        constexpr int16_t SELECTOR_RIGHT_X = 616;
-        // Square selector cell size: the colony list's grid cell,
-        // a bordered square holding one value.
-        constexpr int16_t SQUARE_SIZE = 20;
+        // The colony BUILDING toggle: 19x29 at x 599, the buy
+        // button's position (the BUILDING field ends at 597, the
+        // toggle sits in its own narrow cell to the right), at the
+        // row's top (the row is 30 tall, the toggle 29).
+        constexpr int16_t TOGGLE_X = 599;
+        constexpr int16_t TOGGLE_W = 19;
+        constexpr int16_t TOGGLE_H = 29;
         // Description box: spans the whole width of the window,
         // like the colony screen's bottom info area — the selected
         // row's description lives here, with a "Requires restart."
@@ -276,14 +286,12 @@ namespace SETTINGS_SCREEN {
         // The squares are engine-drawn in the list panel's own
         // border/interior colours (the colony's cells are baked
         // art and cannot be drawn here), by the kit now
-        // (game/ui_kit.h: Button, Toggle/Cell kinds): a toggle is
-        // a square cell -- on fills it bright (pale cyan-blue body
-        // 154, near-white centre 247), off fills it in the menu
-        // grey ramp (236 body, 246 centre), disabled is the bare
-        // cell with no fill, like the colony's no-button state.
-        // Dropdowns take a rectangular cell of the same
-        // border/interior, sized to their text, and all selectors
-        // end at SELECTOR_RIGHT_X.
+        // (game/ui_kit.h: Button, Toggle kind): a toggle is the
+        // colony's BUILDING toggle (the derived buy-button frames:
+        // grey off, blue on with its white starburst), disabled is
+        // the bare cell with no fill, like the colony's no-button
+        // state. Dropdowns are plain text in the BUILDING column
+        // with a "v" chevron, like the colony's building name.
 
         enum e_apply_result {
             APPLY_LIVE,
@@ -429,6 +437,10 @@ namespace SETTINGS_SCREEN {
             // MORE keeps from RETURN.
             ui_kit::Tab_Bar bar(Make_Window_Frame().content_x(),
                 Bottom_Bar_Y(), (int16_t)(SHOW_MORE_X - 8), *g_theme);
+            // The band starts with the SETTINGS label, like the
+            // colony's sort band starts with SORT, then the
+            // category tabs.
+            bar.Set_Label("SETTINGS");
             for (int category = 0; category < CATEGORY_COUNT; ++category) {
                 bar.Add_Tab(CATEGORY_LABELS[category],
                     category == g_state.category,
@@ -1561,7 +1573,14 @@ namespace SETTINGS_SCREEN {
             // and the column divider between SETTING and VALUE,
             // like the colony list's grooves between its columns.
             const ui_kit::List_Layout layout = Make_List_Layout();
-            ui_kit::Draw_List_Background(*g_theme, layout);
+            // On the baked background the rows show the colony
+            // listing's own bitmap texture (the baked panel), not a
+            // flat fill: skip the panel's interior fill and draw
+            // only the border and the row frame lines on top of it.
+            // Without a background (the kit-frame fallback) the
+            // fill is the panel.
+            ui_kit::Draw_List_Background(*g_theme, layout,
+                background.Is_Null());
             ui_kit::Draw_List_Columns(*g_theme, Make_List_Columns(layout));
             // The panel fill above covers the scrollbar strip with
             // the panel interior. On the baked background the strip
@@ -1676,14 +1695,13 @@ namespace SETTINGS_SCREEN {
                     }
                     fonts::Print(TITLE_X, text_y,
                         Truncate_To_Width(title_text, TITLE_WIDTH).c_str());
-                    // Kit toggle button, right-aligned to the
-                    // selector column: bright when on, grey when
-                    // off, bare when the mod is broken and cannot
-                    // be enabled.
-                    const int16_t toggle_x = SELECTOR_RIGHT_X - SQUARE_SIZE + 1;
-                    const int16_t toggle_y = (int16_t)(y + (layout.row_height() - SQUARE_SIZE) / 2);
+                    // The colony BUILDING toggle: bright blue
+                    // when on, grey when off, bare when the mod is
+                    // broken and cannot be enabled.
+                    const int16_t toggle_x = TOGGLE_X;
+                    const int16_t toggle_y = y;
                     ui_kit::Button toggle(toggle_x, toggle_y,
-                        SQUARE_SIZE, SQUARE_SIZE,
+                        TOGGLE_W, TOGGLE_H,
                         ui_kit::Button_Kind::Toggle, *g_theme);
                     toggle.Set_State(entry.broken
                         ? ui_kit::Button_State::Disabled
@@ -1709,25 +1727,27 @@ namespace SETTINGS_SCREEN {
                     continue;
                 }
                 if (row.widget == config::SETTINGS_WIDGET_TOGGLE) {
-                    // Kit toggle button, right-aligned to the
-                    // selector column: bright when on, grey when off.
+                    // The colony BUILDING toggle: bright blue when
+                    // on, grey when off.
                     config::s_typed_value value;
                     const bool on = config::Get_Settings_Row_Value(row, &value)
                         && value.bool_value;
-                    const int16_t toggle_x = SELECTOR_RIGHT_X - SQUARE_SIZE + 1;
-                    const int16_t toggle_y =
-                        (int16_t)(y + (layout.row_height() - SQUARE_SIZE) / 2);
+                    const int16_t toggle_x = TOGGLE_X;
+                    const int16_t toggle_y = y;
                     ui_kit::Button toggle(toggle_x, toggle_y,
-                        SQUARE_SIZE, SQUARE_SIZE,
+                        TOGGLE_W, TOGGLE_H,
                         ui_kit::Button_Kind::Toggle, *g_theme);
                     toggle.Set_State(on ? ui_kit::Button_State::Active
                                         : ui_kit::Button_State::Rest);
                     toggle.Draw();
                 } else if (row.widget == config::SETTINGS_WIDGET_DROPDOWN) {
-                    // Dropdown: the value in a kit Cell button with
-                    // a down chevron, right-aligned to the selector
-                    // column; blue while its popup is open (the
-                    // Resolution popup), like the active selector.
+                    // Dropdown: the value as plain text in the
+                    // BUILDING column, like the colony's building
+                    // name, with a "v" chevron marking it as a
+                    // popup; blue while its popup is open (the
+                    // Resolution popup). No bordered cell: the
+                    // colony's values are bare text. The row click
+                    // (Handle_Row_Click) still opens the popup.
                     // The list itself is the shared
                     // fields::Get_List_Field picker; its frame is
                     // that picker's, not the settings screen's.
@@ -1744,30 +1764,19 @@ namespace SETTINGS_SCREEN {
                             ? config::Format_Leaf_Value(row.variable_id, value)
                             : "?";
                     }
-                    value_text = Truncate_To_Width(value_text, VALUE_WIDTH - 16);
-                    const int16_t text_w = fonts::Get_String_Width(value_text.c_str());
-                    int16_t box_w = (int16_t)(text_w + 24);
-                    if (box_w > VALUE_WIDTH) {
-                        box_w = VALUE_WIDTH;
-                    }
-                    const int16_t trigger_x = (int16_t)(SELECTOR_RIGHT_X - box_w + 1);
-                    const int16_t trigger_y = (int16_t)(y + 5);
-                    ui_kit::Button cell(trigger_x, trigger_y, box_w, 20,
-                        ui_kit::Button_Kind::Cell, *g_theme);
-                    cell.Set_Label(value_text.c_str());
-                    // The value text sits on the row's text line
-                    // (text_y), like the title and the plain values:
-                    // the cell starts 5 px into the row, the text
-                    // 9 px in, so the label offset is 4 px.
-                    cell.Set_Label_Y_Offset((int16_t)(text_y - trigger_y));
-                    cell.Set_State(Is_Resolution_Row(row) &&
-                            g_state.resolution_popup_open
-                        ? ui_kit::Button_State::Active
-                        : ui_kit::Button_State::Rest);
-                    cell.Draw();
+                    value_text = Truncate_To_Width(value_text,
+                        VALUE_WIDTH - fonts::Get_String_Width(" v"));
+                    value_text += " v";
+                    fonts::Set_Font_Style(4,
+                        (Is_Resolution_Row(row) &&
+                            g_state.resolution_popup_open)
+                            ? &g_colony_highlight_colors
+                            : &g_colony_dim_colors);
+                    fonts::Print(VALUE_X, text_y, value_text.c_str());
                 } else {
                     // Info and edit values: text in the colony dim
-                    // color, right-aligned to the selector column.
+                    // color, left-aligned in the BUILDING column,
+                    // like the colony's building name.
                     config::s_typed_value value;
                     std::string value_text;
                     if (row.widget == config::SETTINGS_WIDGET_INFO) {
@@ -1778,11 +1787,8 @@ namespace SETTINGS_SCREEN {
                             : "?";
                     }
                     value_text = Truncate_To_Width(value_text, VALUE_WIDTH);
-                    const int16_t value_w =
-                        fonts::Get_String_Width(value_text.c_str());
                     fonts::Set_Font_Style(4, &g_colony_dim_colors);
-                    fonts::Print(SELECTOR_RIGHT_X - value_w + 1, text_y,
-                        value_text.c_str());
+                    fonts::Print(VALUE_X, text_y, value_text.c_str());
                 }
             }
 
