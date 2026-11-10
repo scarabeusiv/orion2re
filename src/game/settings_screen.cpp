@@ -1224,9 +1224,18 @@ namespace SETTINGS_SCREEN {
             }
             g_state.resolution_popup_selected = selected;
 
-            // Geometry: anchored to the row's value area, sized to
-            // the longest label, clamped to the screen like the
-            // dropdown in Open_Dropdown.
+            // Geometry: the list is sized to the longest label, in
+            // the font it prints in (style 4 -- measuring in the
+            // font active at open time, style 1 for a row click,
+            // under-measures: style 4's "3840x2880" is ~111 px
+            // against style 1's ~63, so the text ran past the
+            // popup's border and the panel's edge, into the frame).
+            // The list is right-aligned to the dropdown button's
+            // right edge (the closed control's right edge, sized
+            // to the current value in style 1 like the row draw),
+            // and clamped to the frame's content bounds, so the
+            // widest item always fits on screen.
+            fonts::Set_Font_Style(4, &g_colony_colors);
             const int16_t y_step = (int16_t)(fonts::Get_Font_Height() +
                 fonts::Get_Font_Vertical_Spacing());
             int16_t content_w = 16;
@@ -1242,9 +1251,25 @@ namespace SETTINGS_SCREEN {
             const int16_t popup_h = (int16_t)(
                 (int16_t)g_state.resolution_options.size() * y_step +
                 pad_top + pad_bottom + 2);
-            int16_t x = VALUE_X;
-            if (x + popup_w > 632) {
-                x = 632 - popup_w;
+            // The dropdown button's right edge, like the row draw:
+            // the current value in style 1, plus the button chrome
+            // (padding, chevron, padding).
+            fonts::Set_Font_Style(1, &g_colony_dim_colors);
+            const std::string current_label =
+                config::Format_Resolution(current_width, current_height);
+            const int16_t chevron_w = fonts::Get_String_Width("v");
+            const int16_t button_w = (int16_t)(
+                fonts::Get_String_Width(current_label.c_str()) +
+                4 + 4 + chevron_w + 4);
+            const int16_t button_right =
+                (int16_t)(VALUE_X + button_w - 1);
+            const ui_kit::Window_Frame popup_frame = Make_Window_Frame();
+            int16_t x = (int16_t)(button_right + 1 - popup_w);
+            if (x < popup_frame.content_x()) {
+                x = popup_frame.content_x();
+            }
+            if (x + popup_w > popup_frame.content_right()) {
+                x = (int16_t)(popup_frame.content_right() - popup_w);
             }
             const ui_kit::List_Layout layout = Make_List_Layout();
             int16_t y = layout.row_y(visible - Scroll_Top());
@@ -1528,8 +1553,11 @@ namespace SETTINGS_SCREEN {
 
         // The Resolution dropdown popup, in the fleet-popup shape:
         // a small window over the screen, the values as rows, a blue
-        // bar on the selected one. Drawn by Draw_Settings_Screen
-        // while the popup is open.
+        // bar on the selected one. Its border is the original GAME
+        // SETTINGS dialog's list-box border (GAME.LBX entry 29,
+        // measured): a bevelled frame around the dark list, not a
+        // flat line. Drawn by Draw_Settings_Screen while the popup
+        // is open.
         void Draw_Resolution_Popup() {
             if (!g_state.resolution_popup_open) {
                 return;
@@ -1540,8 +1568,25 @@ namespace SETTINGS_SCREEN {
             const int16_t h = g_state.resolution_popup_h;
             graphics::Fill(x, y, (int16_t)(x + w - 1), (int16_t)(y + h - 1),
                 PANEL_INTERIOR);
-            graphics::Box(x, y, w, h, 1, PANEL_BORDER);
+            // The border around the open list is a bevelled frame,
+            // like the original GAME SETTINGS dialog's list box
+            // (GAME.LBX entry 29, measured): a raised bead around
+            // the dark list -- a bright ridge with a darker line
+            // inside it -- not a flat 1 px line, which does not
+            // read as a border on the panel's own interior. The
+            // kit's list bevel draws it: the bright line outside,
+            // the shade line inside, on all four sides.
+            const ui_kit::List_Style list_style =
+                g_theme->List_Style();
+            graphics::Box(x, y, w, h, 1, list_style.frame_light);
+            graphics::Box((int16_t)(x + 1), (int16_t)(y + 1),
+                (int16_t)(w - 2), (int16_t)(h - 2), 1,
+                list_style.frame_shade);
             const int16_t text_x = (int16_t)(x + 1 + 8);
+            // The labels print in style 4: set it before measuring
+            // the row text offset, so the text sits mid-row
+            // whatever font was active when the popup opened.
+            fonts::Set_Font_Style(4, &g_colony_colors);
             const int16_t text_dy = (int16_t)(
                 (g_state.resolution_popup_row_step - fonts::Get_Font_Height()) / 2);
             for (size_t index = 0; index < g_state.resolution_options.size(); ++index) {
@@ -1553,8 +1598,10 @@ namespace SETTINGS_SCREEN {
                 if ((int)index == g_state.resolution_popup_selected) {
                     // Blue bar around the selected value, the same blue
                     // as the active category and the RETURN button: the
-                    // theme's primary face.
-                    graphics::Fill(x + 1, row_y, (int16_t)(x + w - 2), row_end,
+                    // theme's primary face. It stays inside the
+                    // bevelled frame (x+2..x+w-3), so it never paints
+                    // over the frame's inner shade line.
+                    graphics::Fill((int16_t)(x + 2), row_y, (int16_t)(x + w - 3), row_end,
                         g_theme->Button_Style().primary_face);
                     fonts::Set_Font_Style(4, &g_light_text_colors);
                 } else {
