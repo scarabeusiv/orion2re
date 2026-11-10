@@ -1412,6 +1412,20 @@ namespace ui_kit {
         graphics::Fill((int16_t)(x + 1), (int16_t)(panel_bottom - 2),
             layout.content_right(), (int16_t)(panel_bottom - 2),
             style.frame_light);
+        // The panel's right edge is a 3 px bevel in the colony: a
+        // bright middle line one pixel inside the border (the
+        // colony's is 152 at the strip's right edge; the kit renders
+        // it in the theme's frame light). The border itself is the
+        // outer line and the panel interior the inner one -- the
+        // colony's inner dark line (28) is darker than the menu
+        // palette's darkest grey, so it needs no separate line.
+        // Drawn last: the row frame lines and the footing stop at
+        // the content edge, so nothing crosses it, and the scrollbar
+        // draws over it where the two overlap.
+        const int16_t panel_right = (int16_t)(x + layout.panel_w() - 1);
+        graphics::Fill((int16_t)(panel_right - 1), y,
+            (int16_t)(panel_right - 1),
+            (int16_t)(y + layout.panel_h() - 1), style.frame_light);
     }
 
     Column_Layout::Column_Layout(const std::vector<Column>& columns,
