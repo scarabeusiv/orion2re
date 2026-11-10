@@ -207,6 +207,18 @@ namespace COLSUM {
             COLSUM::Update_Col_List();
         }
 
+        // The list opens at the top. The slider is inverted (its maximum
+        // shows the first rows), so the top position is slider =
+        // num_colonies - visible_rows. The statics start at zero, and
+        // without this the first Update_First computes
+        // first = num_colonies - 10, opening the list at the bottom.
+        COLSUM::first = 0;
+        {
+            const int16_t num_colonies = COLXPORT::N_Colonies(MOX::PLAYER_NUM);
+            COLSUM::slider_bar_position =
+                (num_colonies >= 10) ? (num_colonies - 10) : -1;
+        }
+
         fonts::Set_Font_Style_Shadow_Down(1, &COLONY::font_color_array);
         MOX2::Get_Auto_Function(&saved_auto_fn);
         mouse::Set_Mouse_List(&COLGCBT::mouse_list_blank, 1);
