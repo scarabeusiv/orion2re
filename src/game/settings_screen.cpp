@@ -1249,11 +1249,13 @@ namespace SETTINGS_SCREEN {
             const int header_cell = Text_Cell_For(layout.header.h, 62);
             const int16_t header_y =
                 (int16_t)(layout.header.y + (layout.header.h - header_cell) / 2);
-            Draw_Text((int16_t)(layout.header_setting.x + pad), header_y,
-                "Setting", kText_Header, header_cell, 0);
+            Draw_Text(
+                (int16_t)(layout.header_setting.x +
+                    layout.header_setting.w / 2),
+                header_y, "SETTING", kText_Header, header_cell, 1);
             Draw_Text(
                 (int16_t)(layout.header_value.x + layout.header_value.w / 2),
-                header_y, "Value", kText_Header, header_cell, 1);
+                header_y, "VALUE", kText_Header, header_cell, 1);
 
             // List rows: each its own translucent panel; the
             // selected row a brighter fill with a bright left bar.
@@ -1289,11 +1291,35 @@ namespace SETTINGS_SCREEN {
                 auto measure = [&](const std::string& text) {
                     return Text_Width(text.c_str(), row_cell);
                 };
-                Draw_Text((int16_t)(name_rect.x + pad),
-                    (int16_t)(row.y + (row.h - row_cell) / 2),
-                    SETTINGS_HD_FONT::Truncate_To_Width(name,
-                        name_rect.w - 2 * pad, measure).c_str(),
-                    is_selected ? kText_Bright : kText_Normal, row_cell, 0);
+                // The label colour matches the game: cyan, orange
+                // on the hovered row. A long label wraps onto a
+                // second line instead of truncating with "...".
+                const s_rgb label_color =
+                    Is_Hover(row) ? kText_Hover : kText_Label;
+                const std::vector<std::string> name_lines =
+                    SETTINGS_HD_FONT::Wrap_Text(name,
+                        name_rect.w - 2 * pad, measure, 2);
+                if (name_lines.size() <= 1) {
+                    Draw_Text((int16_t)(name_rect.x + pad),
+                        (int16_t)(row.y + (row.h - row_cell) / 2),
+                        name_lines.empty() ? "" : name_lines[0].c_str(),
+                        label_color, row_cell, 0);
+                } else {
+                    // Two lines: shrink the cell until both lines
+                    // fit inside the row.
+                    int two_cell = row_cell;
+                    while (two_cell > 8 &&
+                        two_cell + Line_Height(two_cell) > row.h - 2) {
+                        --two_cell;
+                    }
+                    const int16_t two_y = (int16_t)(row.y +
+                        (row.h - (two_cell + Line_Height(two_cell))) / 2);
+                    Draw_Text((int16_t)(name_rect.x + pad), two_y,
+                        name_lines[0].c_str(), label_color, two_cell, 0);
+                    Draw_Text((int16_t)(name_rect.x + pad),
+                        (int16_t)(two_y + Line_Height(two_cell)),
+                        name_lines[1].c_str(), label_color, two_cell, 0);
+                }
                 const SETTINGS_LAYOUT::s_rect value_rect =
                     SETTINGS_LAYOUT::Row_Value_Rect(layout, index);
                 Blend_Fill(value_rect, kControl_Fill, kControl_Alpha);

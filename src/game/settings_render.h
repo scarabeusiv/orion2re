@@ -10,6 +10,13 @@ namespace SETTINGS_RENDER {
     using s_rgb = SETTINGS_BLEND::s_rgb;
 
     // Text colours (8-bit display space).
+    // The setting-name label colour matches the game: the
+    // colony's cyan, orange on the hovered row. Cyan is the
+    // colsum palette's bright cyan; orange is the menu
+    // palette's option-label orange (252, 136, 0), exact
+    // match to the original GAME SETTINGS dialog.
+    inline constexpr s_rgb kText_Label{0, 228, 228};
+    inline constexpr s_rgb kText_Hover{252, 136, 0};
     inline constexpr s_rgb kText_Bright{225, 228, 235};
     inline constexpr s_rgb kText_Normal{200, 208, 218};
     inline constexpr s_rgb kText_Dim{150, 158, 168};
