@@ -351,6 +351,70 @@ namespace SETTINGS_SCREEN {
                 "Settings cannot be saved: no user configuration directory is available.";
         }
 
+        // The seeded user config must be a proper readable file:
+        // the writer copies the target's permissions onto each
+        // rewrite, so a seeded copy inherits the source's mode --
+        // a write-only (or read-only) source would poison every
+        // later write. Normalize to 0644 (owner read/write,
+        // group/others read) regardless of what the source's
+        // mode was.
+        bool Normalize_User_Config_Permissions(std::string* error) {
+            std::error_code ec;
+            std::filesystem::permissions(g_state.target_path,
+                std::filesystem::perms::owner_read |
+                    std::filesystem::perms::owner_write |
+                    std::filesystem::perms::group_read |
+                    std::filesystem::perms::others_read,
+                std::filesystem::perm_options::replace, ec);
+            if (ec) {
+                *error = "could not set permissions on the configuration file";
+                return false;
+            }
+            return true;
+        }
+
+        // Seeds the user config from the settings the game is
+        // running with, when no file is available to copy: every
+        // settings row's live value, plus the enabled mods. Never
+        // an empty file -- an empty user file shadows the live
+        // settings on the next reload (the loader reads the user
+        // file first), so a toggle that "worked" would silently
+        // drop every other setting.
+        bool Write_Live_Settings_Seed(std::string* error) {
+            std::string content =
+                "# Orion2 Redone configuration.\n"
+                "# Seeded from the settings the game is running with;\n"
+                "# edit the values in the Settings screen.\n";
+            for (const config::s_settings_row& row : g_state.rows) {
+                if (row.variable_id == config::CONFIG_NO_VARIABLE) {
+                    continue;
+                }
+                config::s_typed_value value;
+                if (!config::Get_Settings_Row_Value(row, &value)) {
+                    continue;
+                }
+                content += row.path + " = " +
+                    config::Format_Leaf_Value_For_Config(row.variable_id, value) +
+                    ";\n";
+            }
+            for (const std::string& id : g_state.enabled_ids) {
+                content += "enable " + id + ";\n";
+            }
+            std::ofstream output(g_state.target_path,
+                std::ios::binary | std::ios::trunc);
+            if (!output) {
+                *error = "could not create the configuration file";
+                return false;
+            }
+            output.write(content.data(), (std::streamsize)content.size());
+            output.flush();
+            if (!output) {
+                *error = "could not write the configuration file";
+                return false;
+            }
+            return Normalize_User_Config_Permissions(error);
+        }
+
         bool Ensure_User_Config(std::string* error) {
             if (std::filesystem::exists(g_state.target_path)) {
                 return true;
@@ -371,14 +435,12 @@ namespace SETTINGS_SCREEN {
                     *error = "could not copy the loaded configuration file";
                     return false;
                 }
-                return true;
+                return Normalize_User_Config_Permissions(error);
             }
-            std::ofstream created(g_state.target_path, std::ios::binary);
-            if (!created) {
-                *error = "could not create the configuration file";
-                return false;
-            }
-            return true;
+            // No file to copy from: seed from the live settings,
+            // never an empty file (it would shadow the live
+            // settings on the next reload).
+            return Write_Live_Settings_Seed(error);
         }
 
         // The working enabled set: the `enable` lines of the file the
