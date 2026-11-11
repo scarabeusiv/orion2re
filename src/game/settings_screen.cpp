@@ -22,6 +22,7 @@
 #include "game/palette.h"
 #include "game/platform.h"
 #include "game/russ.h"
+#include "game/settings_background.h"
 #include "game/settings_screen.h"
 #include "game/timer.h"
 #include "game/user_paths.h"
@@ -1126,17 +1127,16 @@ namespace SETTINGS_SCREEN {
                 ". Active mods: " + active + ".";
         }
 
-        // Step 1 of the hi-res rewrite: the pixel rendering is
-        // stripped and nothing is drawn yet -- the hi-res
-        // background lands in step 2. The field system still
-        // owns the clicks (Rebuild_Fields), and the edit field
-        // still draws its own text, so the screen's logic stays
-        // drivable while it renders nothing.
+        // Step 2 of the hi-res rewrite: the background is the
+        // generated hi-res surface (settings_background): a smooth
+        // navy gradient with two soft glows, a deterministic
+        // starfield and a vignette, generated per pixel for the
+        // current game resolution -- no baked colony bitmap, no
+        // dither, no pixel art. Rows, tabs and elements land on
+        // it in steps 3/4.
         void Draw_Settings_Screen() {
             video::Set_Page_Off();
-            graphics::Fill(0, 0,
-                (int16_t)(video::g_screen_res_x - 1),
-                (int16_t)(video::g_screen_res_y - 1), 0);
+            SETTINGS_BACKGROUND::Draw_Background();
             fields::Draw_Visible_Fields();
         }
 
@@ -1157,6 +1157,7 @@ namespace SETTINGS_SCREEN {
         Rebuild_Visible_Rows();
 
         video::Set_Refresh_Full();
+        SETTINGS_BACKGROUND::Install_Background();
         fields::Clear_Fields();
         RUSS::Mox_Update();
         fonts::Set_Font_Style(4, &g_normal_colors);
@@ -1247,6 +1248,7 @@ namespace SETTINGS_SCREEN {
 
         fields::Deactivate_Auto_Function();
         fields::Clear_Fields();
+        SETTINGS_BACKGROUND::Remove_Background();
         MOX::current_screen = SCREEN_MAIN_MENU;
         MOX::FULL_DRAW_SCREEN_FLAG = 0;
     }
