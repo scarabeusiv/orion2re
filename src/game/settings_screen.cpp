@@ -1218,6 +1218,17 @@ namespace SETTINGS_SCREEN {
             return std::max(8, rect_h * percent / 100);
         }
 
+        // Glyph-cell height for text sized as a permille of the
+        // screen height. The description text uses this, not a
+        // fraction of the description panel: the panel grows by a
+        // row so the longest description fits, and the text must
+        // stay the same size -- a fraction of the panel would grow
+        // the text with the panel, and the line count would never
+        // reach four (it asymptotes to 3.6 as the panel grows).
+        int Text_Cell_For_Permille(int height, int permille) {
+            return std::max(8, height * permille / 1000);
+        }
+
         // Horizontal text padding inside a rect, scaled with the screen.
         int16_t Text_Pad(int16_t screen_width) {
             return (int16_t)std::max<int32_t>(4, screen_width / 100);
@@ -1515,10 +1526,16 @@ namespace SETTINGS_SCREEN {
                     (int16_t)(layout.description.x + thickness + pad);
                 const int desc_w = layout.description.w -
                     2 * (thickness + pad);
+                // The description text is a fixed fraction of the
+                // screen height (25 permille, the status line 21):
+                // the sizes 4b used, when the panel was 140
+                // permille tall (18% / 15% of it). Fixed to the
+                // screen so growing the panel adds lines instead
+                // of growing the text.
                 const int desc_cell =
-                    Text_Cell_For(layout.description.h, 18);
+                    Text_Cell_For_Permille(layout.height, 25);
                 const int status_cell =
-                    Text_Cell_For(layout.description.h, 15);
+                    Text_Cell_For_Permille(layout.height, 21);
                 const int desc_lh = Line_Height(desc_cell);
                 const int status_lh = Line_Height(status_cell);
                 bool restart_required = false;

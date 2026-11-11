@@ -80,9 +80,9 @@ namespace {
         CHECK(layout.header.y == 10);
         CHECK(layout.header.h == 26);
         CHECK(layout.list.y == 42);
-        CHECK(layout.list.h == 319);
-        CHECK(layout.description.y == 367);
-        CHECK(layout.description.h == 67);
+        CHECK(layout.list.h == 287);
+        CHECK(layout.description.y == 335);
+        CHECK(layout.description.h == 99);
         CHECK(layout.bottom_bar.y == 440);
         CHECK(layout.bottom_bar.h == 31);
         CHECK(Rect_Bottom(layout.bottom_bar) == 471);
@@ -117,13 +117,16 @@ namespace {
         CHECK(layout.show_more.h == 25);
         CHECK(layout.done.h == 25);
         CHECK(layout.show_more.y == 443);
-        // Rows tile the list height exactly.
+        // Rows tile the list height exactly. The description is
+        // one row taller than before (it took one row slot's
+        // height from the list), so the rows are one row slot
+        // shorter and the bottom bar does not move.
         CHECK(Row_Rect(layout, 0).y == 42);
-        CHECK(Row_Rect(layout, 0).h == 31);
-        CHECK(Row_Rect(layout, 9).y == 329);
-        CHECK(Rect_Bottom(Row_Rect(layout, 9)) == 361);
-        CHECK(Row_Value_Rect(layout, 0).y == 48);
-        CHECK(Row_Value_Rect(layout, 0).h == 19);
+        CHECK(Row_Rect(layout, 0).h == 28);
+        CHECK(Row_Rect(layout, 9).y == 300);
+        CHECK(Rect_Bottom(Row_Rect(layout, 9)) == 329);
+        CHECK(Row_Value_Rect(layout, 0).y == 47);
+        CHECK(Row_Value_Rect(layout, 0).h == 17);
         Check_Bands_In_Order(layout);
     }
 
@@ -157,14 +160,14 @@ namespace {
 
         const s_settings_layout wide =
             Compute_Layout(1920, 1440, 10, kLabel_Lengths);
-        CHECK(wide.tab_bar.y == 1327);
-        CHECK(wide.list.h == 958);
+        CHECK(wide.tab_bar.y == 1326);
+        CHECK(wide.list.h == 861);
         Check_Bands_In_Order(wide);
 
         const s_settings_layout mid =
             Compute_Layout(800, 600, 10, kLabel_Lengths);
         CHECK(mid.tab_bar.y == 552);
-        CHECK(mid.list.h == 399);
+        CHECK(mid.list.h == 359);
         Check_Bands_In_Order(mid);
     }
 
@@ -244,10 +247,10 @@ namespace {
         // at the bottom at the end.
         const s_rect top = Scrollbar_Thumb_Rect(layout, 186, 0, 10);
         CHECK(top.w == layout.scrollbar_track.w);
-        CHECK(top.h == 17);
+        CHECK(top.h == 15);
         CHECK(top.y == layout.scrollbar_track.y);
         const s_rect bottom = Scrollbar_Thumb_Rect(layout, 186, 176, 10);
-        CHECK(bottom.h == 17);
+        CHECK(bottom.h == 15);
         CHECK(Rect_Bottom(bottom) == Rect_Bottom(layout.scrollbar_track));
         const s_rect middle = Scrollbar_Thumb_Rect(layout, 186, 88, 10);
         CHECK(middle.y > top.y);
