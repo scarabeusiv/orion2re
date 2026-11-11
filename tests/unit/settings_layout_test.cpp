@@ -45,8 +45,14 @@ namespace {
         }
         CHECK(layout.tab_bar.y == layout.show_more.y);
         CHECK(layout.tab_bar.h == layout.show_more.h);
-        CHECK(layout.scrollbar.y == layout.list.y);
-        CHECK(layout.scrollbar.h == layout.list.h);
+        // The scrollbar strip runs the header band as well as the
+        // list (its up arrow sits in the top corner with the
+        // header plates, like the colony's), so it starts at the
+        // header's top and ends at the list's bottom.
+        CHECK(layout.scrollbar.y == layout.header.y);
+        CHECK(layout.scrollbar.h ==
+            layout.header.h + layout.list.h);
+        CHECK(Rect_Bottom(layout.scrollbar) == Rect_Bottom(layout.list));
         CHECK(Rect_Right(layout.scrollbar) <=
             Rect_Right(layout.bottom_bar));
         CHECK(Inside(layout.show_more, layout.bottom_bar));
@@ -94,17 +100,20 @@ namespace {
         CHECK(layout.bottom_bar.h == 31);
         CHECK(Rect_Bottom(layout.bottom_bar) == 470);
         // Tabs tile the bottom bar's left width in proportion to
-        // their label lengths.
+        // their label lengths, with no gap between them (one
+        // continuous band, like the colony's SORT band) and
+        // spanning the bar's full height, so their borders are
+        // the bar's borders.
         CHECK(layout.tab_bar.x == 13);
-        CHECK(layout.tab_bar.y == 442);
+        CHECK(layout.tab_bar.y == 439);
         CHECK(layout.tab_bar.w == 428);
-        CHECK(layout.tab_bar.h == 25);
+        CHECK(layout.tab_bar.h == 31);
         CHECK(layout.tabs[0].x == 13);
-        CHECK(layout.tabs[0].w == 198);
-        CHECK(layout.tabs[1].x == 216);
-        CHECK(layout.tabs[1].w == 132);
-        CHECK(layout.tabs[2].x == 353);
-        CHECK(layout.tabs[2].w == 88);
+        CHECK(layout.tabs[0].w == 202);
+        CHECK(layout.tabs[1].x == 215);
+        CHECK(layout.tabs[1].w == 135);
+        CHECK(layout.tabs[2].x == 350);
+        CHECK(layout.tabs[2].w == 91);
         CHECK(Rect_Right(layout.tabs[2]) == Rect_Right(layout.tab_bar));
         CHECK(layout.tabs[0].w > layout.tabs[1].w);
         CHECK(layout.tabs[1].w > layout.tabs[2].w);
@@ -118,18 +127,22 @@ namespace {
         CHECK(layout.header_value.w == 116);
         CHECK(layout.header_setting.w == 479);
         // Scrollbar strip at the content's right edge: chunky, like
-        // the colony's, so the arrows read as buttons.
+        // the colony's, so the arrows read as buttons. It runs the
+        // header band as well as the list.
         CHECK(layout.scrollbar.x == 614);
         CHECK(layout.scrollbar.w == 13);
+        CHECK(layout.scrollbar.y == 10);
+        CHECK(layout.scrollbar.h == 330);
         CHECK(layout.list.w == 601);
-        // MORE / RETURN at the bottom bar's right end, same size.
+        // MORE / RETURN at the bottom bar's right end, same size,
+        // spanning the bar's full height.
         CHECK(layout.show_more.x == 449);
         CHECK(layout.show_more.w == 85);
         CHECK(layout.done.x == 542);
         CHECK(layout.done.w == 85);
-        CHECK(layout.show_more.h == 25);
-        CHECK(layout.done.h == 25);
-        CHECK(layout.show_more.y == 442);
+        CHECK(layout.show_more.h == 31);
+        CHECK(layout.done.h == 31);
+        CHECK(layout.show_more.y == 439);
         // Rows tile the list height exactly. The description is
         // one row taller than before (it took one row slot's
         // height from the list), so the rows are one row slot
@@ -176,13 +189,13 @@ namespace {
 
         const s_settings_layout wide =
             Compute_Layout(1920, 1440, 10, kLabel_Lengths);
-        CHECK(wide.tab_bar.y == 1327);
+        CHECK(wide.tab_bar.y == 1319);
         CHECK(wide.list.h == 913);
         Check_Bands_In_Order(wide);
 
         const s_settings_layout mid =
             Compute_Layout(800, 600, 10, kLabel_Lengths);
-        CHECK(mid.tab_bar.y == 552);
+        CHECK(mid.tab_bar.y == 549);
         CHECK(mid.list.h == 380);
         Check_Bands_In_Order(mid);
     }
@@ -253,21 +266,28 @@ namespace {
     TEST_CASE("scrollbar thumb follows the scroll offset") {
         const s_settings_layout layout =
             Compute_Layout(640, 480, 10, kLabel_Lengths);
-        // A list that fits has no thumb.
+        // A list that fits spans the whole track (the colony's
+        // rule): the thumb is the colony's narrow indicator bar,
+        // inset from the strip's edges, travelling between the
+        // arrow/track dividers.
         const s_rect none = Scrollbar_Thumb_Rect(layout, 10, 0, 10);
-        CHECK(none.w == 0);
+        CHECK(none.w == 6);
+        CHECK(none.x == layout.scrollbar_track.x + 2);
+        CHECK(none.y == layout.scrollbar_track.y + 2);
+        CHECK(none.h == layout.scrollbar_track.h - 4);
         const s_rect none2 = Scrollbar_Thumb_Rect(layout, 5, 0, 10);
-        CHECK(none2.w == 0);
+        CHECK(none2.w == 6);
         // 186 lines, 10 visible: the thumb is ~10/186 of the
         // track, at the top when scrolled to the first lines,
         // at the bottom at the end.
         const s_rect top = Scrollbar_Thumb_Rect(layout, 186, 0, 10);
-        CHECK(top.w == layout.scrollbar_track.w);
-        CHECK(top.h == 13);
-        CHECK(top.y == layout.scrollbar_track.y);
+        CHECK(top.w == 6);
+        CHECK(top.h == 14);
+        CHECK(top.y == layout.scrollbar_track.y + 2);
         const s_rect bottom = Scrollbar_Thumb_Rect(layout, 186, 176, 10);
-        CHECK(bottom.h == 13);
-        CHECK(Rect_Bottom(bottom) == Rect_Bottom(layout.scrollbar_track));
+        CHECK(bottom.h == 14);
+        CHECK(Rect_Bottom(bottom) ==
+            Rect_Bottom(layout.scrollbar_track) - 2);
         const s_rect middle = Scrollbar_Thumb_Rect(layout, 186, 88, 10);
         CHECK(middle.y > top.y);
         CHECK(middle.y < bottom.y);
@@ -302,13 +322,15 @@ namespace {
             layout.scrollbar_arrow_down.y);
         CHECK(layout.scrollbar_track.h ==
             layout.scrollbar.h - 2 * layout.scrollbar_arrow_up.h);
-        CHECK(layout.scrollbar_track.h == 252);
-        // The thumb stays inside the track at both ends.
+        CHECK(layout.scrollbar_track.h == 278);
+        // The thumb stays inside the track at both ends (inset
+        // from the arrow/track dividers).
         const s_rect top = Scrollbar_Thumb_Rect(layout, 186, 0, 10);
-        CHECK(top.y == layout.scrollbar_track.y);
+        CHECK(top.y == layout.scrollbar_track.y + 2);
         CHECK(Inside(top, layout.scrollbar_track));
         const s_rect bottom = Scrollbar_Thumb_Rect(layout, 186, 176, 10);
-        CHECK(Rect_Bottom(bottom) == Rect_Bottom(layout.scrollbar_track));
+        CHECK(Rect_Bottom(bottom) ==
+            Rect_Bottom(layout.scrollbar_track) - 2);
         CHECK(Inside(bottom, layout.scrollbar_track));
         // The arrow zones do not overlap the track.
         CHECK_FALSE(Overlaps(layout.scrollbar_arrow_up,

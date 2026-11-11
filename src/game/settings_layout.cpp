@@ -23,6 +23,11 @@ namespace SETTINGS_LAYOUT {
         // into one continuous frame, close to how the rest of
         // the interfaces are done -- not separate floating
         // boxes with gaps. The list absorbs the freed space.
+        // The bottom-bar buttons span the bar's full height,
+        // so their borders meet the divider above and the
+        // outer frame below (the colony's SORT band fills its
+        // bar the same way); the tabs tile their strip with
+        // no gap between them, one continuous band.
         constexpr int32_t kMargin_Y = 20;
         constexpr int32_t kGap_Y = 0;
         constexpr int32_t kHeader_H = 55;
@@ -32,11 +37,14 @@ namespace SETTINGS_LAYOUT {
 
         // Horizontal allocation, permille of the width.
         constexpr int32_t kMargin_X = 20;
-        constexpr int32_t kTab_Gap = 8;
+        constexpr int32_t kTab_Gap = 0;
         constexpr int32_t kScrollbar_W = 20;
         // The scrollbar strip touches the list (no gap): its
         // left frame edge is the divider between the list and
-        // the strip, one continuous line.
+        // the strip, one continuous line. The strip runs the
+        // header band too, so its up arrow sits in the top
+        // corner with the header plates, like the colony's
+        // (whose up arrow is at the header's height).
         constexpr int32_t kScrollbar_Gap = 0;
         constexpr int32_t kValue_X = 778;
         constexpr int32_t kValue_Gap = 10;
@@ -45,8 +53,12 @@ namespace SETTINGS_LAYOUT {
         // sized for the longer label (RETURN), so the two buttons
         // at the bottom bar's right end do not differ.
         constexpr int32_t kBottom_Button_W = 133;
-        // MORE / RETURN / tab button height, permille of the height.
-        constexpr int32_t kButton_H = 52;
+        // MORE / RETURN / tab button height, permille of the height:
+        // the full bottom-bar height, so the buttons' borders are
+        // the bar's borders (they meet the divider above and the
+        // outer frame below, and the corner buttons tie into the
+        // mechanical frame the elements' borders form).
+        constexpr int32_t kButton_H = 64;
 
         // A tab's width weight is its label length plus this
         // padding (in characters), so a long label gets a
@@ -107,13 +119,13 @@ namespace SETTINGS_LAYOUT {
             content_w, bottom_bar_h};
 
         // MORE and RETURN sit at the bottom bar's right end, the
-        // same width, on one line, vertically centred in the bar.
-        // The tabs share that line, on the left.
+        // same width, spanning the bar's full height (their
+        // borders are the bar's borders). The tabs share the
+        // bar, on the left, at the same height.
         const int16_t button_w = Scale(width, kBottom_Button_W);
         const int16_t bottom_gap = Scale(width, kBottom_Gap);
         const int16_t button_h = Scale(height, kButton_H);
-        const int16_t button_y =
-            (int16_t)(bottom_bar_y + (bottom_bar_h - button_h) / 2);
+        const int16_t button_y = bottom_bar_y;
         const int16_t done_x = (int16_t)(content_right - button_w);
         const int16_t more_x = (int16_t)(done_x - bottom_gap - button_w);
         layout.show_more = s_rect{more_x, button_y, button_w, button_h};
@@ -121,10 +133,12 @@ namespace SETTINGS_LAYOUT {
 
         // Tabs: divide the bottom bar's left width (up to the MORE
         // button, with a gap) in proportion to the label lengths
-        // (plus padding), with a gap between tabs. Each tab's width
-        // is its share of the available width; the last tab absorbs
-        // the rounding remainder, so the tabs tile their strip
-        // exactly.
+        // (plus padding), with NO gap between tabs: the tabs tile
+        // their strip exactly, one continuous band like the
+        // colony's SORT band, their shared borders one line.
+        // Each tab's width is its share of the available width;
+        // the last tab absorbs the rounding remainder, so the tabs
+        // tile their strip exactly.
         const int16_t tab_gap = Scale(width, kTab_Gap);
         const int16_t tab_area_right = (int16_t)(more_x - bottom_gap);
         const int16_t tab_available =
@@ -154,28 +168,35 @@ namespace SETTINGS_LAYOUT {
         layout.tab_bar = s_rect{content_x, button_y,
             (int16_t)(tab_area_right - content_x), button_h};
 
-        // The scrollbar strip sits at the content's right edge;
-        // the list rows span the content width minus the strip
-        // and the gap before it.
+        // The scrollbar strip sits at the content's right edge,
+        // running the header band as well as the list: the list
+        // rows span the content width minus the strip and the
+        // gap before it, and the strip's up arrow sits in the
+        // top corner with the header plates, like the colony's.
         const int16_t scrollbar_w = Scale(width, kScrollbar_W);
         const int16_t scrollbar_gap = Scale(width, kScrollbar_Gap);
         const int16_t scrollbar_x = (int16_t)(content_right - scrollbar_w);
         const int16_t list_right = (int16_t)(scrollbar_x - scrollbar_gap);
         layout.list = s_rect{content_x, list_y,
             (int16_t)(list_right - content_x), list_h};
-        layout.scrollbar = s_rect{scrollbar_x, list_y, scrollbar_w, list_h};
+        layout.scrollbar = s_rect{scrollbar_x, header_y, scrollbar_w,
+            (int16_t)(header_h + list_h)};
         // The arrow zones cap the strip (each twice the strip's
         // width tall, the colony's ~1:2 arrow aspect); the track
         // is the strip between them, where the thumb travels.
+        // The up arrow fills the header band's height in the
+        // strip column at 640x480 (26 px); at other resolutions
+        // its aspect is kept and the strip's divider runs the
+        // full height regardless.
         const int16_t arrow_h = (int16_t)(2 * scrollbar_w);
         layout.scrollbar_arrow_up =
-            s_rect{scrollbar_x, list_y, scrollbar_w, arrow_h};
+            s_rect{scrollbar_x, header_y, scrollbar_w, arrow_h};
         layout.scrollbar_arrow_down = s_rect{scrollbar_x,
             (int16_t)(list_y + list_h - arrow_h), scrollbar_w, arrow_h};
         const int16_t track_h =
-            (int16_t)std::max(0, list_h - 2 * arrow_h);
+            (int16_t)std::max(0, header_h + list_h - 2 * arrow_h);
         layout.scrollbar_track = s_rect{scrollbar_x,
-            (int16_t)(list_y + arrow_h), scrollbar_w, track_h};
+            (int16_t)(header_y + arrow_h), scrollbar_w, track_h};
 
         // The VALUE zone starts at the same x in the header and
         // in every row, and runs to the list's right edge.
@@ -331,9 +352,30 @@ namespace SETTINGS_LAYOUT {
     s_rect Scrollbar_Thumb_Rect(const s_settings_layout& layout,
         int total_lines, int first_line, int visible_lines) {
         const s_rect track = layout.scrollbar_track;
-        if (total_lines <= visible_lines || total_lines <= 0 ||
-            visible_lines <= 0) {
+        if (total_lines <= 0 || visible_lines <= 0) {
             return s_rect{track.x, track.y, 0, 0};
+        }
+        // The colony's thumb is 6 px wide in its 13 px strip
+        // (colsum.cpp Draw_Bar_Indicator: Fill(621..626)), inset
+        // 2 px from the strip's left edge -- narrower than the
+        // strip, so the strip's own borders stay visible beside
+        // it. The width scales with the strip.
+        const int16_t thumb_w =
+            (int16_t)std::max(4, track.w * 6 / 13);
+        const int16_t thumb_x =
+            (int16_t)(track.x + track.w * 2 / 13);
+        // The thumb travels the track between the arrow/track
+        // dividers: inset 2 px at each end, so it never paints
+        // over a divider row.
+        const int16_t span_y = (int16_t)(track.y + 2);
+        const int16_t span_h =
+            (int16_t)std::max(0, track.h - 4);
+        if (total_lines <= visible_lines) {
+            // The colony's rule: when the whole list fits, the
+            // thumb spans the whole track (there is nothing to
+            // scroll) -- the arrows stay visible and do nothing,
+            // like the colony's on a short list.
+            return s_rect{thumb_x, span_y, thumb_w, span_h};
         }
         const int max_first = total_lines - visible_lines;
         if (first_line < 0) {
@@ -343,18 +385,18 @@ namespace SETTINGS_LAYOUT {
             first_line = max_first;
         }
         int16_t thumb_h =
-            (int16_t)(track.h * visible_lines / total_lines);
+            (int16_t)(span_h * visible_lines / total_lines);
         if (thumb_h < kThumb_Min_H) {
             thumb_h = kThumb_Min_H;
         }
-        if (thumb_h > track.h) {
-            thumb_h = track.h;
+        if (thumb_h > span_h) {
+            thumb_h = span_h;
         }
-        const int16_t travel = (int16_t)(track.h - thumb_h);
+        const int16_t travel = (int16_t)(span_h - thumb_h);
         const int16_t thumb_y = max_first > 0
-            ? (int16_t)(track.y + travel * first_line / max_first)
-            : track.y;
-        return s_rect{track.x, thumb_y, track.w, thumb_h};
+            ? (int16_t)(span_y + travel * first_line / max_first)
+            : span_y;
+        return s_rect{thumb_x, thumb_y, thumb_w, thumb_h};
     }
 
     s_rect Popup_Rect(const s_rect& content, int16_t anchor_right,
