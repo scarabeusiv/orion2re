@@ -155,6 +155,12 @@ namespace SETTINGS_SCREEN {
             char edit_buffer[512] = {};
             int16_t edit_field = -1;
             int16_t scroll_field = -1;
+            // The scrollbar's arrow buttons (4f): hidden fields
+            // over the arrow zones at the strip's ends, stepping
+            // the list one row per click, like the colony's
+            // x_fields[1]/[2]. -1 when the list does not scroll.
+            int16_t scroll_up_field = -1;
+            int16_t scroll_down_field = -1;
             int16_t done_field = -1;
             int16_t show_all_field = -1;
             // MORE is global for the screen, not per category: the user
@@ -274,6 +280,25 @@ namespace SETTINGS_SCREEN {
         // First visible row on the current tab (after Sync_Scroll).
         int Scroll_Top() {
             return g_state.scroll_top[g_state.category];
+        }
+
+        // Step the list by `lines` rows (positive = down, toward
+        // the last rows): the slider is inverted against the top
+        // row (top = max - slider), so scrolling down lowers it.
+        // Clamped to the scroll range. The arrow buttons (4f)
+        // step one row per click, like the colony's.
+        void Scroll_Lines(int lines) {
+            const int max_scroll = Max_Scroll();
+            int16_t& slider = g_state.slider_position[g_state.category];
+            int16_t next = (int16_t)(slider - lines);
+            if (next < 0) {
+                next = 0;
+            }
+            if (next > max_scroll) {
+                next = (int16_t)max_scroll;
+            }
+            slider = next;
+            Sync_Scroll();
         }
 
         // Rows index for a visible index in a settings category.
@@ -647,13 +672,34 @@ namespace SETTINGS_SCREEN {
             // it from anywhere over the list.
             const int total = Visible_Count();
             if (total > ROWS_PER_PAGE) {
+                // The scroll field covers the track only (between
+                // the arrows), like COLSUM's: the arrow buttons
+                // take the strip's ends, so the zones are disjoint
+                // and no hit-test ordering is needed.
                 g_state.scroll_field = fields::Add_Scroll_Field(
-                    layout.scrollbar.x, layout.scrollbar.y, 0,
+                    layout.scrollbar_track.x, layout.scrollbar_track.y, 0,
                     (int16_t)total, 0, (int16_t)Max_Scroll(),
-                    layout.scrollbar.w, layout.scrollbar.h,
+                    layout.scrollbar_track.w, layout.scrollbar_track.h,
                     &g_state.slider_position[g_state.category], "", 0);
+                g_state.scroll_up_field = fields::Add_Hidden_Field(
+                    layout.scrollbar_arrow_up.x, layout.scrollbar_arrow_up.y,
+                    (int16_t)(layout.scrollbar_arrow_up.x +
+                        layout.scrollbar_arrow_up.w - 1),
+                    (int16_t)(layout.scrollbar_arrow_up.y +
+                        layout.scrollbar_arrow_up.h - 1),
+                    "", 0);
+                g_state.scroll_down_field = fields::Add_Hidden_Field(
+                    layout.scrollbar_arrow_down.x,
+                    layout.scrollbar_arrow_down.y,
+                    (int16_t)(layout.scrollbar_arrow_down.x +
+                        layout.scrollbar_arrow_down.w - 1),
+                    (int16_t)(layout.scrollbar_arrow_down.y +
+                        layout.scrollbar_arrow_down.h - 1),
+                    "", 0);
             } else {
                 g_state.scroll_field = -1;
+                g_state.scroll_up_field = -1;
+                g_state.scroll_down_field = -1;
             }
             // MORE and RETURN sit side by side in the bottom
             // bar at the right end. They share the bar's single
@@ -1626,15 +1672,83 @@ namespace SETTINGS_SCREEN {
                     kPanel_Fill, kPanel_Alpha);
             }
 
-            // Scrollbar: the strip's own panel, with the thumb
-            // inside it when the list scrolls (4f adds the arrows
-            // and insets the thumb between them).
+            // Scrollbar (4f): the strip's own panel; the up/down
+            // arrows at its ends and the thumb between them,
+            // travelling the track. The arrows are pressable
+            // buttons, like the colony's: a framed blue button
+            // face with a bold white triangle inside it -- the
+            // colony's arrows are bold white chevrons on a dark
+            // blue field inside a framed button zone (COLSUM.LBX
+            // entries 2/3, 10x20 and 11x22). Flat grey triangles
+            // read as glyphs, not buttons, however exactly they
+            // are measured (Tom, 2026-11-11). A code-drawn
+            // triangle scales cleanly with the strip at any
+            // resolution, unlike the fixed bitmaps. The thumb is
+            // the colony's indicator bar: a bevelled handle
+            // (body + light top/left, dark right/bottom edges).
+            // The arrows and thumb show only when the list
+            // scrolls; the strip stays an empty panel otherwise.
             Panel(layout.scrollbar, kPanel_Fill, kPanel_Alpha);
             const SETTINGS_LAYOUT::s_rect thumb =
                 SETTINGS_LAYOUT::Scrollbar_Thumb_Rect(layout,
                     Total_Lines(), First_Line(), Visible_Lines());
-            if (thumb.w > 0) {
+            if (thumb.w > 0 && thumb.h > 0) {
+                const int16_t arrow_cx = (int16_t)(
+                    layout.scrollbar.x + layout.scrollbar.w / 2);
+                // The triangle sits inside the button's frame:
+                // its base spans the inner width (the nominal
+                // width is one more, the rasterisation narrows
+                // the base by a pixel each side) and its height
+                // is half the inner height, so it reads as a
+                // chunky arrowhead. Pressed drops it 1 px, like
+                // a button label. `thickness` is the frame
+                // thickness, in scope from the header above.
+                const int16_t tri_w = (int16_t)(
+                    layout.scrollbar.w - 2 * thickness + 1);
+                const int16_t tri_h = (int16_t)(
+                    (layout.scrollbar_arrow_up.h - 2 * thickness) / 2);
+                // Up arrow: blue face, brighter on hover, darker
+                // while pressed.
+                const bool up_pressed =
+                    Is_Pressed(layout.scrollbar_arrow_up);
+                const s_rgb up_fill = up_pressed
+                    ? kArrowBtn_Pressed_Fill
+                    : (Is_Hover(layout.scrollbar_arrow_up)
+                        ? kArrowBtn_Hover_Fill : kArrowBtn_Fill);
+                Panel(layout.scrollbar_arrow_up, up_fill,
+                    kArrowBtn_Alpha);
+                Triangle_Up(arrow_cx,
+                    (int16_t)(layout.scrollbar_arrow_up.y +
+                        (layout.scrollbar_arrow_up.h - tri_h) / 2 +
+                        (up_pressed ? 1 : 0)),
+                    tri_w, tri_h, kText_Bright);
+                // Down arrow: the same, mirrored.
+                const bool down_pressed =
+                    Is_Pressed(layout.scrollbar_arrow_down);
+                const s_rgb down_fill = down_pressed
+                    ? kArrowBtn_Pressed_Fill
+                    : (Is_Hover(layout.scrollbar_arrow_down)
+                        ? kArrowBtn_Hover_Fill : kArrowBtn_Fill);
+                Panel(layout.scrollbar_arrow_down, down_fill,
+                    kArrowBtn_Alpha);
+                Triangle_Down(arrow_cx,
+                    (int16_t)(layout.scrollbar_arrow_down.y +
+                        (layout.scrollbar_arrow_down.h - tri_h) / 2 +
+                        (down_pressed ? 1 : 0)),
+                    tri_w, tri_h, kText_Bright);
                 Blend_Fill(thumb, kThumb_Fill, kThumb_Alpha);
+                // The thumb's bevel: a 1 px lighter top/left and
+                // darker right/bottom, the colony's indicator bar.
+                Solid_Fill(SETTINGS_LAYOUT::s_rect{thumb.x, thumb.y,
+                    thumb.w, 1}, kThumb_Edge_Light);
+                Solid_Fill(SETTINGS_LAYOUT::s_rect{thumb.x, thumb.y,
+                    1, thumb.h}, kThumb_Edge_Light);
+                Solid_Fill(SETTINGS_LAYOUT::s_rect{
+                    (int16_t)(thumb.x + thumb.w - 1), thumb.y, 1,
+                    thumb.h}, kThumb_Edge_Dark);
+                Solid_Fill(SETTINGS_LAYOUT::s_rect{thumb.x,
+                    (int16_t)(thumb.y + thumb.h - 1), thumb.w, 1},
+                    kThumb_Edge_Dark);
             }
 
             // Description box: the selected row's description,
@@ -1856,6 +1970,15 @@ namespace SETTINGS_SCREEN {
                     if (g_state.editing_row >= 0) {
                         Cancel_Edit();
                     }
+                } else if (input == g_state.scroll_up_field) {
+                    // The up arrow steps the list one row toward
+                    // the first rows (a pending edit was already
+                    // cancelled above).
+                    Scroll_Lines(-1);
+                } else if (input == g_state.scroll_down_field) {
+                    // The down arrow steps the list one row toward
+                    // the last rows.
+                    Scroll_Lines(1);
                 } else {
                     bool handled = false;
                     for (int category = 0; category < CATEGORY_COUNT; ++category) {

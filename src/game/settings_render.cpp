@@ -552,26 +552,4 @@ namespace SETTINGS_RENDER {
         return mouse::Mouse_Button() != 0 && Is_Hover(rect);
     }
 
-    SETTINGS_LAYOUT::s_rect Scrollbar_Thumb_Draw_Rect(
-        const SETTINGS_LAYOUT::s_rect& thumb,
-        const SETTINGS_LAYOUT::s_rect& strip, int16_t arrow_h) {
-        if (thumb.w <= 0 || thumb.h <= 0) {
-            return SETTINGS_LAYOUT::s_rect{strip.x, strip.y, 0, 0};
-        }
-        const int16_t middle_y = (int16_t)(strip.y + arrow_h);
-        const int16_t middle_bottom = (int16_t)(strip.y + strip.h - arrow_h);
-        int16_t y0 = std::max(thumb.y, middle_y);
-        int16_t y1 = std::min((int16_t)(thumb.y + thumb.h), middle_bottom);
-        if (y1 - y0 < 8) {
-            // Keep the minimum thumb height, clamped to the middle zone.
-            const int16_t centre = (int16_t)((y0 + y1) / 2);
-            y0 = (int16_t)std::max<int32_t>(middle_y, centre - 4);
-            y1 = (int16_t)std::min<int32_t>(middle_bottom, y0 + 8);
-            if (y1 - y0 < 8) {
-                y0 = (int16_t)std::max<int32_t>(middle_y, y1 - 8);
-            }
-        }
-        return SETTINGS_LAYOUT::s_rect{thumb.x, y0, thumb.w, (int16_t)(y1 - y0)};
-    }
-
 } // namespace SETTINGS_RENDER
