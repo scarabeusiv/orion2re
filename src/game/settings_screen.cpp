@@ -1218,6 +1218,17 @@ namespace SETTINGS_SCREEN {
             return std::max(8, rect_h * percent / 100);
         }
 
+        // Glyph-cell height for text sized as a permille of the
+        // screen height. The description text uses this, not a
+        // fraction of the description panel: the panel grows by a
+        // row so the longest description fits, and the text must
+        // stay the same size -- a fraction of the panel would grow
+        // the text with the panel, and the line count would never
+        // reach four (it asymptotes to 3.6 as the panel grows).
+        int Text_Cell_For_Permille(int height, int permille) {
+            return std::max(8, height * permille / 1000);
+        }
+
         // Horizontal text padding inside a rect, scaled with the screen.
         int16_t Text_Pad(int16_t screen_width) {
             return (int16_t)std::max<int32_t>(4, screen_width / 100);
@@ -1252,6 +1263,24 @@ namespace SETTINGS_SCREEN {
                 return entry.name.empty() ? entry.id : entry.name;
             }
             return g_state.rows[(size_t)Visible_Row_Index(visible)].title;
+        }
+
+        // The description shown for a visible row in the info box:
+        // a setting's metadata description, or a mod's description
+        // (its id when the manifest names nothing). `restart_required`
+        // is set for a settings row whose change takes effect only
+        // after a restart; mods never need one.
+        std::string Visible_Row_Description(int visible, bool* restart_required) {
+            *restart_required = false;
+            if (Is_Mod_Row(visible)) {
+                const config::s_mod_catalogue_entry& entry =
+                    g_state.mods[(size_t)Mod_Index(visible)];
+                return entry.description.empty() ? entry.id : entry.description;
+            }
+            const config::s_settings_row& row =
+                g_state.rows[(size_t)Visible_Row_Index(visible)];
+            *restart_required = row.restart_required;
+            return row.description;
         }
 
         // Lines each visible row takes (1, or 2 for a row whose
@@ -1483,9 +1512,76 @@ namespace SETTINGS_SCREEN {
                 Blend_Fill(thumb, kThumb_Fill, kThumb_Alpha);
             }
 
-            // Description box: the panel only in 4a (4b adds the
-            // wrapped description and the status line).
+            // Description box: the selected row's description,
+            // wrapped to fit the panel, with a "Requires restart."
+            // line for the settings it applies to and the status
+            // line below it -- the old screen's info box, in the
+            // hi-res font. The lines stack from the top, so no
+            // blank line opens up when the description is short.
+            // The description is the selected row's (not the
+            // hovered row's): hover only recolours the label.
             Panel(layout.description, kPanel_Fill, kPanel_Alpha);
+            {
+                const int16_t desc_x =
+                    (int16_t)(layout.description.x + thickness + pad);
+                const int desc_w = layout.description.w -
+                    2 * (thickness + pad);
+                // The description text is a fixed fraction of the
+                // screen height (25 permille, the status line 21):
+                // the sizes 4b used, when the panel was 140
+                // permille tall (18% / 15% of it). Fixed to the
+                // screen so growing the panel adds lines instead
+                // of growing the text.
+                const int desc_cell =
+                    Text_Cell_For_Permille(layout.height, 25);
+                const int status_cell =
+                    Text_Cell_For_Permille(layout.height, 21);
+                const int desc_lh = Line_Height(desc_cell);
+                const int status_lh = Line_Height(status_cell);
+                bool restart_required = false;
+                std::string description;
+                if (Visible_Count() > 0 && g_state.selected >= 0 &&
+                    g_state.selected < Visible_Count()) {
+                    description = Visible_Row_Description(
+                        g_state.selected, &restart_required);
+                }
+                // Lines the description may take: the panel's
+                // interior, less the status line and the restart
+                // note (when one applies). At least one, so a
+                // description always shows.
+                const int restart_lh = restart_required ? desc_lh : 0;
+                const int available = layout.description.h -
+                    2 * thickness - pad - status_lh - restart_lh;
+                const int max_lines =
+                    std::max(1, available / desc_lh);
+                auto desc_measure = [&](const std::string& text) {
+                    return Text_Width(text.c_str(), desc_cell);
+                };
+                std::vector<std::string> desc_lines;
+                if (!description.empty()) {
+                    desc_lines = SETTINGS_HD_FONT::Wrap_Text(
+                        description, desc_w, desc_measure, max_lines);
+                }
+                int16_t text_y = (int16_t)(layout.description.y +
+                    thickness + pad / 2);
+                for (const std::string& line : desc_lines) {
+                    Draw_Text(desc_x, text_y, line.c_str(),
+                        kText_Normal, desc_cell, 0);
+                    text_y = (int16_t)(text_y + desc_lh);
+                }
+                if (restart_required) {
+                    Draw_Text(desc_x, text_y, "Requires restart.",
+                        kText_Bright, desc_cell, 0);
+                    text_y = (int16_t)(text_y + desc_lh);
+                }
+                auto status_measure = [&](const std::string& text) {
+                    return Text_Width(text.c_str(), status_cell);
+                };
+                Draw_Text(desc_x, text_y,
+                    SETTINGS_HD_FONT::Truncate_To_Width(g_state.status,
+                        desc_w, status_measure).c_str(),
+                    kText_Dim, status_cell, 0);
+            }
 
             // Bottom bar: the panel, with the tabs on the left and
             // MORE and RETURN at the right end. 4a draws the labels

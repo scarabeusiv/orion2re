@@ -21,8 +21,8 @@ namespace SETTINGS_LAYOUT {
         constexpr int32_t kMargin_Y = 20;
         constexpr int32_t kGap_Y = 12;
         constexpr int32_t kHeader_H = 55;
-        constexpr int32_t kList_H = 665;
-        constexpr int32_t kDescription_H = 140;
+        constexpr int32_t kList_H = 598;
+        constexpr int32_t kDescription_H = 207;
         constexpr int32_t kBottom_Bar_H = 64;
 
         // Horizontal allocation, permille of the width.

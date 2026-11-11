@@ -21,11 +21,15 @@ namespace SETTINGS_LAYOUT {
     //   top margin      0.020
     //   header row      0.055  (SETTING / VALUE column labels)
     //   gap             0.012
-    //   list            0.665  (10 row slots, tiled exactly; a
+    //   list            0.598  (10 row slots, tiled exactly; a
     //                            row whose label wraps takes two
     //                            slots, so it renders at full size)
     //   gap             0.012
-    //   description     0.140  (selected row's description + status)
+    //   description     0.207  (selected row's description + status:
+    //                            one row taller than before -- it
+    //                            took one row slot's height from the
+    //                            list, so the longest description
+    //                            fits in full)
     //   gap             0.012
     //   bottom bar      0.064  (tabs + MORE + RETURN)
     //   bottom margin   0.020
