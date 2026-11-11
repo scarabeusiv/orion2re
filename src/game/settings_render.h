@@ -40,6 +40,14 @@ namespace SETTINGS_RENDER {
     inline constexpr s_rgb kActive_Fill{24, 12, 252};
     inline constexpr int kActive_Alpha = 200;
     inline constexpr s_rgb kSelection_Fill{52, 48, 136};
+    // The dropdown chevron: black while the dropdown is closed,
+    // the menu palette's saturated blue (52, 48, 136) while its
+    // popup is open -- the colour shift is the state signal, like
+    // an industrial knob that was flicked. The blue sits in the
+    // vivid blue's family but darker, so it reads as a knob state,
+    // not as the active tab (whose vivid blue is (24, 12, 252)).
+    inline constexpr s_rgb kChevron_Closed{0, 0, 0};
+    inline constexpr s_rgb kChevron_Open{52, 48, 136};
     inline constexpr int kSelection_Alpha = 230;
     inline constexpr s_rgb kThumb_Fill{140, 142, 150};
     inline constexpr int kThumb_Alpha = 230;

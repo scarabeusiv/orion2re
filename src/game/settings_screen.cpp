@@ -174,6 +174,10 @@ namespace SETTINGS_SCREEN {
             // x=639). Both dropdowns share this state; the opener
             // maps the chosen index back to its own options.
             bool popup_open = false;
+            // The visible offset of the row whose popup is open
+            // (-1 when none): its chevron paints the open blue
+            // while the popup is up, the closed black otherwise.
+            int popup_visible = -1;
             std::vector<config::s_resolution_option> resolution_options;
             std::vector<std::string> popup_labels;
             int popup_selected = 0;
@@ -800,8 +804,11 @@ namespace SETTINGS_SCREEN {
         }
 
         // Size, place and open the popup for `labels`, with
-        // `selected` the initially selected row, anchored to the
-        // value control of the row at visible offset `visible`.
+        // `selected` the initially selected row, dropped below
+        // the row at visible offset `visible`: the popup opens
+        // under the row, not over it, so the opener row -- and
+        // its chevron, which paints the open blue while the
+        // popup is up -- stays visible.
         // Sized to the widest label in the font it prints in (the
         // HD font -- measuring in the pixel font under-measures,
         // so the text ran past the popup's border and the panel's
@@ -830,10 +837,12 @@ namespace SETTINGS_SCREEN {
                 (int16_t)labels.size() * row_step + 2 * pad + 2 * thickness);
             const SETTINGS_LAYOUT::s_rect value_rect =
                 Visible_Value_Rect(visible - Scroll_Top());
+            const SETTINGS_LAYOUT::s_rect row_rect =
+                Visible_Row_Rect(visible - Scroll_Top());
             const SETTINGS_LAYOUT::s_rect popup =
                 SETTINGS_LAYOUT::Popup_Rect(layout.content,
                     SETTINGS_LAYOUT::Rect_Right(value_rect),
-                    Visible_Row_Rect(visible - Scroll_Top()).y,
+                    SETTINGS_LAYOUT::Rect_Bottom(row_rect),
                     popup_w, popup_h);
             g_state.popup_labels = labels;
             g_state.popup_selected = selected;
@@ -863,6 +872,7 @@ namespace SETTINGS_SCREEN {
                         (int16_t)(row_y + g_state.popup_row_step - 1),
                         "", 0));
             }
+            g_state.popup_visible = visible;
             g_state.popup_open = true;
         }
 
@@ -938,6 +948,7 @@ namespace SETTINGS_SCREEN {
         void Close_Popup() {
             fields::Release_Fields();
             g_state.popup_open = false;
+            g_state.popup_visible = -1;
             g_state.popup_fields.clear();
             Rebuild_Fields();
         }
@@ -1543,8 +1554,15 @@ namespace SETTINGS_SCREEN {
                             chevron_right - chevron_w / 2);
                         const int16_t chevron_y = (int16_t)(value_rect.y +
                             (value_rect.h - chevron_h) / 2);
+                        // The chevron is the knob: black while the
+                        // dropdown is closed, the open blue while
+                        // its popup is up -- the colour shift is
+                        // the state signal.
+                        const bool chevron_open = g_state.popup_open &&
+                            visible == g_state.popup_visible;
                         Triangle_Down(chevron_cx, chevron_y, chevron_w,
-                            chevron_h, kText_Bright);
+                            chevron_h,
+                            chevron_open ? kChevron_Open : kChevron_Closed);
                         const int16_t text_right = (int16_t)(
                             chevron_right - chevron_w - pad);
                         Draw_Text(text_right, text_y,
