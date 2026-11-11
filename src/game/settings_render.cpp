@@ -414,6 +414,32 @@ namespace SETTINGS_RENDER {
         }
     }
 
+    void Sunken_Frame(const SETTINGS_LAYOUT::s_rect& rect, int16_t thickness) {
+        if (rect.w <= 0 || rect.h <= 0 || thickness <= 0) {
+            return;
+        }
+        // The recess: a dark outer border, with the shadow on the
+        // top and left inside it and the lit lip on the bottom and
+        // right -- the reverse of Frame's raised lip. The top and
+        // left inner lines reuse the outer dark tone, so that side
+        // reads as one thick dark edge; the bottom and right get
+        // the light inner line, so the slot reads as cut into the
+        // surface rather than sitting on it.
+        graphics::Box(rect.x, rect.y, rect.w, rect.h, thickness, kFrame_Outer);
+        if (rect.w > 2 * thickness + 2 && rect.h > 2 * thickness + 2) {
+            const int16_t x0 = (int16_t)(rect.x + thickness);
+            const int16_t y0 = (int16_t)(rect.y + thickness);
+            const int16_t x1 =
+                (int16_t)(rect.x + rect.w - thickness - 1);
+            const int16_t y1 =
+                (int16_t)(rect.y + rect.h - thickness - 1);
+            graphics::Fill(x0, y0, x1, y0, kFrame_Outer);
+            graphics::Fill(x0, y0, x0, y1, kFrame_Outer);
+            graphics::Fill(x0, y1, x1, y1, kFrame_Inner);
+            graphics::Fill(x1, y0, x1, y1, kFrame_Inner);
+        }
+    }
+
     void Plate(const SETTINGS_LAYOUT::s_rect& rect) {
         if (rect.w <= 0 || rect.h <= 0) {
             return;

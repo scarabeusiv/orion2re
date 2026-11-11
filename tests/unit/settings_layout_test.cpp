@@ -90,12 +90,17 @@ namespace {
         // space; the tabs live in the bottom bar. The bands touch
         // (the tie-together: the list absorbed the gaps), so the
         // list is taller and the bottom bar sits one pixel higher.
+        // The reshape (Tom, 2026-11-11): the description shrank
+        // to its content (the longest description is four lines
+        // plus the status line) and the list took the freed
+        // space, so the rows are taller and the value boxes fill
+        // them like the sample's tall inset boxes.
         CHECK(layout.header.y == 10);
         CHECK(layout.header.h == 26);
         CHECK(layout.list.y == 36);
-        CHECK(layout.list.h == 304);
-        CHECK(layout.description.y == 340);
-        CHECK(layout.description.h == 99);
+        CHECK(layout.list.h == 314);
+        CHECK(layout.description.y == 350);
+        CHECK(layout.description.h == 89);
         CHECK(layout.bottom_bar.y == 439);
         CHECK(layout.bottom_bar.h == 31);
         CHECK(Rect_Bottom(layout.bottom_bar) == 470);
@@ -132,7 +137,7 @@ namespace {
         CHECK(layout.scrollbar.x == 614);
         CHECK(layout.scrollbar.w == 13);
         CHECK(layout.scrollbar.y == 10);
-        CHECK(layout.scrollbar.h == 330);
+        CHECK(layout.scrollbar.h == 340);
         CHECK(layout.list.w == 601);
         // MORE / RETURN at the bottom bar's right end, same size,
         // spanning the bar's full height.
@@ -143,16 +148,17 @@ namespace {
         CHECK(layout.show_more.h == 31);
         CHECK(layout.done.h == 31);
         CHECK(layout.show_more.y == 439);
-        // Rows tile the list height exactly. The description is
-        // one row taller than before (it took one row slot's
-        // height from the list), so the rows are one row slot
-        // shorter and the bottom bar does not move.
+        // Rows tile the list height exactly. The description
+        // shrank to its content and the list took the freed
+        // space, so the rows are taller and the bottom bar does
+        // not move. The value control is 80% of the row (the
+        // sample's tall inset boxes), vertically centred.
         CHECK(Row_Rect(layout, 0).y == 36);
-        CHECK(Row_Rect(layout, 0).h == 30);
-        CHECK(Row_Rect(layout, 9).y == 309);
-        CHECK(Rect_Bottom(Row_Rect(layout, 9)) == 340);
-        CHECK(Row_Value_Rect(layout, 0).y == 42);
-        CHECK(Row_Value_Rect(layout, 0).h == 18);
+        CHECK(Row_Rect(layout, 0).h == 31);
+        CHECK(Row_Rect(layout, 9).y == 318);
+        CHECK(Rect_Bottom(Row_Rect(layout, 9)) == 350);
+        CHECK(Row_Value_Rect(layout, 0).y == 39);
+        CHECK(Row_Value_Rect(layout, 0).h == 24);
         Check_Bands_In_Order(layout);
     }
 
@@ -190,13 +196,13 @@ namespace {
         const s_settings_layout wide =
             Compute_Layout(1920, 1440, 10, kLabel_Lengths);
         CHECK(wide.tab_bar.y == 1319);
-        CHECK(wide.list.h == 913);
+        CHECK(wide.list.h == 943);
         Check_Bands_In_Order(wide);
 
         const s_settings_layout mid =
             Compute_Layout(800, 600, 10, kLabel_Lengths);
-        CHECK(mid.tab_bar.y == 549);
-        CHECK(mid.list.h == 380);
+        CHECK(mid.tab_bar.y == 550);
+        CHECK(mid.list.h == 393);
         Check_Bands_In_Order(mid);
     }
 
@@ -218,7 +224,7 @@ namespace {
             Rect_Bottom(Row_Rect(layout, 9)));
         CHECK(Row_Rect_For_Span(layout, 3, 0).h == single.h);
         // The name and value zones follow the merged row: the
-        // name spans the merged width, the value control is 62%
+        // name spans the merged width, the value control is 80%
         // of the merged height, vertically centred.
         const s_rect name = Row_Name_Rect_For_Row(layout, span);
         CHECK(name.y == span.y);
@@ -227,12 +233,12 @@ namespace {
         const s_rect value = Row_Value_Rect_For_Row(layout, span);
         CHECK(value.x == layout.header_value.x);
         CHECK(value.w == layout.header_value.w);
-        CHECK(value.h == span.h * 62 / 100);
+        CHECK(value.h == span.h * 80 / 100);
         CHECK(value.y == span.y + (span.h - value.h) / 2);
         CHECK(Inside(value, span));
         // The single-slot helpers agree with the span helpers.
         CHECK(Row_Name_Rect(layout, 3).h == single.h);
-        CHECK(Row_Value_Rect(layout, 3).h == single.h * 62 / 100);
+        CHECK(Row_Value_Rect(layout, 3).h == single.h * 80 / 100);
     }
 
     TEST_CASE("slot arithmetic over per-setting line counts") {
@@ -282,10 +288,10 @@ namespace {
         // at the bottom at the end.
         const s_rect top = Scrollbar_Thumb_Rect(layout, 186, 0, 10);
         CHECK(top.w == 6);
-        CHECK(top.h == 14);
+        CHECK(top.h == 15);
         CHECK(top.y == layout.scrollbar_track.y + 2);
         const s_rect bottom = Scrollbar_Thumb_Rect(layout, 186, 176, 10);
-        CHECK(bottom.h == 14);
+        CHECK(bottom.h == 15);
         CHECK(Rect_Bottom(bottom) ==
             Rect_Bottom(layout.scrollbar_track) - 2);
         const s_rect middle = Scrollbar_Thumb_Rect(layout, 186, 88, 10);
@@ -322,7 +328,7 @@ namespace {
             layout.scrollbar_arrow_down.y);
         CHECK(layout.scrollbar_track.h ==
             layout.scrollbar.h - 2 * layout.scrollbar_arrow_up.h);
-        CHECK(layout.scrollbar_track.h == 278);
+        CHECK(layout.scrollbar_track.h == 288);
         // The thumb stays inside the track at both ends (inset
         // from the arrow/track dividers).
         const s_rect top = Scrollbar_Thumb_Rect(layout, 186, 0, 10);

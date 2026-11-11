@@ -19,20 +19,25 @@ namespace SETTINGS_LAYOUT {
     // allocation (fractions of the height, top to bottom):
     //
     //   top margin      0.020
-    //   header row      0.055  (SETTING / VALUE column labels)
-    //   gap             0.012
-    //   list            0.598  (10 row slots, tiled exactly; a
+    //   header row      0.055  (SETTING / VALUE column labels --
+    //                            the colony's height, its plates
+    //                            20 px at 640x480, measured from
+    //                            the colony reference)
+    //   list            0.655  (10 row slots, tiled exactly; a
     //                            row whose label wraps takes two
     //                            slots, so it renders at full size)
-    //   gap             0.012
-    //   description     0.207  (selected row's description + status:
-    //                            one row taller than before -- it
-    //                            took one row slot's height from the
-    //                            list, so the longest description
-    //                            fits in full)
-    //   gap             0.012
+    //   description     0.186  (selected row's description + status:
+    //                            sized to its content -- the longest
+    //                            description (v120) is four lines
+    //                            plus the status line -- so no big
+    //                            empty area opens below the text)
     //   bottom bar      0.064  (tabs + MORE + RETURN)
     //   bottom margin   0.020
+    //
+    //   The bands touch (no gaps): the tie-together pass
+    //   (Tom, 2026-11-11) integrates the elements' borders
+    //   into one continuous frame, close to how the rest of
+    //   the interfaces are done.
     //
     // Horizontal allocation (fractions of the width): the content
     // spans 0.020..0.980. The bottom bar holds the three category
@@ -129,7 +134,8 @@ namespace SETTINGS_LAYOUT {
         const s_rect& row);
 
     // The value-control zone inside a row: the row's VALUE zone,
-    // vertically centred, 62% of the row height. Dropdowns,
+    // vertically centred, 80% of the row height -- the sample's
+    // tall inset value boxes, filling most of the row. Dropdowns,
     // toggles and edit fields sit in this rect (step 4 renders
     // them; step 3 only allocates it).
     s_rect Row_Value_Rect(const s_settings_layout& layout, int index);

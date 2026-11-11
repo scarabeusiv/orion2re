@@ -157,6 +157,17 @@ namespace SETTINGS_RENDER {
     // the borders blend into one continuous mechanical frame.
     void Frame(const SETTINGS_LAYOUT::s_rect& rect, int16_t thickness);
 
+    // A sunken (recessed) frame: the value box is a depression in
+    // the panel, not a raised button -- the sample's inset value
+    // boxes (Tom, 2026-11-11). The outer border is the frame's
+    // dark edge; inside it the top and left are dark (the shadow
+    // of the recess) and the bottom and right are light (the lit
+    // lip) -- the reverse of Frame's raised lip. The box reads as
+    // a slot cut into the surface, flat and embedded, and a
+    // pressed control sinks further into it.
+    void Sunken_Frame(const SETTINGS_LAYOUT::s_rect& rect,
+        int16_t thickness);
+
     // A header plate: the colony's bevelled grey plate (SETTING /
     // VALUE), a clean grey face with a dark-then-bright top bevel
     // and dark bottom/sides. The plate is its own element, with
