@@ -1584,19 +1584,36 @@ namespace SETTINGS_SCREEN {
             }
 
             // Bottom bar: the panel, with the tabs on the left and
-            // MORE and RETURN at the right end. 4a draws the labels
-            // (the active tab blue); 4c wires the hover / pressed
-            // states.
+            // MORE and RETURN at the right end. The buttons are
+            // hard machine buttons: the active tab is the vivid
+            // blue, a hovered button lightens, a pressed button
+            // darkens and its label drops 1 px (4c).
             Panel(layout.bottom_bar, kPanel_Fill, kPanel_Alpha);
+            auto button_state = [](const SETTINGS_LAYOUT::s_rect& rect,
+                bool active) {
+                if (Is_Pressed(rect)) {
+                    return BUTTON_PRESSED;
+                }
+                if (active) {
+                    return BUTTON_ACTIVE;
+                }
+                if (Is_Hover(rect)) {
+                    return BUTTON_HOVER;
+                }
+                return BUTTON_NORMAL;
+            };
             const int button_cell =
                 Text_Cell_For(layout.show_more.h, 60);
             for (int category = 0; category < CATEGORY_COUNT; ++category) {
                 Button(layout.tabs[category], CATEGORY_LABELS[category],
-                    category == g_state.category ? BUTTON_ACTIVE : BUTTON_NORMAL,
+                    button_state(layout.tabs[category],
+                        category == g_state.category),
                     button_cell);
             }
-            Button(layout.show_more, "MORE", BUTTON_NORMAL, button_cell);
-            Button(layout.done, "RETURN", BUTTON_NORMAL, button_cell);
+            Button(layout.show_more, "MORE",
+                button_state(layout.show_more, false), button_cell);
+            Button(layout.done, "RETURN",
+                button_state(layout.done, false), button_cell);
 
             // The edit overpaint: while a row is being edited, the
             // field system has drawn the edit text in the engine

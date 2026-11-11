@@ -32,7 +32,12 @@ namespace SETTINGS_RENDER {
     inline constexpr int kControl_Hover_Alpha = 185;
     inline constexpr s_rgb kControl_Pressed_Fill{14, 18, 36};
     inline constexpr int kControl_Pressed_Alpha = 190;
-    inline constexpr s_rgb kActive_Fill{52, 48, 136};
+    // The active tab's fill: the colony's vivid blue (24, 12,
+    // 252). The background installs that exact colour in palette
+    // index 253 on entry (the menu palette's black there is
+    // unused by this screen), so the blend maps to it exactly
+    // instead of the nearest muted entry.
+    inline constexpr s_rgb kActive_Fill{24, 12, 252};
     inline constexpr int kActive_Alpha = 200;
     inline constexpr s_rgb kSelection_Fill{52, 48, 136};
     inline constexpr int kSelection_Alpha = 230;

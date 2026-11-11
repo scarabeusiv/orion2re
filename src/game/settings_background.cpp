@@ -24,6 +24,17 @@ namespace SETTINGS_BACKGROUND {
         constexpr int32_t kRamp_Count = 64;
         constexpr int32_t kRamp_Last = kRamp_First + kRamp_Count - 1;
 
+        // The colony's vivid active-tab blue lives in palette
+        // index 253: the menu palette's black there is unused by
+        // this screen (the background owns 160-223, the text the
+        // font ramp 150-155, the frames 234/244), so the active
+        // tab's blend maps to the exact vivid blue instead of the
+        // nearest muted entry. 6-bit values, like the ramp.
+        constexpr int32_t kVivid_Blue_Index = 253;
+        constexpr uint8_t kVivid_Blue_R = 6;
+        constexpr uint8_t kVivid_Blue_G = 3;
+        constexpr uint8_t kVivid_Blue_B = 63;
+
         // The generated background, one palette index per game
         // pixel, sized to the game resolution it was generated
         // for. Everything is derived from fractions of the width
@@ -160,6 +171,12 @@ namespace SETTINGS_BACKGROUND {
         // 6-bit values (the upload shifts them left 2).
         palette::Set_Palette_Gradient(kRamp_First, kRamp_Count,
             2, 3, 9, 8, 13, 32);
+        // The colony's vivid active-tab blue, in its own index.
+        // Restored with the saved palette on exit.
+        video::current_palette[kVivid_Blue_Index].r = kVivid_Blue_R;
+        video::current_palette[kVivid_Blue_Index].g = kVivid_Blue_G;
+        video::current_palette[kVivid_Blue_Index].b = kVivid_Blue_B;
+        video::current_palette[kVivid_Blue_Index].changed = 1;
         palette::Refresh_Palette();
         g_palette_installed = true;
     }
