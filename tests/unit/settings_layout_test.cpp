@@ -168,29 +168,93 @@ namespace {
         Check_Bands_In_Order(mid);
     }
 
+    TEST_CASE("a wrapped row spans two slots at full size") {
+        const s_settings_layout layout =
+            Compute_Layout(640, 480, 10, kLabel_Lengths);
+        // Row 3 as a single slot, and as a two-slot span.
+        const s_rect single = Row_Rect(layout, 3);
+        const s_rect span = Row_Rect_For_Span(layout, 3, 2);
+        CHECK(span.x == single.x);
+        CHECK(span.y == single.y);
+        CHECK(span.w == single.w);
+        CHECK(span.h == single.h + Row_Rect(layout, 4).h);
+        CHECK(Rect_Bottom(span) == Rect_Bottom(Row_Rect(layout, 4)));
+        // A one-slot span is the row itself; the span clips to
+        // the list at the end; lines clamp to at least 1.
+        CHECK(Row_Rect_For_Span(layout, 3, 1).h == single.h);
+        CHECK(Rect_Bottom(Row_Rect_For_Span(layout, 9, 2)) ==
+            Rect_Bottom(Row_Rect(layout, 9)));
+        CHECK(Row_Rect_For_Span(layout, 3, 0).h == single.h);
+        // The name and value zones follow the merged row: the
+        // name spans the merged width, the value control is 62%
+        // of the merged height, vertically centred.
+        const s_rect name = Row_Name_Rect_For_Row(layout, span);
+        CHECK(name.y == span.y);
+        CHECK(name.h == span.h);
+        CHECK(Rect_Right(name) == Rect_Right(layout.header_setting));
+        const s_rect value = Row_Value_Rect_For_Row(layout, span);
+        CHECK(value.x == layout.header_value.x);
+        CHECK(value.w == layout.header_value.w);
+        CHECK(value.h == span.h * 62 / 100);
+        CHECK(value.y == span.y + (span.h - value.h) / 2);
+        CHECK(Inside(value, span));
+        // The single-slot helpers agree with the span helpers.
+        CHECK(Row_Name_Rect(layout, 3).h == single.h);
+        CHECK(Row_Value_Rect(layout, 3).h == single.h * 62 / 100);
+    }
+
+    TEST_CASE("slot arithmetic over per-setting line counts") {
+        // 11 settings; setting 2 wraps onto a second line.
+        const int lines[11] = {1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1};
+        // From the top, 9 settings fit in 10 slots (the wrapped
+        // one takes two): 1+1+2+1+1+1+1+1+1 = 10.
+        CHECK(Settings_On_Page(lines, 11, 0, 10) == 9);
+        // From setting 2, 9 settings fit (2+1*8 = 10 slots).
+        CHECK(Settings_On_Page(lines, 11, 2, 10) == 9);
+        // From setting 3, all 8 remaining fit in 8 slots.
+        CHECK(Settings_On_Page(lines, 11, 3, 10) == 8);
+        // The last page starts at setting 2: settings 2..10 take
+        // exactly 10 slots.
+        CHECK(First_For_Last_Page(lines, 11, 10) == 2);
+        // No wrap: the last page is the usual total - 10.
+        const int flat[21] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+        CHECK(First_For_Last_Page(flat, 21, 10) == 11);
+        CHECK(Settings_On_Page(flat, 21, 0, 10) == 10);
+        // Everything fits: the last page is the first page.
+        CHECK(First_For_Last_Page(lines, 5, 10) == 0);
+        CHECK(Settings_On_Page(lines, 5, 0, 10) == 5);
+        // Lines before / on a page.
+        CHECK(Lines_Before(lines, 11, 3) == 4);
+        CHECK(Lines_Before(lines, 11, 0) == 0);
+        CHECK(Lines_On_Page(lines, 11, 0, 10) == 10);
+        CHECK(Lines_On_Page(lines, 11, 2, 10) == 10);
+    }
+
     TEST_CASE("scrollbar thumb follows the scroll offset") {
         const s_settings_layout layout =
             Compute_Layout(640, 480, 10, kLabel_Lengths);
         // A list that fits has no thumb.
-        const s_rect none = Scrollbar_Thumb_Rect(layout, 10, 0);
+        const s_rect none = Scrollbar_Thumb_Rect(layout, 10, 0, 10);
         CHECK(none.w == 0);
-        const s_rect none2 = Scrollbar_Thumb_Rect(layout, 5, 0);
+        const s_rect none2 = Scrollbar_Thumb_Rect(layout, 5, 0, 10);
         CHECK(none2.w == 0);
-        // 186 rows: the thumb is ~10/186 of the track, at the top
-        // when scrolled to the first rows, at the bottom at the end.
-        const s_rect top = Scrollbar_Thumb_Rect(layout, 186, 0);
+        // 186 lines, 10 visible: the thumb is ~10/186 of the
+        // track, at the top when scrolled to the first lines,
+        // at the bottom at the end.
+        const s_rect top = Scrollbar_Thumb_Rect(layout, 186, 0, 10);
         CHECK(top.w == layout.scrollbar_track.w);
         CHECK(top.h == 17);
         CHECK(top.y == layout.scrollbar_track.y);
-        const s_rect bottom = Scrollbar_Thumb_Rect(layout, 186, 176);
+        const s_rect bottom = Scrollbar_Thumb_Rect(layout, 186, 176, 10);
         CHECK(bottom.h == 17);
         CHECK(Rect_Bottom(bottom) == Rect_Bottom(layout.scrollbar_track));
-        const s_rect middle = Scrollbar_Thumb_Rect(layout, 186, 88);
+        const s_rect middle = Scrollbar_Thumb_Rect(layout, 186, 88, 10);
         CHECK(middle.y > top.y);
         CHECK(middle.y < bottom.y);
         CHECK(Inside(middle, layout.scrollbar_track));
         // A very long list still gets a visible thumb.
-        const s_rect tiny = Scrollbar_Thumb_Rect(layout, 1000, 500);
+        const s_rect tiny = Scrollbar_Thumb_Rect(layout, 1000, 500, 10);
         CHECK(tiny.h == 8);
         CHECK(Inside(tiny, layout.scrollbar_track));
     }

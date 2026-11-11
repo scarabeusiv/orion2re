@@ -56,6 +56,16 @@ namespace SETTINGS_SCREEN {
         // and take the clicks, so drawing and hit-testing agree.
         // The screen renders the background plus placeholders
         // until step 4 renders the elements themselves.
+        // Slot geometry for wrapped rows (defined with the draw
+        // helpers, after the font helpers): a row whose label
+        // wraps takes two slots, so the label renders at full
+        // size. Declared here because Rebuild_Fields and the
+        // popups use them before their definitions.
+        void Rebuild_Row_Lines();
+        int Page_Count();
+        SETTINGS_LAYOUT::s_rect Visible_Row_Rect(int offset);
+        SETTINGS_LAYOUT::s_rect Visible_Value_Rect(int offset);
+
         constexpr int ROWS_PER_PAGE = 10;
 
         // The standard UI text palette, as used by the council screen.
@@ -112,6 +122,13 @@ namespace SETTINGS_SCREEN {
             std::vector<config::s_settings_row> rows;
             // Indices into rows for the current settings category.
             std::vector<int> visible_rows;
+            // Lines each visible row takes (1, or 2 for a row whose
+            // label wraps onto a second line), parallel to the
+            // visible indices (settings rows, then catalogue
+            // entries on the Mods tab). Rebuilt with the visible
+            // rows: a wrapped row takes two slots, so its label
+            // renders at full size.
+            std::vector<int> row_lines;
             // Catalogue entries for the Mods category.
             std::vector<config::s_mod_catalogue_entry> mods;
             // Working enabled set, in file order: the `enable` lines
@@ -212,10 +229,12 @@ namespace SETTINGS_SCREEN {
         }
 
         // Maximum first-visible-row index on the current tab:
-        // the colony's `num_colonies - 10` bound.
+        // the smallest first index whose settings to the end fit
+        // in the page's row slots (a wrapped row takes two).
         int Max_Scroll() {
-            const int total = Visible_Count();
-            return total <= ROWS_PER_PAGE ? 0 : total - ROWS_PER_PAGE;
+            return SETTINGS_LAYOUT::First_For_Last_Page(
+                g_state.row_lines.data(), Visible_Count(),
+                ROWS_PER_PAGE);
         }
 
         // Derive the current tab's first visible row from its
@@ -486,6 +505,7 @@ namespace SETTINGS_SCREEN {
                 }
                 g_state.visible_rows.push_back((int)index);
             }
+            Rebuild_Row_Lines();
         }
 
         void Refresh_Mods() {
@@ -496,6 +516,7 @@ namespace SETTINGS_SCREEN {
             if (g_state.selected < 0) {
                 g_state.selected = 0;
             }
+            Rebuild_Row_Lines();
         }
 
         e_apply_result Apply_Row(const config::s_settings_row& row,
@@ -598,10 +619,12 @@ namespace SETTINGS_SCREEN {
             }
             Sync_Scroll();
             const int first = Scroll_Top();
-            const int count = std::min(ROWS_PER_PAGE, Visible_Count() - first);
+            const int count = Page_Count();
             for (int index = 0; index < count; ++index) {
+                // The field spans the row's slots: two for a
+                // wrapped label, one otherwise.
                 const SETTINGS_LAYOUT::s_rect row =
-                    SETTINGS_LAYOUT::Row_Rect(layout, index);
+                    Visible_Row_Rect(index);
                 // Row fields span the list area, stopping short of
                 // the scrollbar strip, so clicks on the bar reach
                 // the bar.
@@ -742,8 +765,7 @@ namespace SETTINGS_SCREEN {
             // same rect the placeholder draws, so the click that
             // opened the edit and the typing land in the same place.
             const SETTINGS_LAYOUT::s_rect value_rect =
-                SETTINGS_LAYOUT::Row_Value_Rect(Layout(),
-                    visible - Scroll_Top());
+                Visible_Value_Rect(visible - Scroll_Top());
             g_state.edit_field = fields::Add_Continuous_String_Input_Field(
                 value_rect.x, value_rect.y, value_rect.w, value_rect.h,
                 g_state.edit_buffer,
@@ -810,8 +832,7 @@ namespace SETTINGS_SCREEN {
                 fonts::Get_Font_Vertical_Spacing());
             const int16_t list_height =
                 (int16_t)((type->value_count + 1) * (size_t)y_step);
-            int16_t y = SETTINGS_LAYOUT::Row_Rect(layout,
-                visible - Scroll_Top()).y;
+            int16_t y = Visible_Row_Rect(visible - Scroll_Top()).y;
             const int16_t content_bottom =
                 SETTINGS_LAYOUT::Rect_Bottom(layout.content);
             if (y + list_height > content_bottom) {
@@ -916,8 +937,7 @@ namespace SETTINGS_SCREEN {
                 4 + 4 + chevron_w + 4);
             const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
             const SETTINGS_LAYOUT::s_rect value_rect =
-                SETTINGS_LAYOUT::Row_Value_Rect(layout,
-                    visible - Scroll_Top());
+                Visible_Value_Rect(visible - Scroll_Top());
             const int16_t button_right =
                 (int16_t)(value_rect.x + button_w - 1);
             int16_t x = (int16_t)(button_right + 1 - popup_w);
@@ -1234,6 +1254,107 @@ namespace SETTINGS_SCREEN {
             return g_state.rows[(size_t)Visible_Row_Index(visible)].title;
         }
 
+        // Lines each visible row takes (1, or 2 for a row whose
+        // label wraps onto a second line). Rebuilt with the
+        // visible rows: the wrap is measured at the full row
+        // cell, the same measure the draw uses, so the cache and
+        // the draw always agree.
+        void Rebuild_Row_Lines() {
+            const int total = Visible_Count();
+            g_state.row_lines.assign((size_t)total, 1);
+            if (total <= 0) {
+                return;
+            }
+            const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
+            if (layout.width <= 0) {
+                return;
+            }
+            const int16_t pad = Text_Pad(layout.width);
+            const int row_cell = Text_Cell_For(
+                SETTINGS_LAYOUT::Row_Rect(layout, 0).h, 62);
+            const SETTINGS_LAYOUT::s_rect name_rect =
+                SETTINGS_LAYOUT::Row_Name_Rect(layout, 0);
+            auto measure = [&](const std::string& text) {
+                return SETTINGS_RENDER::Text_Width(text.c_str(), row_cell);
+            };
+            for (int visible = 0; visible < total; ++visible) {
+                const std::vector<std::string> lines =
+                    SETTINGS_HD_FONT::Wrap_Text(
+                        Visible_Row_Name(visible),
+                        name_rect.w - 2 * pad, measure, 2);
+                g_state.row_lines[(size_t)visible] =
+                    lines.size() > 1 ? 2 : 1;
+            }
+        }
+
+        // Cached lines for a visible index (1 when unknown).
+        int Row_Lines(int visible) {
+            if (visible < 0 ||
+                visible >= (int)g_state.row_lines.size()) {
+                return 1;
+            }
+            return g_state.row_lines[(size_t)visible];
+        }
+
+        // Settings visible on the current page: the page is
+        // ROWS_PER_PAGE slots, and a wrapped row takes two.
+        int Page_Count() {
+            return SETTINGS_LAYOUT::Settings_On_Page(
+                g_state.row_lines.data(), Visible_Count(),
+                Scroll_Top(), ROWS_PER_PAGE);
+        }
+
+        // First slot of the setting at visible offset `offset`
+        // on the current page: the slots the earlier settings
+        // on the page take.
+        int Visible_Slot(int offset) {
+            const int first = Scroll_Top();
+            int slot = 0;
+            for (int i = 0; i < offset; ++i) {
+                slot += Row_Lines(first + i);
+            }
+            return slot;
+        }
+
+        // The row rect for the setting at visible offset
+        // `offset` on the current page: its slots merged, so a
+        // wrapped label's row is two slots tall.
+        SETTINGS_LAYOUT::s_rect Visible_Row_Rect(int offset) {
+            const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
+            const int first = Scroll_Top();
+            return SETTINGS_LAYOUT::Row_Rect_For_Span(layout,
+                Visible_Slot(offset), Row_Lines(first + offset));
+        }
+
+        // The value-control rect for the setting at visible
+        // offset `offset`: vertically centred in its (possibly
+        // two-slot) row.
+        SETTINGS_LAYOUT::s_rect Visible_Value_Rect(int offset) {
+            const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
+            return SETTINGS_LAYOUT::Row_Value_Rect_For_Row(layout,
+                Visible_Row_Rect(offset));
+        }
+
+        // Total lines in the list, first visible line, and lines
+        // on the current page (for the scrollbar thumb).
+        int Total_Lines() {
+            return SETTINGS_LAYOUT::Lines_Before(
+                g_state.row_lines.data(), Visible_Count(),
+                Visible_Count());
+        }
+
+        int First_Line() {
+            return SETTINGS_LAYOUT::Lines_Before(
+                g_state.row_lines.data(), Visible_Count(),
+                Scroll_Top());
+        }
+
+        int Visible_Lines() {
+            return SETTINGS_LAYOUT::Lines_On_Page(
+                g_state.row_lines.data(), Visible_Count(),
+                Scroll_Top(), ROWS_PER_PAGE);
+        }
+
         void Draw_Elements() {
             const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
             const int16_t pad = Text_Pad(layout.width);
@@ -1259,17 +1380,20 @@ namespace SETTINGS_SCREEN {
 
             // List rows: each its own translucent panel; the
             // selected row a brighter fill with a bright left bar.
+            // A row whose label wraps takes two slots, so the
+            // label renders at full size on two lines.
             const int first = Scroll_Top();
-            const int count =
-                std::min(ROWS_PER_PAGE, Visible_Count() - first);
+            const int count = Page_Count();
             const int row_cell = Text_Cell_For(
                 SETTINGS_LAYOUT::Row_Rect(layout, 0).h, 62);
             const int value_cell = Text_Cell_For(
                 SETTINGS_LAYOUT::Row_Value_Rect(layout, 0).h, 80);
-            for (int index = 0; index < ROWS_PER_PAGE; ++index) {
+            for (int index = 0; index < count; ++index) {
+                // The row spans its slots: two for a wrapped
+                // label, one otherwise.
                 const SETTINGS_LAYOUT::s_rect row =
-                    SETTINGS_LAYOUT::Row_Rect(layout, index);
-                const bool is_selected = index < count &&
+                    Visible_Row_Rect(index);
+                const bool is_selected =
                     first + index == g_state.selected;
                 Panel(row, is_selected ? s_rgb{30, 38, 70} : kPanel_Fill,
                     is_selected ? 185 : kPanel_Alpha);
@@ -1281,19 +1405,18 @@ namespace SETTINGS_SCREEN {
                         (int16_t)(row.h - 2 * thickness)};
                     Solid_Fill(bar, s_rgb{180, 200, 230});
                 }
-                if (index >= count) {
-                    continue;
-                }
                 const int visible = first + index;
                 const std::string name = Visible_Row_Name(visible);
                 const SETTINGS_LAYOUT::s_rect name_rect =
-                    SETTINGS_LAYOUT::Row_Name_Rect(layout, index);
+                    SETTINGS_LAYOUT::Row_Name_Rect_For_Row(layout, row);
                 auto measure = [&](const std::string& text) {
                     return Text_Width(text.c_str(), row_cell);
                 };
                 // The label colour matches the game: cyan, orange
                 // on the hovered row. A long label wraps onto a
-                // second line instead of truncating with "...".
+                // second line at full size: the row grew to two
+                // slots for it, so it never truncates with "..."
+                // and never shrinks.
                 const s_rgb label_color =
                     Is_Hover(row) ? kText_Hover : kText_Label;
                 const std::vector<std::string> name_lines =
@@ -1305,23 +1428,16 @@ namespace SETTINGS_SCREEN {
                         name_lines.empty() ? "" : name_lines[0].c_str(),
                         label_color, row_cell, 0);
                 } else {
-                    // Two lines: shrink the cell until both lines
-                    // fit inside the row.
-                    int two_cell = row_cell;
-                    while (two_cell > 8 &&
-                        two_cell + Line_Height(two_cell) > row.h - 2) {
-                        --two_cell;
-                    }
                     const int16_t two_y = (int16_t)(row.y +
-                        (row.h - (two_cell + Line_Height(two_cell))) / 2);
+                        (row.h - (row_cell + Line_Height(row_cell))) / 2);
                     Draw_Text((int16_t)(name_rect.x + pad), two_y,
-                        name_lines[0].c_str(), label_color, two_cell, 0);
+                        name_lines[0].c_str(), label_color, row_cell, 0);
                     Draw_Text((int16_t)(name_rect.x + pad),
-                        (int16_t)(two_y + Line_Height(two_cell)),
-                        name_lines[1].c_str(), label_color, two_cell, 0);
+                        (int16_t)(two_y + Line_Height(row_cell)),
+                        name_lines[1].c_str(), label_color, row_cell, 0);
                 }
                 const SETTINGS_LAYOUT::s_rect value_rect =
-                    SETTINGS_LAYOUT::Row_Value_Rect(layout, index);
+                    Visible_Value_Rect(index);
                 Blend_Fill(value_rect, kControl_Fill, kControl_Alpha);
                 Frame(value_rect, thickness);
                 // The value: toggles and mods show the star (4e);
@@ -1348,6 +1464,13 @@ namespace SETTINGS_SCREEN {
                         kText_Bright, value_cell, 0);
                 }
             }
+            // Slots past the last visible row keep their empty
+            // panels, so the list area stays fully panelled.
+            for (int slot = Visible_Slot(count); slot < ROWS_PER_PAGE;
+                ++slot) {
+                Panel(SETTINGS_LAYOUT::Row_Rect(layout, slot),
+                    kPanel_Fill, kPanel_Alpha);
+            }
 
             // Scrollbar: the strip's own panel, with the thumb
             // inside it when the list scrolls (4f adds the arrows
@@ -1355,7 +1478,7 @@ namespace SETTINGS_SCREEN {
             Panel(layout.scrollbar, kPanel_Fill, kPanel_Alpha);
             const SETTINGS_LAYOUT::s_rect thumb =
                 SETTINGS_LAYOUT::Scrollbar_Thumb_Rect(layout,
-                    Visible_Count(), Scroll_Top());
+                    Total_Lines(), First_Line(), Visible_Lines());
             if (thumb.w > 0) {
                 Blend_Fill(thumb, kThumb_Fill, kThumb_Alpha);
             }
@@ -1388,9 +1511,9 @@ namespace SETTINGS_SCREEN {
             // than the rect so the cursor stays visible.
             if (g_state.editing_row >= 0) {
                 const int edit_index = g_state.editing_row - Scroll_Top();
-                if (edit_index >= 0 && edit_index < ROWS_PER_PAGE) {
+                if (edit_index >= 0 && edit_index < Page_Count()) {
                     const SETTINGS_LAYOUT::s_rect edit_rect =
-                        SETTINGS_LAYOUT::Row_Value_Rect(layout, edit_index);
+                        Visible_Value_Rect(edit_index);
                     Solid_Fill(edit_rect, kEdit_Fill);
                     Frame(edit_rect, thickness);
                     std::string text = fields::continuous_string;
@@ -1501,8 +1624,7 @@ namespace SETTINGS_SCREEN {
                     }
                     if (!handled) {
                         const int first = Scroll_Top();
-                        const int count = std::min(ROWS_PER_PAGE,
-                            Visible_Count() - first);
+                        const int count = Page_Count();
                         for (int index = 0; index < count; ++index) {
                             if (input == g_state.row_fields[index]) {
                                 const int visible = first + index;
