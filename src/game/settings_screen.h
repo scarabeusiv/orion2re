@@ -14,7 +14,9 @@ namespace SETTINGS_SCREEN {
     // A mod toggle dry-runs the candidate set through the staging
     // path, writes the resolved order to orion2re.cfg, and applies
     // it with a full load. Settings with no editor render as info
-    // rows. Returns to the main menu when closed.
+    // rows. The background is the generated hi-res surface
+    // (settings_background), not the colony's baked bitmap.
+    // Returns to the main menu when closed.
     void __cdecl Settings_Screen();
 
 } // namespace SETTINGS_SCREEN
