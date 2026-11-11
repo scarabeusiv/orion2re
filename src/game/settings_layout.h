@@ -37,19 +37,29 @@ namespace SETTINGS_LAYOUT {
     // Horizontal allocation (fractions of the width): the content
     // spans 0.020..0.980. The bottom bar holds the three category
     // tabs on the left (dividing the bar's left width in proportion
-    // to their label lengths, plus padding, with a 0.008 gap between
-    // tabs) and MORE and RETURN at the right end, the SAME width
+    // to their label lengths, plus padding, with NO gap between
+    // tabs -- one continuous band, like the colony's SORT band)
+    // and MORE and RETURN at the right end, the SAME width
     // (0.133, sized for the longer label) with a 0.012 gap between
-    // them. The list's rows span the content width minus the
-    // scrollbar strip (0.020 wide, at the content's right edge, with
-    // a 0.006 gap) -- the strip is chunky, like the colony's, so
-    // the arrows read as buttons. The strip holds an up arrow at
-    // its top and a down arrow at its bottom (each a framed button
-    // twice the strip's width tall); the thumb travels the track
-    // between them. The VALUE zone starts at 0.778 of the width,
-    // in the header and in every row alike -- it moved left with
-    // the strip, so the value boxes keep their exact width and the
-    // strip's extra width comes out of the (wide) name zone.
+    // them. The buttons span the bar's full height, so their
+    // borders meet the divider above and the outer frame below.
+    // The list's rows span the content width minus the scrollbar
+    // strip (0.020 wide, at the content's right edge, touching
+    // the list with no gap) -- the strip is chunky, like the
+    // colony's, so the arrows read as buttons. The strip runs the
+    // header band as well as the list, so its up arrow sits in the
+    // top corner with the header plates, like the colony's. The
+    // strip holds an up arrow at its top and a down arrow at its
+    // bottom (each a framed button twice the strip's width tall);
+    // the thumb travels the track between them. The thumb is the
+    // colony's indicator bar: 6 px wide in the colony's 13 px
+    // strip, and it spans the whole track when the list fits
+    // (the colony's rule -- the arrows stay visible and do
+    // nothing on a short list). The VALUE zone starts at 0.778
+    // of the width, in the header and in every row alike -- it
+    // moved left with the strip, so the value boxes keep their
+    // exact width and the strip's extra width comes out of the
+    // (wide) name zone.
     //
     // The layout is pure: it takes the screen size and the tab
     // label lengths and returns rectangles. No video, font or
@@ -76,8 +86,8 @@ namespace SETTINGS_LAYOUT {
         // and twice as tall (the colony's arrows are ~1:2,
         // 10x20 and 11x22); the track is the strip between
         // them, so the thumb never runs under an arrow. Each
-        // arrow zone is a framed button (a blue face with a
-        // bold white triangle), not a flat glyph.
+        // arrow zone is a dark-navy button with a light-grey
+        // triangle (the colony's arrows), not a flat glyph.
         s_rect scrollbar_arrow_up;
         s_rect scrollbar_arrow_down;
         s_rect scrollbar_track;
@@ -142,11 +152,17 @@ namespace SETTINGS_LAYOUT {
 
     // The scrollbar thumb for a list of `total_lines` lines whose
     // first visible line is `first_line` and whose page shows
-    // `visible_lines` lines. Empty (w == 0) when the whole list
-    // fits (no scrolling), otherwise a rect inside the scrollbar
-    // track, its height proportional to the visible fraction and
-    // its position proportional to the scroll offset (top of the
-    // track = first lines).
+    // `visible_lines` lines. When the whole list fits, the thumb
+    // spans the whole track (the colony's rule -- there is
+    // nothing to scroll, and the arrows stay visible); otherwise
+    // a rect inside the scrollbar track, its height proportional
+    // to the visible fraction and its position proportional to
+    // the scroll offset (top of the track = first lines). Empty
+    // (w == 0) only for a degenerate (empty) list. The thumb is
+    // the colony's indicator bar: 6 px wide in the colony's
+    // 13 px strip, inset 2 px from the strip's left edge, and it
+    // travels between the arrow/track dividers (inset 2 px at
+    // each end of the track), so it never paints over one.
     s_rect Scrollbar_Thumb_Rect(const s_settings_layout& layout,
         int total_lines, int first_line, int visible_lines);
 

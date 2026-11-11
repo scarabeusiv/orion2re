@@ -26,7 +26,6 @@
 #include "game/settings_hd_font.h"
 #include "game/settings_layout.h"
 #include "game/settings_render.h"
-#include "game/settings_sprites.h"
 #include "game/settings_screen.h"
 #include "game/timer.h"
 #include "game/user_paths.h"
@@ -57,6 +56,14 @@ namespace SETTINGS_SCREEN {
         // and take the clicks, so drawing and hit-testing agree.
         // The screen renders the background plus placeholders
         // until step 4 renders the elements themselves.
+        // Element-by-element redo (Tom, 2026-11-11): every element
+        // is the original game's element in hi-res, code-drawn
+        // from the colony / main menu / GAME SETTINGS dialog
+        // reference -- not a reinvented design. The tie-together's
+        // hi-res PNG sprites (dithered faces, bloom/glow halos,
+        // blue arrow buttons) are deleted; the elements draw with
+        // the vector primitives, their borders blending into one
+        // continuous mechanical frame, interiors clean.
         // Slot geometry for wrapped rows (defined with the draw
         // helpers, after the font helpers): a row whose label
         // wraps takes two slots, so the label renders at full
@@ -681,11 +688,17 @@ namespace SETTINGS_SCREEN {
             }
             // Scrollbar drag field, bound to this tab's slider
             // position, like COLSUM's Add_Scroll_Field. Only when
-            // the list is longer than the window; the field
-            // system's lone-scrollbar rule makes the wheel scroll
-            // it from anywhere over the list.
+            // the list actually scrolls (Max_Scroll() > 0): the
+            // count alone does not say it -- a wrapped row takes
+            // two slots, so a list of exactly ROWS_PER_PAGE rows
+            // can still scroll. The field system's
+            // lone-scrollbar rule makes the wheel scroll it from
+            // anywhere over the list. The arrow buttons are
+            // ALWAYS there (the colony shows its arrows even when
+            // there is nothing to scroll); clicking one when the
+            // list does not scroll is a clamped no-op.
             const int total = Visible_Count();
-            if (total > ROWS_PER_PAGE) {
+            if (Max_Scroll() > 0) {
                 // The scroll field covers the track only (between
                 // the arrows), like COLSUM's: the arrow buttons
                 // take the strip's ends, so the zones are disjoint
@@ -695,26 +708,24 @@ namespace SETTINGS_SCREEN {
                     (int16_t)total, 0, (int16_t)Max_Scroll(),
                     layout.scrollbar_track.w, layout.scrollbar_track.h,
                     &g_state.slider_position[g_state.category], "", 0);
-                g_state.scroll_up_field = fields::Add_Hidden_Field(
-                    layout.scrollbar_arrow_up.x, layout.scrollbar_arrow_up.y,
-                    (int16_t)(layout.scrollbar_arrow_up.x +
-                        layout.scrollbar_arrow_up.w - 1),
-                    (int16_t)(layout.scrollbar_arrow_up.y +
-                        layout.scrollbar_arrow_up.h - 1),
-                    "", 0);
-                g_state.scroll_down_field = fields::Add_Hidden_Field(
-                    layout.scrollbar_arrow_down.x,
-                    layout.scrollbar_arrow_down.y,
-                    (int16_t)(layout.scrollbar_arrow_down.x +
-                        layout.scrollbar_arrow_down.w - 1),
-                    (int16_t)(layout.scrollbar_arrow_down.y +
-                        layout.scrollbar_arrow_down.h - 1),
-                    "", 0);
             } else {
                 g_state.scroll_field = -1;
-                g_state.scroll_up_field = -1;
-                g_state.scroll_down_field = -1;
             }
+            g_state.scroll_up_field = fields::Add_Hidden_Field(
+                layout.scrollbar_arrow_up.x, layout.scrollbar_arrow_up.y,
+                (int16_t)(layout.scrollbar_arrow_up.x +
+                    layout.scrollbar_arrow_up.w - 1),
+                (int16_t)(layout.scrollbar_arrow_up.y +
+                    layout.scrollbar_arrow_up.h - 1),
+                "", 0);
+            g_state.scroll_down_field = fields::Add_Hidden_Field(
+                layout.scrollbar_arrow_down.x,
+                layout.scrollbar_arrow_down.y,
+                (int16_t)(layout.scrollbar_arrow_down.x +
+                    layout.scrollbar_arrow_down.w - 1),
+                (int16_t)(layout.scrollbar_arrow_down.y +
+                    layout.scrollbar_arrow_down.h - 1),
+                "", 0);
             // MORE and RETURN sit side by side in the bottom
             // bar at the right end. They share the bar's single
             // line and never wrap.
@@ -1450,15 +1461,9 @@ namespace SETTINGS_SCREEN {
             // (GAME.LBX entry 29, measured): a bright ridge with a
             // darker line inside it -- not a flat 1 px line (the
             // pixel-era point 14). The industrial frame draws it:
-            // the light outer border, the dark inner line, on all
-            // four sides. The hi-res PNG frame sprite, or the
-            // vector frame when the sprite did not load.
-            if (SETTINGS_SPRITES::Frame() != nullptr) {
-                Draw_Sprite_9Slice(popup,
-                    *SETTINGS_SPRITES::Frame(), 8);
-            } else {
-                Frame(popup, thickness);
-            }
+            // the dark outer border, the light inner line, on all
+            // four sides.
+            Frame(popup, thickness);
             const int16_t text_x = (int16_t)(x + thickness + pad);
             for (size_t index = 0; index < g_state.popup_labels.size();
                 ++index) {
@@ -1495,104 +1500,111 @@ namespace SETTINGS_SCREEN {
                 SETTINGS_RENDER::Frame_Thickness(layout.width);
             using namespace SETTINGS_RENDER;
 
-            // The tie-together (Tom, 2026-11-11): hi-res PNG sprites
-            // with INTEGRATED borders. The elements' borders connect
-            // into one continuous frame, close to how the rest of
-            // the interfaces are done -- not separate floating boxes
-            // with gaps. The switches and buttons are hi-res PNG
-            // sprites too. `has_frame` is the switch: when the frame
-            // sprite loaded, the screen composes the integrated
-            // frame; when it did not (a stale base.zip), every
-            // element falls back to its vector panel, so the screen
-            // is the pre-tie-together one.
-            const bool has_frame = SETTINGS_SPRITES::Frame() != nullptr;
-            // A bevel divider: 1 px light steel over 1 px dark
-            // steel, the same material as the frame, spanning
-            // [x0, x1) at row y. The bands read as one panel
-            // divided by its own frame lines.
-            auto divider = [&](int16_t y, int16_t x0, int16_t x1) {
-                Solid_Fill(SETTINGS_LAYOUT::s_rect{x0, y,
-                    (int16_t)(x1 - x0), 1}, s_rgb{180, 182, 190});
-                Solid_Fill(SETTINGS_LAYOUT::s_rect{x0, (int16_t)(y + 1),
-                    (int16_t)(x1 - x0), 1}, s_rgb{90, 92, 100});
-            };
+            // The elements' borders blend into one continuous
+            // mechanical frame (Tom, 2026-11-11): the content's
+            // own border, the band dividers, the scrollbar
+            // strip's divider and the buttons' borders are all
+            // the same frame lines -- not separate floating boxes
+            // with gaps, and not a border baked into the
+            // background (the background stays JUST a background;
+            // each element draws its own border as part of
+            // itself). Interiors are clean flat fills: no dither,
+            // no speckle inside an element.
             const int16_t content_inner_x =
                 (int16_t)(layout.content.x + thickness);
             const int16_t content_inner_right =
                 (int16_t)(SETTINGS_LAYOUT::Rect_Right(layout.content) -
                     thickness);
-            if (has_frame) {
-                // One continuous frame around the whole content,
-                // the dithered panel face tiled across its interior,
-                // and the band dividers (header/list, list/
-                // description, description/bottom bar). The face is
-                // the panel's own texture: the screen reads as one
-                // machine panel, not as boxes on a background.
-                // (A missing face sprite leaves the background
-                // showing through the frame: the vector fill is
-                // the fallback for that element.)
-                if (SETTINGS_SPRITES::Panel_Face() != nullptr) {
-                    Draw_Sprite_Tiled(SETTINGS_LAYOUT::s_rect{
-                        content_inner_x,
-                        (int16_t)(layout.content.y + thickness),
-                        (int16_t)(content_inner_right - content_inner_x),
-                        (int16_t)(layout.content.h - 2 * thickness)},
-                        *SETTINGS_SPRITES::Panel_Face());
-                } else {
-                    Blend_Fill(SETTINGS_LAYOUT::s_rect{content_inner_x,
-                        (int16_t)(layout.content.y + thickness),
-                        (int16_t)(content_inner_right - content_inner_x),
-                        (int16_t)(layout.content.h - 2 * thickness)},
-                        kPanel_Fill, kPanel_Alpha);
-                }
-                Draw_Sprite_9Slice(layout.content,
-                    *SETTINGS_SPRITES::Frame(), 8);
-                divider(layout.list.y, content_inner_x,
-                    content_inner_right);
-                divider(layout.description.y, content_inner_x,
-                    content_inner_right);
-                divider(layout.bottom_bar.y, content_inner_x,
-                    content_inner_right);
-                // The scrollbar strip's own frame: its left edge is
-                // the vertical divider between the list and the
-                // strip; its right edge coincides with the outer
-                // frame; its top/bottom edges coincide with the
-                // band dividers.
-                Draw_Sprite_9Slice(layout.scrollbar,
-                    *SETTINGS_SPRITES::Frame(), 8);
-            } else {
-                // Fallback: the band panels, as before.
-                Panel(layout.header, kPanel_Fill, kPanel_Alpha);
-                Panel(layout.scrollbar, kPanel_Fill, kPanel_Alpha);
-                Panel(layout.description, kPanel_Fill, kPanel_Alpha);
-                Panel(layout.bottom_bar, kPanel_Fill, kPanel_Alpha);
+            // One continuous frame around the whole content, and
+            // the band dividers (header/list, list/description,
+            // description/bottom bar). The face is the panel's
+            // own clean fill: the screen reads as one machine
+            // panel, not as boxes on a background.
+            Blend_Fill(SETTINGS_LAYOUT::s_rect{content_inner_x,
+                (int16_t)(layout.content.y + thickness),
+                (int16_t)(content_inner_right - content_inner_x),
+                (int16_t)(layout.content.h - 2 * thickness)},
+                kPanel_Fill, kPanel_Alpha);
+            Frame(layout.content, thickness);
+            // A horizontal divider: a light line over a dark line
+            // (the colony's row-separator tones, measured), so the
+            // bands read as the colony's list rows do.
+            auto divider = [&](int16_t y, int16_t x0, int16_t x1) {
+                Solid_Fill(SETTINGS_LAYOUT::s_rect{x0, y,
+                    (int16_t)(x1 - x0), 1}, kDivider_Light);
+                Solid_Fill(SETTINGS_LAYOUT::s_rect{x0, (int16_t)(y + 1),
+                    (int16_t)(x1 - x0), 1}, kDivider_Dark);
+            };
+            divider(layout.list.y, content_inner_x,
+                content_inner_right);
+            divider(layout.description.y, content_inner_x,
+                content_inner_right);
+            divider(layout.bottom_bar.y, content_inner_x,
+                content_inner_right);
+            // The scrollbar strip's left edge: the vertical
+            // divider between the list and the strip, running
+            // the strip's full height (header band to list
+            // bottom). Its right edge is the outer frame; its
+            // top and bottom edges are the frame and the
+            // list/description divider.
+            auto vdivider = [&](int16_t x, int16_t y0, int16_t y1) {
+                Solid_Fill(SETTINGS_LAYOUT::s_rect{x, y0, 1,
+                    (int16_t)(y1 - y0)}, kDivider_Light);
+                Solid_Fill(SETTINGS_LAYOUT::s_rect{(int16_t)(x + 1),
+                    y0, 1, (int16_t)(y1 - y0)}, kDivider_Dark);
+            };
+            vdivider(layout.scrollbar.x,
+                (int16_t)(layout.content.y + thickness + 1),
+                SETTINGS_LAYOUT::Rect_Bottom(layout.list));
+            // The row separators run to the list's right edge
+            // (the strip's divider), not across the strip.
+            const int16_t list_right = layout.list.x + layout.list.w;
+            const int page_rows = Page_Count();
+            for (int index = 1; index < page_rows; ++index) {
+                divider(Visible_Row_Rect(index).y, content_inner_x,
+                    list_right);
+            }
+            // The EMPTY rows (below the last option, when the
+            // category is short) are separated too -- the colony
+            // fills its whole list with ruled rows.
+            for (int slot = Visible_Slot(page_rows);
+                slot < ROWS_PER_PAGE; ++slot) {
+                divider(SETTINGS_LAYOUT::Row_Rect(layout, slot).y,
+                    content_inner_x, list_right);
             }
 
-            // Header: the VALUE column's own framed cell inside it,
-            // both labelled. The header band itself is the content
-            // face (sprite path) or its own panel (fallback).
-            if (SETTINGS_SPRITES::Control_Face() != nullptr) {
-                Draw_Sprite_Tiled(layout.header_value,
-                    *SETTINGS_SPRITES::Control_Face());
-            } else {
-                Blend_Fill(layout.header_value, kControl_Fill,
-                    kControl_Alpha);
-            }
-            if (has_frame) {
-                Draw_Sprite_9Slice(layout.header_value,
-                    *SETTINGS_SPRITES::Frame(), 8);
-            } else {
-                Frame(layout.header_value, thickness);
-            }
+            // Header: two bevelled grey plates, SETTING and VALUE
+            // -- the colony's header plates (NAME/FARMERS/...) in
+            // hi-res. The plates are their own elements, inset
+            // from the header band's edges and from the frame's
+            // inner lines, with their own borders; the up arrow
+            // fills the band's right end in the scrollbar strip.
+            // The inset is the frame thickness plus one: the
+            // plates sit tight under the frame's top inner line
+            // and clear of its side inner lines, like the colony's
+            // plates sit tight under its frame.
+            const int16_t plate_inset = (int16_t)(thickness + 1);
+            const SETTINGS_LAYOUT::s_rect setting_plate{
+                (int16_t)(layout.header_setting.x + plate_inset),
+                (int16_t)(layout.header.y + plate_inset),
+                (int16_t)(layout.header_setting.w - 2 * plate_inset),
+                (int16_t)(layout.header.h - 2 * plate_inset)};
+            const SETTINGS_LAYOUT::s_rect value_plate{
+                (int16_t)(layout.header_value.x + plate_inset),
+                (int16_t)(layout.header.y + plate_inset),
+                (int16_t)(layout.header_value.w - 2 * plate_inset),
+                (int16_t)(layout.header.h - 2 * plate_inset)};
+            Plate(setting_plate);
+            Plate(value_plate);
             const int header_cell = Text_Cell_For(layout.header.h, 62);
             const int16_t header_y =
-                (int16_t)(layout.header.y + (layout.header.h - header_cell) / 2);
+                (int16_t)(setting_plate.y +
+                    (setting_plate.h - header_cell) / 2);
             Draw_Text(
-                (int16_t)(layout.header_setting.x +
-                    layout.header_setting.w / 2),
+                (int16_t)(setting_plate.x + setting_plate.w / 2),
                 header_y, "SETTING", kText_Header, header_cell, 1);
             Draw_Text(
-                (int16_t)(layout.header_value.x + layout.header_value.w / 2),
+                (int16_t)(value_plate.x + value_plate.w / 2),
                 header_y, "VALUE", kText_Header, header_cell, 1);
 
             // List rows: in the integrated frame the rows are bands
@@ -1615,24 +1627,11 @@ namespace SETTINGS_SCREEN {
             const int16_t indicator_radius = (int16_t)std::max(3,
                 (SETTINGS_LAYOUT::Row_Value_Rect(layout, 0).h -
                     2 * thickness) / 2);
-            // Row separators: one bevel line at the top of each
-            // visible row after the first, and at the top of each
-            // empty slot, so the list reads as ruled rows. A
-            // wrapped row's interior gets no separator (its two
-            // slots are one row).
-            if (has_frame) {
-                const int16_t list_right =
-                    SETTINGS_LAYOUT::Rect_Right(layout.list);
-                for (int index = 1; index < count; ++index) {
-                    divider(Visible_Row_Rect(index).y, content_inner_x,
-                        list_right);
-                }
-                for (int slot = Visible_Slot(count); slot < ROWS_PER_PAGE;
-                    ++slot) {
-                    divider(SETTINGS_LAYOUT::Row_Rect(layout, slot).y,
-                        content_inner_x, list_right);
-                }
-            }
+            // (The row separators are drawn with the frame lines,
+            // above: the rows are bands of the one panel, divided
+            // by single bevel separators, not each its own framed
+            // box.) A wrapped row's interior gets no separator
+            // (its two slots are one row).
             for (int index = 0; index < count; ++index) {
                 // The row spans its slots: two for a wrapped
                 // label, one otherwise.
@@ -1640,18 +1639,14 @@ namespace SETTINGS_SCREEN {
                     Visible_Row_Rect(index);
                 const bool is_selected =
                     first + index == g_state.selected;
-                if (has_frame) {
-                    // The selected row is the brighter control
-                    // face, tiled over the panel face.
-                    if (is_selected &&
-                        SETTINGS_SPRITES::Control_Face() != nullptr) {
-                        Draw_Sprite_Tiled(row,
-                            *SETTINGS_SPRITES::Control_Face());
-                    }
-                } else {
-                    Panel(row,
-                        is_selected ? s_rgb{30, 38, 70} : kPanel_Fill,
-                        is_selected ? 185 : kPanel_Alpha);
+                // The selected row is a brighter face over the
+                // panel face, with a bright left bar. The face
+                // starts below the row's top separator (2 px), so
+                // it never paints over the divider above it.
+                if (is_selected) {
+                    Blend_Fill(SETTINGS_LAYOUT::s_rect{row.x,
+                        (int16_t)(row.y + 2), row.w,
+                        (int16_t)(row.h - 2)}, s_rgb{30, 38, 70}, 185);
                 }
                 if (is_selected) {
                     // Bright left bar inside the frame.
@@ -1694,21 +1689,11 @@ namespace SETTINGS_SCREEN {
                 }
                 const SETTINGS_LAYOUT::s_rect value_rect =
                     Visible_Value_Rect(index);
-                // The value box is a hardened display: its own
-                // control face, framed like the header's VALUE
-                // cell (the sprite frame, or the vector frame).
-                if (SETTINGS_SPRITES::Control_Face() != nullptr) {
-                    Draw_Sprite_Tiled(value_rect,
-                        *SETTINGS_SPRITES::Control_Face());
-                } else {
-                    Blend_Fill(value_rect, kControl_Fill, kControl_Alpha);
-                }
-                if (has_frame) {
-                    Draw_Sprite_9Slice(value_rect,
-                        *SETTINGS_SPRITES::Frame(), 8);
-                } else {
-                    Frame(value_rect, thickness);
-                }
+                // The value box is a hardened display: a dark
+                // control face with the industrial frame -- the
+                // colony's inset value cells, clean inside.
+                Blend_Fill(value_rect, kControl_Fill, kControl_Alpha);
+                Frame(value_rect, thickness);
                 // The value: toggles and mods show the star (4e);
                 // dropdowns and edits show their text. A dropdown
                 // is a hardened display: like the colony's value
@@ -1783,23 +1768,15 @@ namespace SETTINGS_SCREEN {
                         // The chevron is the knob: white while the
                         // dropdown is closed, the open blue while
                         // its popup is up -- the colour shift is
-                        // the state signal. It is a hi-res PNG
-                        // sprite (white / blue), or the vector
-                        // triangle when the sprite did not load.
+                        // the state signal. It is the vector
+                        // triangle, like the colony's dropdown
+                        // chevron.
                         const bool chevron_open = g_state.popup_open &&
                             visible == g_state.popup_visible;
-                        if (SETTINGS_SPRITES::Chevron(chevron_open) !=
-                            nullptr) {
-                            Draw_Sprite(SETTINGS_LAYOUT::s_rect{
-                                (int16_t)(chevron_cx - chevron_w / 2),
-                                chevron_y, chevron_w, chevron_h},
-                                *SETTINGS_SPRITES::Chevron(chevron_open));
-                        } else {
-                            Triangle_Down(chevron_cx, chevron_y, chevron_w,
-                                chevron_h,
-                                chevron_open ? kChevron_Open :
-                                    kChevron_Closed);
-                        }
+                        Triangle_Down(chevron_cx, chevron_y, chevron_w,
+                            chevron_h,
+                            chevron_open ? kChevron_Open :
+                                kChevron_Closed);
                         const int16_t text_right = (int16_t)(
                             chevron_right - chevron_w - pad);
                         Draw_Text(text_right, text_y,
@@ -1816,167 +1793,103 @@ namespace SETTINGS_SCREEN {
                     // state reads at a glance. Its radius is the
                     // one-slot indicator size, not the row's height,
                     // so a wrapped row's star is the same size as
-                    // the rest (Tom, 2026-11-11). It is a hi-res
-                    // PNG sprite, or the vector star when the
-                    // sprite did not load.
+                    // the rest (Tom, 2026-11-11). It is the vector
+                    // star, the colony's star shape in hi-res.
                     const int16_t star_cx =
                         (int16_t)(value_rect.x + value_rect.w / 2);
                     const int16_t star_cy =
                         (int16_t)(value_rect.y + value_rect.h / 2);
-                    if (SETTINGS_SPRITES::Star(star_on) != nullptr) {
-                        Draw_Sprite(SETTINGS_LAYOUT::s_rect{
-                            (int16_t)(star_cx - indicator_radius),
-                            (int16_t)(star_cy - indicator_radius),
-                            (int16_t)(2 * indicator_radius),
-                            (int16_t)(2 * indicator_radius)},
-                            *SETTINGS_SPRITES::Star(star_on));
-                    } else {
-                        Star(star_cx, star_cy, indicator_radius,
-                            star_on ? kStar_On : kStar_Off, star_on);
-                    }
+                    Star(star_cx, star_cy, indicator_radius,
+                        star_on ? kStar_On : kStar_Off, star_on);
                 }
             }
 
-            // Scrollbar (4f): the strip's own frame (above); the
-            // up/down arrows at its ends and the thumb between
-            // them, travelling the track. The arrows are pressable
-            // buttons, like the colony's: a framed blue button
-            // face with a bold white triangle inside it. They are
-            // hi-res PNG sprites (face + triangle), or the vector
-            // button + triangle when the sprites did not load. A
-            // pressed arrow glows orange (a depressed knob). The
-            // thumb is the colony's indicator bar: a bevelled
-            // handle, as a hi-res PNG sprite (or the vector thumb).
-            // The arrows and thumb show only when the list
-            // scrolls; the strip stays an empty panel otherwise.
+            // Scrollbar: the colony's shape. The strip's left
+            // edge is the vertical divider (drawn with the frame
+            // lines, above) and its right edge is the outer frame,
+            // so the arrows plug into the mechanical frame: their
+            // borders are the shared frame lines, not their own
+            // boxes. The up arrow sits at the strip's top, in the
+            // header band; the down arrow at the list's bottom.
+            // The arrows are dark navy with light-grey triangles
+            // (the colony's arrows, measured) and are ALWAYS
+            // visible: the colony shows its arrows even when
+            // there is nothing to scroll. The arrow/track
+            // dividers are drawn here; the thumb travels the
+            // track between them, and spans the whole track when
+            // the list fits (the colony's rule).
             const SETTINGS_LAYOUT::s_rect thumb =
                 SETTINGS_LAYOUT::Scrollbar_Thumb_Rect(layout,
                     Total_Lines(), First_Line(), Visible_Lines());
+            // The arrow/track dividers, spanning the strip.
+            divider(layout.scrollbar_track.y, layout.scrollbar.x,
+                SETTINGS_LAYOUT::Rect_Right(layout.scrollbar));
+            divider((int16_t)SETTINGS_LAYOUT::Rect_Bottom(
+                layout.scrollbar_track), layout.scrollbar.x,
+                SETTINGS_LAYOUT::Rect_Right(layout.scrollbar));
+            // An arrow's face fills its zone inside the shared
+            // borders: inset from the strip's divider on the left
+            // and the frame's inner line on the right, below the
+            // frame's inner line on top (up) and above the
+            // list/description divider on the bottom (down).
+            // The triangle is the colony's size in the zone
+            // (~7 px wide, ~11 tall at 640x480): its base spans
+            // the face's width, its height half the face's
+            // height. Pressed drops it 1 px, like a button label.
+            auto draw_arrow = [&](const SETTINGS_LAYOUT::s_rect& zone,
+                bool up) {
+                const bool pressed = Is_Pressed(zone);
+                const bool hover = !pressed && Is_Hover(zone);
+                const s_rgb face = pressed ? kArrow_Face_Pressed
+                    : (hover ? kArrow_Face_Hover : kArrow_Face);
+                const int16_t face_x0 =
+                    (int16_t)(layout.scrollbar.x + 2);
+                const int16_t face_x1 = content_inner_right - 1;
+                const int16_t face_y0 = up
+                    ? (int16_t)(layout.content.y + thickness + 1)
+                    : (int16_t)(SETTINGS_LAYOUT::Rect_Bottom(
+                        layout.scrollbar_track) + 2);
+                const int16_t face_y1 = up
+                    ? layout.scrollbar_track.y
+                    : SETTINGS_LAYOUT::Rect_Bottom(layout.list);
+                Solid_Fill(SETTINGS_LAYOUT::s_rect{face_x0, face_y0,
+                    (int16_t)(face_x1 - face_x0),
+                    (int16_t)(face_y1 - face_y0)}, face);
+                const int16_t tri_w =
+                    (int16_t)(face_x1 - face_x0 - 2 + 1);
+                const int16_t tri_h =
+                    (int16_t)((face_y1 - face_y0) / 2);
+                const int16_t tri_cx =
+                    (int16_t)(face_x0 + (face_x1 - face_x0) / 2);
+                const int16_t tri_y = (int16_t)(face_y0 +
+                    (face_y1 - face_y0 - tri_h) / 2 +
+                    (pressed ? 1 : 0));
+                if (up) {
+                    Triangle_Up(tri_cx, tri_y, tri_w, tri_h,
+                        kArrow_Triangle);
+                } else {
+                    Triangle_Down(tri_cx, tri_y, tri_w, tri_h,
+                        kArrow_Triangle);
+                }
+            };
+            draw_arrow(layout.scrollbar_arrow_up, true);
+            draw_arrow(layout.scrollbar_arrow_down, false);
             if (thumb.w > 0 && thumb.h > 0) {
-                const int16_t arrow_cx = (int16_t)(
-                    layout.scrollbar.x + layout.scrollbar.w / 2);
-                // The triangle sits inside the button's frame:
-                // its base spans the inner width (the nominal
-                // width is one more, the rasterisation narrows
-                // the base by a pixel each side) and its height
-                // is half the inner height, so it reads as a
-                // chunky arrowhead. Pressed drops it 1 px, like
-                // a button label. `thickness` is the frame
-                // thickness, in scope from the header above.
-                const int16_t tri_w = (int16_t)(
-                    layout.scrollbar.w - 2 * thickness + 1);
-                const int16_t tri_h = (int16_t)(
-                    (layout.scrollbar_arrow_up.h - 2 * thickness) / 2);
-                // The orange glow behind a pressed arrow: a
-                // depressed knob, spilling a few px past the
-                // button's frame.
-                auto arrow_halo = [&](const SETTINGS_LAYOUT::s_rect& zone) {
-                    if (SETTINGS_SPRITES::Glow_Orange() == nullptr) {
-                        return;
-                    }
-                    const int16_t expand = (int16_t)(thickness * 2);
-                    Draw_Sprite(SETTINGS_LAYOUT::s_rect{
-                        (int16_t)(zone.x - expand),
-                        (int16_t)(zone.y - expand),
-                        (int16_t)(zone.w + 2 * expand),
-                        (int16_t)(zone.h + 2 * expand)},
-                        *SETTINGS_SPRITES::Glow_Orange());
-                };
-                // Up arrow: blue face, brighter on hover, darker
-                // while pressed.
-                const bool up_pressed =
-                    Is_Pressed(layout.scrollbar_arrow_up);
-                const bool up_hover =
-                    Is_Hover(layout.scrollbar_arrow_up);
-                if (up_pressed) {
-                    arrow_halo(layout.scrollbar_arrow_up);
-                }
-                const int up_sprite = up_pressed
-                    ? SETTINGS_SPRITES::BUTTON_PRESSED
-                    : (up_hover ? SETTINGS_SPRITES::BUTTON_HOVER
-                        : SETTINGS_SPRITES::BUTTON_NORMAL);
-                if (SETTINGS_SPRITES::Arrow_Face(up_sprite) != nullptr) {
-                    Draw_Sprite_9Slice(layout.scrollbar_arrow_up,
-                        *SETTINGS_SPRITES::Arrow_Face(up_sprite), 6);
-                } else {
-                    const s_rgb up_fill = up_pressed
-                        ? kArrowBtn_Pressed_Fill
-                        : (up_hover ? kArrowBtn_Hover_Fill :
-                            kArrowBtn_Fill);
-                    Panel(layout.scrollbar_arrow_up, up_fill,
-                        kArrowBtn_Alpha);
-                }
-                if (SETTINGS_SPRITES::Triangle(true) != nullptr) {
-                    Draw_Sprite(SETTINGS_LAYOUT::s_rect{
-                        (int16_t)(arrow_cx - tri_w / 2),
-                        (int16_t)(layout.scrollbar_arrow_up.y +
-                            (layout.scrollbar_arrow_up.h - tri_h) / 2 +
-                            (up_pressed ? 1 : 0)),
-                        tri_w, tri_h},
-                        *SETTINGS_SPRITES::Triangle(true));
-                } else {
-                    Triangle_Up(arrow_cx,
-                        (int16_t)(layout.scrollbar_arrow_up.y +
-                            (layout.scrollbar_arrow_up.h - tri_h) / 2 +
-                            (up_pressed ? 1 : 0)),
-                        tri_w, tri_h, kText_Bright);
-                }
-                // Down arrow: the same, mirrored.
-                const bool down_pressed =
-                    Is_Pressed(layout.scrollbar_arrow_down);
-                const bool down_hover =
-                    Is_Hover(layout.scrollbar_arrow_down);
-                if (down_pressed) {
-                    arrow_halo(layout.scrollbar_arrow_down);
-                }
-                const int down_sprite = down_pressed
-                    ? SETTINGS_SPRITES::BUTTON_PRESSED
-                    : (down_hover ? SETTINGS_SPRITES::BUTTON_HOVER
-                        : SETTINGS_SPRITES::BUTTON_NORMAL);
-                if (SETTINGS_SPRITES::Arrow_Face(down_sprite) != nullptr) {
-                    Draw_Sprite_9Slice(layout.scrollbar_arrow_down,
-                        *SETTINGS_SPRITES::Arrow_Face(down_sprite), 6);
-                } else {
-                    const s_rgb down_fill = down_pressed
-                        ? kArrowBtn_Pressed_Fill
-                        : (down_hover ? kArrowBtn_Hover_Fill :
-                            kArrowBtn_Fill);
-                    Panel(layout.scrollbar_arrow_down, down_fill,
-                        kArrowBtn_Alpha);
-                }
-                if (SETTINGS_SPRITES::Triangle(false) != nullptr) {
-                    Draw_Sprite(SETTINGS_LAYOUT::s_rect{
-                        (int16_t)(arrow_cx - tri_w / 2),
-                        (int16_t)(layout.scrollbar_arrow_down.y +
-                            (layout.scrollbar_arrow_down.h - tri_h) / 2 +
-                            (down_pressed ? 1 : 0)),
-                        tri_w, tri_h},
-                        *SETTINGS_SPRITES::Triangle(false));
-                } else {
-                    Triangle_Down(arrow_cx,
-                        (int16_t)(layout.scrollbar_arrow_down.y +
-                            (layout.scrollbar_arrow_down.h - tri_h) / 2 +
-                            (down_pressed ? 1 : 0)),
-                        tri_w, tri_h, kText_Bright);
-                }
-                if (SETTINGS_SPRITES::Thumb() != nullptr) {
-                    Draw_Sprite_9Slice(thumb,
-                        *SETTINGS_SPRITES::Thumb(), 8);
-                } else {
-                    Blend_Fill(thumb, kThumb_Fill, kThumb_Alpha);
-                    // The thumb's bevel: a 1 px lighter top/left and
-                    // darker right/bottom, the colony's indicator bar.
-                    Solid_Fill(SETTINGS_LAYOUT::s_rect{thumb.x, thumb.y,
-                        thumb.w, 1}, kThumb_Edge_Light);
-                    Solid_Fill(SETTINGS_LAYOUT::s_rect{thumb.x, thumb.y,
-                        1, thumb.h}, kThumb_Edge_Light);
-                    Solid_Fill(SETTINGS_LAYOUT::s_rect{
-                        (int16_t)(thumb.x + thumb.w - 1), thumb.y, 1,
-                        thumb.h}, kThumb_Edge_Dark);
-                    Solid_Fill(SETTINGS_LAYOUT::s_rect{thumb.x,
-                        (int16_t)(thumb.y + thumb.h - 1), thumb.w, 1},
-                        kThumb_Edge_Dark);
-                }
+                // The thumb: the colony's indicator bar -- a
+                // bevelled handle, narrower than the strip, its
+                // light top/left and dark right/bottom edges the
+                // colony's border direction.
+                Solid_Fill(thumb, kThumb_Fill);
+                Solid_Fill(SETTINGS_LAYOUT::s_rect{thumb.x, thumb.y,
+                    thumb.w, 1}, kThumb_Edge_Light);
+                Solid_Fill(SETTINGS_LAYOUT::s_rect{thumb.x, thumb.y,
+                    1, thumb.h}, kThumb_Edge_Light);
+                Solid_Fill(SETTINGS_LAYOUT::s_rect{
+                    (int16_t)(thumb.x + thumb.w - 1), thumb.y, 1,
+                    thumb.h}, kThumb_Edge_Dark);
+                Solid_Fill(SETTINGS_LAYOUT::s_rect{thumb.x,
+                    (int16_t)(thumb.y + thumb.h - 1), thumb.w, 1},
+                    kThumb_Edge_Dark);
             }
 
             // Description box: the selected row's description,
@@ -1987,8 +1900,7 @@ namespace SETTINGS_SCREEN {
             // blank line opens up when the description is short.
             // The description is the selected row's (not the
             // hovered row's): hover only recolours the label.
-            // Its band is the content face (sprite path) or its
-            // own panel (fallback, drawn above).
+            // Its band is the content face.
             {
                 const int16_t desc_x =
                     (int16_t)(layout.description.x + thickness + pad);
@@ -2052,95 +1964,91 @@ namespace SETTINGS_SCREEN {
             }
 
             // Bottom bar: the tabs on the left and MORE and RETURN
-            // at the right end. The buttons are hard machine
-            // buttons: hi-res PNG sprites (the active tab the
-            // vivid blue, with the analog bloom of a well-used
-            // display button behind it; a pressed button the
-            // darker face with the orange glow of a depressed
-            // knob behind it), or the vector button when the
-            // sprite did not load. A hovered button lightens, a
-            // pressed button's label drops 1 px (4c).
-            auto button_state = [](const SETTINGS_LAYOUT::s_rect& rect,
-                bool active) {
-                if (Is_Pressed(rect)) {
-                    return BUTTON_PRESSED;
-                }
-                if (active) {
-                    return BUTTON_ACTIVE;
-                }
-                if (Is_Hover(rect)) {
-                    return BUTTON_HOVER;
-                }
-                return BUTTON_NORMAL;
-            };
+            // at the right end. The tabs are the colony's SORT
+            // band: dark-navy inactive tabs, the active tab dark
+            // navy at its edges with the vivid blue band behind
+            // its label, all sharing one continuous band (no gaps
+            // between tabs) and spanning the bar's full height,
+            // so their borders are the bar's borders. MORE and
+            // RETURN are the colony's RETURN / the main menu's
+            // grey bevelled buttons, with black labels. No halos:
+            // the tie-together's orange glow and blue bloom were
+            // invented, not the original game's -- a pressed
+            // button darkens and its label drops 1 px, like the
+            // original's pressed frame.
             const int button_cell =
                 Text_Cell_For(layout.show_more.h, 60);
             auto draw_button = [&](const SETTINGS_LAYOUT::s_rect& rect,
-                const char* label, e_button_state state) {
-                // The halo behind the button: the orange glow of a
-                // depressed knob, the blue bloom of a well-used
-                // analog display button. It spills a few px past
-                // the button's frame, so the button reads as a lit
-                // physical thing, not a flat rectangle.
-                const SETTINGS_PNG::s_rgba_image* halo = nullptr;
-                if (state == BUTTON_PRESSED) {
-                    halo = SETTINGS_SPRITES::Glow_Orange();
-                } else if (state == BUTTON_ACTIVE) {
-                    halo = SETTINGS_SPRITES::Bloom_Blue();
-                }
-                if (halo != nullptr) {
-                    const int16_t expand = (int16_t)(thickness * 3);
-                    Draw_Sprite(SETTINGS_LAYOUT::s_rect{
-                        (int16_t)(rect.x - expand),
-                        (int16_t)(rect.y - expand),
-                        (int16_t)(rect.w + 2 * expand),
-                        (int16_t)(rect.h + 2 * expand)}, *halo);
-                }
-                // The sprite state, or -1 when the button has no
-                // sprite (BUTTON_DISABLED): the vector button.
-                const int sprite_state = state == BUTTON_NORMAL
-                    ? SETTINGS_SPRITES::BUTTON_NORMAL
-                    : (state == BUTTON_HOVER
-                        ? SETTINGS_SPRITES::BUTTON_HOVER
-                        : (state == BUTTON_PRESSED
-                            ? SETTINGS_SPRITES::BUTTON_PRESSED
-                            : (state == BUTTON_ACTIVE
-                                ? SETTINGS_SPRITES::BUTTON_ACTIVE : -1)));
-                const SETTINGS_PNG::s_rgba_image* sprite = sprite_state < 0
-                    ? nullptr
-                    : SETTINGS_SPRITES::Button(sprite_state);
-                if (sprite != nullptr) {
-                    Draw_Sprite_9Slice(rect, *sprite, 8);
-                    // The label, centred, like the vector button:
-                    // the active tab's text is the bright header
-                    // colour, a pressed button's label drops 1 px.
-                    const s_rgb text_color = state == BUTTON_ACTIVE
-                        ? kText_Header : kText_Bright;
-                    const int16_t text_y = (int16_t)(rect.y +
-                        (rect.h - button_cell) / 2 +
-                        (state == BUTTON_PRESSED ? 1 : 0));
+                const char* label, bool active, bool grey) {
+                const bool pressed = Is_Pressed(rect);
+                const bool hover = !pressed && Is_Hover(rect);
+                const int16_t text_y = (int16_t)(rect.y +
+                    (rect.h - button_cell) / 2 + (pressed ? 1 : 0));
+                if (grey) {
+                    // A grey metal button: an opaque face, the
+                    // industrial frame, a 1 px top sheen (not
+                    // when pressed), a black label.
+                    const s_rgb face = pressed ? kGreyButton_Pressed
+                        : (hover ? kGreyButton_Hover : kGreyButton_Face);
+                    Solid_Fill(rect, face);
+                    Frame(rect, thickness);
+                    if (!pressed) {
+                        Blend_Fill(SETTINGS_LAYOUT::s_rect{
+                            (int16_t)(rect.x + thickness),
+                            (int16_t)(rect.y + thickness),
+                            (int16_t)(rect.w - 2 * thickness), 1},
+                            s_rgb{255, 255, 255}, 40);
+                    }
                     Draw_Text((int16_t)(rect.x + rect.w / 2), text_y,
-                        label, text_color, button_cell, 1);
+                        label, kGreyButton_Text, button_cell, 1);
+                    return;
+                }
+                // A category tab: the colony's SORT band.
+                if (active) {
+                    // Dark navy at the top and bottom, the vivid
+                    // blue band behind the label in the middle
+                    // (the colony's active tab is vivid behind
+                    // its label, navy at the edges).
+                    const s_rgb vivid = pressed ? kTab_Active_Pressed
+                        : kActive_Fill;
+                    const int16_t band_h =
+                        (int16_t)(button_cell + 4);
+                    const int16_t band_y = (int16_t)(rect.y +
+                        (rect.h - band_h) / 2);
+                    Blend_Fill(SETTINGS_LAYOUT::s_rect{rect.x, rect.y,
+                        rect.w, (int16_t)(band_y - rect.y)},
+                        kTab_Inactive, kActive_Alpha);
+                    Blend_Fill(SETTINGS_LAYOUT::s_rect{rect.x, band_y,
+                        rect.w, band_h}, vivid, kActive_Alpha);
+                    Blend_Fill(SETTINGS_LAYOUT::s_rect{rect.x,
+                        (int16_t)(band_y + band_h), rect.w,
+                        (int16_t)(rect.y + rect.h - band_y - band_h)},
+                        kTab_Inactive, kActive_Alpha);
+                    Frame(rect, thickness);
+                    Draw_Text((int16_t)(rect.x + rect.w / 2), text_y,
+                        label, kText_Header, button_cell, 1);
                 } else {
-                    Button(rect, label, state, button_cell);
+                    const s_rgb face = pressed ? kTab_Inactive_Pressed
+                        : (hover ? kTab_Inactive_Hover : kTab_Inactive);
+                    Blend_Fill(rect, face, kActive_Alpha);
+                    Frame(rect, thickness);
+                    Draw_Text((int16_t)(rect.x + rect.w / 2), text_y,
+                        label, kText_Bright, button_cell, 1);
                 }
             };
             for (int category = 0; category < CATEGORY_COUNT; ++category) {
                 draw_button(layout.tabs[category],
                     CATEGORY_LABELS[category],
-                    button_state(layout.tabs[category],
-                        category == g_state.category));
+                    category == g_state.category, false);
             }
-            draw_button(layout.show_more, "MORE",
-                button_state(layout.show_more, false));
-            draw_button(layout.done, "RETURN",
-                button_state(layout.done, false));
+            draw_button(layout.show_more, "MORE", false, true);
+            draw_button(layout.done, "RETURN", false, true);
 
             // The open dropdown popup floats over the list: drawn
             // after the rows and the bottom bar, so it paints over
-            // them. Its frame is the sprite frame (or the vector
-            // frame); its interior stays the opaque vector fill,
-            // so the rows behind it do not show through.
+            // them. Its frame is the industrial frame; its
+            // interior stays the opaque vector fill, so the rows
+            // behind it do not show through.
             Draw_Popup();
 
             // The edit overpaint: while a row is being edited, the
@@ -2156,12 +2064,7 @@ namespace SETTINGS_SCREEN {
                     const SETTINGS_LAYOUT::s_rect edit_rect =
                         Visible_Value_Rect(edit_index);
                     Solid_Fill(edit_rect, kEdit_Fill);
-                    if (has_frame) {
-                        Draw_Sprite_9Slice(edit_rect,
-                            *SETTINGS_SPRITES::Frame(), 8);
-                    } else {
-                        Frame(edit_rect, thickness);
-                    }
+                    Frame(edit_rect, thickness);
                     std::string text = fields::continuous_string;
                     auto edit_measure = [&](const std::string& s) {
                         return Text_Width(s.c_str(), value_cell);
@@ -2206,13 +2109,6 @@ namespace SETTINGS_SCREEN {
         // The render caches (blend tables, scaled glyphs) are built
         // against the palette the background just installed.
         SETTINGS_RENDER::Reset();
-        // The hi-res PNG sprites (the tie-together): loaded once
-        // per screen visit; the PNGs are RGBA, not palette
-        // indices, so a palette change does not need a reload.
-        // A sprite that fails to load leaves its element on the
-        // vector rendering, so the screen works with a stale
-        // base.zip.
-        SETTINGS_SPRITES::Ensure_Loaded();
         fields::Clear_Fields();
         RUSS::Mox_Update();
         fonts::Set_Font_Style(4, &g_normal_colors);
