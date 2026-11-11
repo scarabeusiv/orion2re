@@ -587,6 +587,14 @@ orion2re_add_unit_test(test_settings_layout
         src/game/settings_layout.cpp
 )
 
+# The bitmaps are data-only (settings_bitmaps.h): the test checks
+# the hand-drawn rows, not the video blits, so it needs no
+# production sources.
+orion2re_add_unit_test(test_settings_bitmaps
+    SOURCES
+        tests/unit/settings_bitmaps_test.cpp
+)
+
 orion2re_add_unit_test(test_settings_blend
     SOURCES
         tests/unit/settings_blend_test.cpp

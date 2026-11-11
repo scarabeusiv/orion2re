@@ -23,6 +23,7 @@
 #include "game/platform.h"
 #include "game/russ.h"
 #include "game/settings_background.h"
+#include "game/settings_bitmaps.h"
 #include "game/settings_hd_font.h"
 #include "game/settings_layout.h"
 #include "game/settings_render.h"
@@ -61,8 +62,14 @@ namespace SETTINGS_SCREEN {
         // from the colony / main menu / GAME SETTINGS dialog
         // reference -- not a reinvented design. The tie-together's
         // hi-res PNG sprites (dithered faces, bloom/glow halos,
-        // blue arrow buttons) are deleted; the elements draw with
-        // the vector primitives, their borders blending into one
+        // blue arrow buttons) are deleted. Bitmap pass (Tom,
+        // 2026-11-11): the elements render as HOME-MADE BITMAPS
+        // (settings_bitmaps: hand-drawn pixel art, drawn by
+        // observation from the colonies screen, stored as data
+        // and blitted -- the HD font's pattern), not code-drawn
+        // vector primitives. Vectors look too smooth and
+        // polished; bitmaps have the pixel-art texture that
+        // matches the game. Their borders still blend into one
         // continuous mechanical frame, interiors clean.
         // Slot geometry for wrapped rows (defined with the draw
         // helpers, after the font helpers): a row whose label
@@ -1284,7 +1291,7 @@ namespace SETTINGS_SCREEN {
 
         // The value text of a settings row, for the rows that show
         // one (dropdowns and edits; info rows show none, toggles
-        // show the star in step 4e). Empty when the value cannot
+        // show the switch in step 4e). Empty when the value cannot
         // be read.
         std::string Row_Value_Text(const config::s_settings_row& row) {
             if (Is_Resolution_Row(row)) {
@@ -1461,12 +1468,12 @@ namespace SETTINGS_SCREEN {
             // line inside it -- not a flat 1 px line (the
             // pixel-era point 14). The industrial frame draws it:
             // the dark outer border, the light inner line, on all
-            // four sides. Its corners are rounded like the value
+            // four sides -- as a hand-drawn bitmap (the grey
+            // button's shape, the panel fill as its face), not a
+            // code-drawn frame. Its corners are cut like the value
             // boxes (2 at 640) -- the popup is a list of values,
             // so it takes their radius, not the plates'.
-            Rounded_Frame(popup, thickness,
-                SETTINGS_RENDER::Scaled_Radius(Layout().width, 2),
-                kPanel_Fill);
+            SETTINGS_BITMAPS::Draw_Frame(popup, kPanel_Fill);
             const int16_t text_x = (int16_t)(x + thickness + pad);
             for (size_t index = 0; index < g_state.popup_labels.size();
                 ++index) {
@@ -1501,13 +1508,9 @@ namespace SETTINGS_SCREEN {
             const int16_t pad = Text_Pad(layout.width);
             const int16_t thickness =
                 SETTINGS_RENDER::Frame_Thickness(layout.width);
-            // Corner radii (640-space, scaled): the sample's value
-            // boxes are barely round (2), the header plates and
-            // the bottom-bar buttons clearly round (4).
-            const int16_t value_radius =
-                SETTINGS_RENDER::Scaled_Radius(layout.width, 2);
-            const int16_t plate_radius =
-                SETTINGS_RENDER::Scaled_Radius(layout.width, 4);
+            // Corner radii (640-space, scaled): the bottom-bar
+            // buttons are clearly round (4) -- the tab bitmaps
+            // punch their outer corners to this radius.
             const int16_t button_radius =
                 SETTINGS_RENDER::Scaled_Radius(layout.width, 4);
             using namespace SETTINGS_RENDER;
@@ -1540,7 +1543,8 @@ namespace SETTINGS_SCREEN {
             // own clean fill: the screen reads as one machine
             // panel, not as boxes on a background.
             Blend_Fill(layout.content, kPanel_Fill, kPanel_Alpha);
-            Outer_Frame(layout.content, layout.width, layout.height);
+            SETTINGS_BITMAPS::Draw_Outer_Frame(layout.content,
+                layout.width, layout.height);
             // A horizontal divider: a light line over a dark line
             // (the colony's row-separator tones, measured), so the
             // bands read as the colony's list rows do.
@@ -1589,15 +1593,16 @@ namespace SETTINGS_SCREEN {
 
             // Header: two bevelled grey plates, SETTING and VALUE
             // -- the colony's header plates (NAME/FARMERS/...) in
-            // hi-res. The plates are their own elements, inset
-            // from the header band's edges and from the frame's
-            // inner lines, with their own borders; the up arrow
-            // fills the band's right end in the scrollbar strip.
-            // The inset is the frame thickness plus one: the
-            // plates sit tight under the frame's top inner line
-            // and clear of its side inner lines, like the colony's
-            // plates sit tight under its frame. Their corners are
-            // cut to the sample's clearly-round plates.
+            // hi-res, as hand-drawn bitmaps. The plates are their
+            // own elements, inset from the header band's edges and
+            // from the frame's inner lines, with their own
+            // borders; the up arrow fills the band's right end in
+            // the scrollbar strip. The inset is the frame
+            // thickness plus one: the plates sit tight under the
+            // frame's top inner line and clear of its side inner
+            // lines, like the colony's plates sit tight under its
+            // frame. Their corners are cut to the sample's
+            // clearly-round plates.
             const int16_t plate_inset = (int16_t)(thickness + 1);
             const SETTINGS_LAYOUT::s_rect setting_plate{
                 (int16_t)(layout.header_setting.x + plate_inset),
@@ -1609,8 +1614,8 @@ namespace SETTINGS_SCREEN {
                 (int16_t)(layout.header.y + plate_inset),
                 (int16_t)(layout.header_value.w - 2 * plate_inset),
                 (int16_t)(layout.header.h - 2 * plate_inset)};
-            Plate(setting_plate, plate_radius);
-            Plate(value_plate, plate_radius);
+            SETTINGS_BITMAPS::Draw_Plate(setting_plate);
+            SETTINGS_BITMAPS::Draw_Plate(value_plate);
             const int header_cell = Text_Cell_For(layout.header.h, 62);
             const int16_t header_y =
                 (int16_t)(setting_plate.y +
@@ -1634,14 +1639,11 @@ namespace SETTINGS_SCREEN {
                 SETTINGS_LAYOUT::Row_Rect(layout, 0).h, 62);
             const int value_cell = Text_Cell_For(
                 SETTINGS_LAYOUT::Row_Value_Rect(layout, 0).h, 80);
-            // The value-box indicator (star, chevron) stays one
-            // line tall: its size comes from a single-slot row,
-            // so a wrapped row's taller box does not grow it --
-            // it is centred in the box instead. (The chevron
-            // already is: it derives from value_cell, above.)
-            const int16_t indicator_radius = (int16_t)std::max(3,
-                (SETTINGS_LAYOUT::Row_Value_Rect(layout, 0).h -
-                    2 * thickness) / 2);
+            // The dropdown chevron stays one line tall: its size
+            // comes from a single-slot row, so a wrapped row's
+            // taller box does not grow it -- it is centred in
+            // the box instead. (It derives from value_cell,
+            // above.) The switch sizes itself to the box.
             // (The row separators are drawn with the frame lines,
             // above: the rows are bands of the one panel, divided
             // by single bevel separators, not each its own framed
@@ -1709,14 +1711,14 @@ namespace SETTINGS_SCREEN {
                 // sample's inset value boxes (Tom, 2026-11-11),
                 // embedded and flat, depressed into the surface
                 // rather than a raised button on top of it. The
-                // star and the dropdowns sit inside the slot. Its
-                // corners are cut to the sample's barely-round
-                // boxes, and the face is filled rounded too, so
-                // its corners do not stick out past the ring.
-                Rounded_Blend_Fill(value_rect, value_radius,
-                    kControl_Fill, kControl_Alpha);
-                Sunken_Frame(value_rect, thickness, value_radius);
-                // The value: toggles and mods show the star (4e);
+                // dropdowns sit inside the slot; the bool switch
+                // is free-standing (Tom, 2026-11-11), not forced
+                // into one. The slot is a hand-drawn bitmap now
+                // (a nicer bevel, a cleaner shadow/lit lip), not
+                // a code-drawn bevel. Its corners are cut to the
+                // sample's barely-round boxes.
+                SETTINGS_BITMAPS::Draw_Sunken_Box(value_rect);
+                // The value: toggles and mods show the switch;
                 // dropdowns and edits show their text. A dropdown
                 // is a hardened display: like the colony's value
                 // cells, its value is right-aligned with a down
@@ -1725,20 +1727,20 @@ namespace SETTINGS_SCREEN {
                 // marks a dropdown, never a write-input field.
                 std::string value_text;
                 bool is_dropdown = false;
-                // The star: toggles and mods show it (4e); dropdowns
-                // and edits show their text instead. The star is a
-                // toggle for bool values only -- never on a dropdown
+                // The switch: toggles and mods show it; dropdowns
+                // and edits show their text instead. The switch is
+                // a toggle for bool values only -- never on a dropdown
                 // or a write-input field.
-                bool show_star = false;
-                bool star_on = false;
+                bool show_switch = false;
+                bool switch_on = false;
                 if (Is_Mod_Row(visible)) {
-                    // A mod row is a toggle: the star shows whether
+                    // A mod row is a toggle: the switch shows whether
                     // the mod is enabled (a broken mod is never
-                    // enabled, so its star is always off).
+                    // enabled, so its switch is always off).
                     const config::s_mod_catalogue_entry& entry =
                         g_state.mods[(size_t)Mod_Index(visible)];
-                    show_star = true;
-                    star_on = entry.enabled && !entry.broken;
+                    show_switch = true;
+                    switch_on = entry.enabled && !entry.broken;
                 } else {
                     const config::s_settings_row& row_data =
                         g_state.rows[(size_t)Visible_Row_Index(visible)];
@@ -1749,13 +1751,13 @@ namespace SETTINGS_SCREEN {
                         value_text = Row_Value_Text(row_data);
                     } else if (row_data.widget ==
                         config::SETTINGS_WIDGET_TOGGLE) {
-                        // A bool row is a toggle: the star shows its
+                        // A bool row is a toggle: the switch shows its
                         // value.
                         config::s_typed_value value;
                         if (config::Get_Settings_Row_Value(row_data,
                             &value)) {
-                            show_star = true;
-                            star_on = value.bool_value;
+                            show_switch = true;
+                            switch_on = value.bool_value;
                         }
                     }
                 }
@@ -1790,13 +1792,13 @@ namespace SETTINGS_SCREEN {
                         // The chevron is the knob: white while the
                         // dropdown is closed, the open blue while
                         // its popup is up -- the colour shift is
-                        // the state signal. It is the vector
-                        // triangle, like the colony's dropdown
-                        // chevron.
+                        // the state signal. It is a hand-drawn
+                        // bitmap triangle now, like the colony's
+                        // dropdown chevron.
                         const bool chevron_open = g_state.popup_open &&
                             visible == g_state.popup_visible;
-                        Triangle_Down(chevron_cx, chevron_y, chevron_w,
-                            chevron_h,
+                        SETTINGS_BITMAPS::Draw_Chevron(chevron_cx,
+                            chevron_y, chevron_w, chevron_h,
                             chevron_open ? kChevron_Open :
                                 kChevron_Closed);
                         const int16_t text_right = (int16_t)(
@@ -1809,20 +1811,24 @@ namespace SETTINGS_SCREEN {
                             kText_Bright, value_cell, 2);
                     }
                 }
-                if (show_star) {
-                    // The star sits centred in the value box: filled
-                    // gold when on, a grey outline when off -- the
-                    // state reads at a glance. Its radius is the
-                    // one-slot indicator size, not the row's height,
-                    // so a wrapped row's star is the same size as
-                    // the rest (Tom, 2026-11-11). It is the vector
-                    // star, the colony's star shape in hi-res.
-                    const int16_t star_cx =
-                        (int16_t)(value_rect.x + value_rect.w / 2);
-                    const int16_t star_cy =
-                        (int16_t)(value_rect.y + value_rect.h / 2);
-                    Star(star_cx, star_cy, indicator_radius,
-                        star_on ? kStar_On : kStar_Off, star_on);
+                if (show_switch) {
+                    // The flickable switch (Tom, 2026-11-11): the
+                    // star-in-a-sunken-box did not read as a
+                    // switch, so ALL star toggles are a proper
+                    // toggleable switch now -- a track + knob,
+                    // approximated from the colonies screen's
+                    // low-res buying switch (the BUILDING
+                    // column's small round recessed button). It
+                    // is free-standing in the value zone, not in
+                    // a sunken box, and it is a hand-drawn bitmap
+                    // in both states: ON has the knob right and
+                    // the track glowing vivid blue, OFF has the
+                    // knob left, the track dark, the knob dim.
+                    // Both states read at a glance. A wrapped
+                    // row's switch is the same size as the rest:
+                    // it sizes itself to the box, not the row.
+                    SETTINGS_BITMAPS::Draw_Switch(value_rect,
+                        switch_on);
                 }
             }
 
@@ -1856,16 +1862,13 @@ namespace SETTINGS_SCREEN {
             // list/description divider on the bottom (down). The
             // faces run to the content rect's edges, so they plug
             // into the thick outer frame and the band dividers.
-            // The triangle is the colony's size in the zone
-            // (~7 px wide, ~11 tall at 640x480): its base spans
-            // the face's width, its height half the face's
-            // height. Pressed drops it 1 px, like a button label.
+            // The arrow is one hand-drawn bitmap (face + triangle
+            // together); pressed darkens its face, like a button
+            // label dropping 1 px did.
             auto draw_arrow = [&](const SETTINGS_LAYOUT::s_rect& zone,
                 bool up) {
                 const bool pressed = Is_Pressed(zone);
                 const bool hover = !pressed && Is_Hover(zone);
-                const s_rgb face = pressed ? kArrow_Face_Pressed
-                    : (hover ? kArrow_Face_Hover : kArrow_Face);
                 const int16_t face_x0 =
                     (int16_t)(layout.scrollbar.x + 2);
                 const int16_t face_x1 = content_right;
@@ -1876,25 +1879,12 @@ namespace SETTINGS_SCREEN {
                 const int16_t face_y1 = up
                     ? layout.scrollbar_track.y
                     : SETTINGS_LAYOUT::Rect_Bottom(layout.list);
-                Solid_Fill(SETTINGS_LAYOUT::s_rect{face_x0, face_y0,
-                    (int16_t)(face_x1 - face_x0),
-                    (int16_t)(face_y1 - face_y0)}, face);
-                const int16_t tri_w =
-                    (int16_t)(face_x1 - face_x0 - 2 + 1);
-                const int16_t tri_h =
-                    (int16_t)((face_y1 - face_y0) / 2);
-                const int16_t tri_cx =
-                    (int16_t)(face_x0 + (face_x1 - face_x0) / 2);
-                const int16_t tri_y = (int16_t)(face_y0 +
-                    (face_y1 - face_y0 - tri_h) / 2 +
-                    (pressed ? 1 : 0));
-                if (up) {
-                    Triangle_Up(tri_cx, tri_y, tri_w, tri_h,
-                        kArrow_Triangle);
-                } else {
-                    Triangle_Down(tri_cx, tri_y, tri_w, tri_h,
-                        kArrow_Triangle);
-                }
+                const int shift = pressed ? -12 : (hover ? 12 : 0);
+                SETTINGS_BITMAPS::Draw_Arrow(
+                    SETTINGS_LAYOUT::s_rect{face_x0, face_y0,
+                        (int16_t)(face_x1 - face_x0),
+                        (int16_t)(face_y1 - face_y0)},
+                    up, shift);
             };
             draw_arrow(layout.scrollbar_arrow_up, true);
             draw_arrow(layout.scrollbar_arrow_down, false);
@@ -1902,18 +1892,9 @@ namespace SETTINGS_SCREEN {
                 // The thumb: the colony's indicator bar -- a
                 // bevelled handle, narrower than the strip, its
                 // light top/left and dark right/bottom edges the
-                // colony's border direction.
-                Solid_Fill(thumb, kThumb_Fill);
-                Solid_Fill(SETTINGS_LAYOUT::s_rect{thumb.x, thumb.y,
-                    thumb.w, 1}, kThumb_Edge_Light);
-                Solid_Fill(SETTINGS_LAYOUT::s_rect{thumb.x, thumb.y,
-                    1, thumb.h}, kThumb_Edge_Light);
-                Solid_Fill(SETTINGS_LAYOUT::s_rect{
-                    (int16_t)(thumb.x + thumb.w - 1), thumb.y, 1,
-                    thumb.h}, kThumb_Edge_Dark);
-                Solid_Fill(SETTINGS_LAYOUT::s_rect{thumb.x,
-                    (int16_t)(thumb.y + thumb.h - 1), thumb.w, 1},
-                    kThumb_Edge_Dark);
+                // colony's border direction. A hand-drawn bitmap
+                // now, not four code-drawn edge fills.
+                SETTINGS_BITMAPS::Draw_Thumb(thumb);
             }
 
             // Description box: the selected row's description,
@@ -1989,21 +1970,22 @@ namespace SETTINGS_SCREEN {
 
             // Bottom bar: the tabs on the left and MORE and RETURN
             // at the right end. The tabs are the colony's SORT
-            // band: dark-navy inactive tabs, the active tab dark
-            // navy at its edges with the vivid blue band behind
-            // its label, all sharing one continuous band (no gaps
-            // between tabs). The buttons sit BELOW the bar's top
-            // divider -- their top borders meet the divider's
-            // bottom line, they do not paint over it, so the
-            // divider runs the full width above them (the
-            // sample's divider is continuous) -- and their bottoms
-            // meet the outer frame. MORE and RETURN are the
-            // colony's RETURN / the main menu's grey bevelled
-            // buttons, with black labels, their corners cut to
-            // the sample's round buttons. No halos: the
-            // tie-together's orange glow and blue bloom were
-            // invented, not the original game's -- a pressed
-            // button darkens and its label drops 1 px, like the
+            // band: dark-navy inactive tabs, the active tab with
+            // a glow blooming from its CENTER (brightest in the
+            // middle, fading outward -- like the colonies
+            // screen's active sort band), all sharing one
+            // continuous band (no gaps between tabs). The buttons
+            // sit BELOW the bar's top divider -- their top
+            // borders meet the divider's bottom line, they do not
+            // paint over it, so the divider runs the full width
+            // above them (the sample's divider is continuous) --
+            // and their bottoms meet the outer frame. MORE and
+            // RETURN are the colony's RETURN / the main menu's
+            // grey bevelled buttons, with black labels, their
+            // corners cut to the sample's round buttons. The tabs
+            // and the buttons are hand-drawn bitmaps now, not
+            // code-drawn fills. No halos: a pressed button
+            // darkens and its label drops 1 px, like the
             // original's pressed frame.
             const int button_cell =
                 Text_Cell_For(layout.show_more.h, 60);
@@ -2023,73 +2005,40 @@ namespace SETTINGS_SCREEN {
                     (draw.h - button_cell) / 2 + (pressed ? 1 : 0));
                 if (grey) {
                     // A grey metal button: an opaque face, the
-                    // industrial frame, a 1 px top sheen (not
-                    // when pressed), a black label -- all rounded
-                    // to the sample's round buttons.
-                    const s_rgb face = pressed ? kGreyButton_Pressed
-                        : (hover ? kGreyButton_Hover : kGreyButton_Face);
-                    Rounded_Frame(draw, thickness, button_radius,
-                        face);
-                    if (!pressed) {
-                        Blend_Fill(SETTINGS_LAYOUT::s_rect{
-                            (int16_t)(draw.x + thickness),
-                            (int16_t)(draw.y + thickness),
-                            (int16_t)(draw.w - 2 * thickness), 1},
-                            s_rgb{255, 255, 255}, 40);
-                    }
+                    // industrial frame, a 1 px top sheen, a black
+                    // label -- all rounded to the sample's round
+                    // buttons. A hand-drawn bitmap: the sheen is
+                    // baked into its top edge, and hover/pressed
+                    // shift only its face tone. The label drops
+                    // 1 px when pressed, like the original's
+                    // pressed frame.
+                    const int shift =
+                        pressed ? -24 : (hover ? 24 : 0);
+                    SETTINGS_BITMAPS::Draw_Grey_Button(draw, shift);
                     Draw_Text((int16_t)(draw.x + draw.w / 2), text_y,
                         label, kGreyButton_Text, button_cell, 1);
                     return;
                 }
-                // A category tab: the colony's SORT band. The tabs
-                // share one continuous band: their fills tile it,
-                // the dividers between them are single shared
-                // lines (drawn after the fills, below), and only
-                // the band's outer corners are rounded -- the
-                // sample's SORT / Gameplay / Mods corners. The
-                // tab's own border is the bar's divider above and
-                // the outer frame below, not a frame of its own:
-                // the old per-tab frames doubled the borders
-                // between tabs.
-                if (active) {
-                    // Dark navy at the top and bottom, the vivid
-                    // blue band behind the label in the middle
-                    // (the colony's active tab is vivid behind
-                    // its label, navy at the edges). Each part
-                    // rounds only the corners that fall in it:
-                    // the top part the top corners, the bottom
-                    // part the bottom corners, the vivid band
-                    // none.
-                    const s_rgb vivid = pressed ? kTab_Active_Pressed
-                        : kActive_Fill;
-                    const int16_t band_h =
-                        (int16_t)(button_cell + 4);
-                    const int16_t band_y = (int16_t)(draw.y +
-                        (draw.h - band_h) / 2);
-                    Rounded_Blend_Fill(
-                        SETTINGS_LAYOUT::s_rect{draw.x, draw.y,
-                        draw.w, (int16_t)(band_y - draw.y)},
-                        button_radius, kTab_Inactive, kActive_Alpha,
-                        (uint8_t)(corners & 0x3));
-                    Rounded_Blend_Fill(
-                        SETTINGS_LAYOUT::s_rect{draw.x, band_y,
-                        draw.w, band_h}, button_radius, vivid,
-                        kActive_Alpha, 0);
-                    Rounded_Blend_Fill(SETTINGS_LAYOUT::s_rect{draw.x,
-                        (int16_t)(band_y + band_h), draw.w,
-                        (int16_t)(draw.y + draw.h - band_y - band_h)},
-                        button_radius, kTab_Inactive, kActive_Alpha,
-                        (uint8_t)(corners & 0xC));
-                    Draw_Text((int16_t)(draw.x + draw.w / 2), text_y,
-                        label, kText_Header, button_cell, 1);
-                } else {
-                    const s_rgb face = pressed ? kTab_Inactive_Pressed
-                        : (hover ? kTab_Inactive_Hover : kTab_Inactive);
-                    Rounded_Blend_Fill(draw, button_radius, face,
-                        kActive_Alpha, corners);
-                    Draw_Text((int16_t)(draw.x + draw.w / 2), text_y,
-                        label, kText_Bright, button_cell, 1);
-                }
+                // A category tab: the colony's SORT band, as a
+                // hand-drawn bitmap -- the active tab's bloom
+                // baked into its face, the inactive tab flat
+                // dark navy. The tabs share one continuous band:
+                // their bitmaps tile it, the dividers between
+                // them are single shared lines (drawn after the
+                // fills, below), and only the band's outer
+                // corners are rounded -- the sample's SORT /
+                // Gameplay / Mods corners. The tab's own border
+                // is the bar's divider above and the outer frame
+                // below, not a frame of its own: the old per-tab
+                // frames doubled the borders between tabs.
+                // Pressed darkens the active tab's glow.
+                const int glow_shift = active && pressed ? -64 : 0;
+                SETTINGS_BITMAPS::Draw_Tab(draw, active, corners,
+                    button_radius, glow_shift);
+                Draw_Text((int16_t)(draw.x + draw.w / 2), text_y,
+                    label,
+                    active ? kText_Header : kText_Bright,
+                    button_cell, 1);
             };
             // The tabs' outer corners: the first tab rounds its
             // left corners, the last its right corners, the middle
@@ -2122,29 +2071,29 @@ namespace SETTINGS_SCREEN {
 
             // The open dropdown popup floats over the list: drawn
             // after the rows and the bottom bar, so it paints over
-            // them. Its frame is the industrial frame; its
-            // interior stays the opaque vector fill, so the rows
-            // behind it do not show through.
+            // them. Its frame is the bitmap frame; its interior
+            // stays the opaque panel fill, so the rows behind it
+            // do not show through.
             Draw_Popup();
 
             // The edit overpaint: while a row is being edited, the
             // field system has drawn the edit text in the engine
-            // pixel font over the value rect. Erase it with an
-            // opaque fill and draw the live text (the field
-            // system's continuous string, cursor "_" included) in
-            // the HD font, showing the tail when the text is wider
-            // than the rect so the cursor stays visible. The erase
-            // and the frame are rounded like the value box: the
-            // field text is padded and centred, so no glyph pixel
-            // reaches the cut corners.
+            // pixel font over the value rect. Erase it with the
+            // sunken box itself -- its opaque edit-fill face
+            // covers the field text -- and draw the live text
+            // (the field system's continuous string, cursor "_"
+            // included) in the HD font, showing the tail when
+            // the text is wider than the rect so the cursor
+            // stays visible. The box's corners are cut like the
+            // value box: the field text is padded and centred,
+            // so no glyph pixel reaches the cut corners.
             if (g_state.editing_row >= 0) {
                 const int edit_index = g_state.editing_row - Scroll_Top();
                 if (edit_index >= 0 && edit_index < Page_Count()) {
                     const SETTINGS_LAYOUT::s_rect edit_rect =
                         Visible_Value_Rect(edit_index);
-                    Rounded_Solid_Fill(edit_rect, value_radius,
-                        kEdit_Fill);
-                    Sunken_Frame(edit_rect, thickness, value_radius);
+                    SETTINGS_BITMAPS::Draw_Sunken_Box(edit_rect,
+                        &kEdit_Fill);
                     std::string text = fields::continuous_string;
                     auto edit_measure = [&](const std::string& s) {
                         return Text_Width(s.c_str(), value_cell);
