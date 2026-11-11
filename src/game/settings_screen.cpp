@@ -125,9 +125,13 @@ namespace SETTINGS_SCREEN {
             // the slider at its maximum shows the first rows, the
             // slider at 0 shows the last. Sync_Scroll derives the
             // top row from the slider, mirroring
-            // COLSUM::Update_First.
+            // COLSUM::Update_First. A fresh tab opens at the top:
+            // its slider starts at its maximum on first visit
+            // (slider_initialised), and keeps its position on
+            // later visits.
             int16_t slider_position[CATEGORY_COUNT] = {};
             int scroll_top[CATEGORY_COUNT] = {};
+            bool slider_initialised[CATEGORY_COUNT] = {};
             // Index within the current category's list (visible rows
             // for settings, catalogue entries for mods).
             int selected = 0;
@@ -221,6 +225,15 @@ namespace SETTINGS_SCREEN {
         void Sync_Scroll() {
             const int max_scroll = Max_Scroll();
             int16_t& slider = g_state.slider_position[g_state.category];
+            // A fresh tab opens at the top: the first visit starts
+            // the slider at its maximum (the first rows), and later
+            // visits keep the position the user left. The bound
+            // value stays inverted -- the field system's drag and
+            // wheel need that -- only the starting position changes.
+            if (!g_state.slider_initialised[g_state.category]) {
+                slider = (int16_t)max_scroll;
+                g_state.slider_initialised[g_state.category] = true;
+            }
             if (slider < 0) {
                 slider = 0;
             }
@@ -571,6 +584,7 @@ namespace SETTINGS_SCREEN {
             // The row set changed, so the scroll resets to the top:
             // the slider at its maximum shows the first rows.
             g_state.slider_position[g_state.category] = (int16_t)Max_Scroll();
+            g_state.slider_initialised[g_state.category] = true;
             g_state.scroll_top[g_state.category] = 0;
             g_state.status = g_state.show_all
                 ? "Showing all settings, including advanced and ordering options."
@@ -588,11 +602,6 @@ namespace SETTINGS_SCREEN {
             }
             g_state.category = category;
             Rebuild_Visible_Rows();
-            Sync_Scroll();
-            // The category keeps its own scroll position (per-category slider
-            // and top row); the selection moves to the first visible
-            // row so the highlight stays on screen.
-            g_state.selected = g_state.scroll_top[category];
             if (category == CATEGORY_MODS) {
                 Read_Enabled_Set();
                 Refresh_Mods();
@@ -601,6 +610,17 @@ namespace SETTINGS_SCREEN {
             } else {
                 g_state.status = "Click a setting to change it.";
             }
+            // Sync after the Mods catalogue loads: the catalogue
+            // changes the visible count, so the first-visit
+            // initialisation must see the final count -- otherwise
+            // the Mods tab initialises against the two settings
+            // rows alone (max scroll 0) and opens at the bottom
+            // once the catalogue lands.
+            Sync_Scroll();
+            // The category keeps its own scroll position (per-category slider
+            // and top row); the selection moves to the first visible
+            // row so the highlight stays on screen.
+            g_state.selected = g_state.scroll_top[category];
             Rebuild_Fields();
         }
 
