@@ -1674,17 +1674,20 @@ namespace SETTINGS_SCREEN {
 
             // Scrollbar (4f): the strip's own panel; the up/down
             // arrows at its ends and the thumb between them,
-            // travelling the track. The arrows are code-drawn
-            // triangles (the chevron's shape family): the
-            // colony's arrows are simple up/down triangles with
-            // a bevel, and a code-drawn triangle scales cleanly
-            // with the strip at any resolution, unlike the fixed
-            // 10x20 / 11x22 COLSUM bitmaps (the pixel-era point
-            // 18 verbatim copy). The thumb is the colony's
-            // indicator bar: a bevelled handle (body + light
-            // top/left, dark right/bottom edges). The arrows and
-            // thumb show only when the list scrolls; the strip
-            // stays an empty panel otherwise.
+            // travelling the track. The arrows are pressable
+            // buttons, like the colony's: a framed blue button
+            // face with a bold white triangle inside it -- the
+            // colony's arrows are bold white chevrons on a dark
+            // blue field inside a framed button zone (COLSUM.LBX
+            // entries 2/3, 10x20 and 11x22). Flat grey triangles
+            // read as glyphs, not buttons, however exactly they
+            // are measured (Tom, 2026-11-11). A code-drawn
+            // triangle scales cleanly with the strip at any
+            // resolution, unlike the fixed bitmaps. The thumb is
+            // the colony's indicator bar: a bevelled handle
+            // (body + light top/left, dark right/bottom edges).
+            // The arrows and thumb show only when the list
+            // scrolls; the strip stays an empty panel otherwise.
             Panel(layout.scrollbar, kPanel_Fill, kPanel_Alpha);
             const SETTINGS_LAYOUT::s_rect thumb =
                 SETTINGS_LAYOUT::Scrollbar_Thumb_Rect(layout,
@@ -1692,26 +1695,47 @@ namespace SETTINGS_SCREEN {
             if (thumb.w > 0 && thumb.h > 0) {
                 const int16_t arrow_cx = (int16_t)(
                     layout.scrollbar.x + layout.scrollbar.w / 2);
-                // The triangle's base half-width is (w/2)*(h-1)/h,
-                // so the nominal width is one more than the strip
-                // for the base to span it (the rasterisation
-                // narrows the base by a pixel each side).
-                const int16_t arrow_w =
-                    (int16_t)(layout.scrollbar.w + 1);
-                // The arrows are hard buttons: brighter on hover,
-                // darker while pressed.
-                const s_rgb up_color =
-                    Is_Pressed(layout.scrollbar_arrow_up) ? kText_Dim
-                    : (Is_Hover(layout.scrollbar_arrow_up) ? kText_Bright
-                        : kArrow_Color);
-                const s_rgb down_color =
-                    Is_Pressed(layout.scrollbar_arrow_down) ? kText_Dim
-                    : (Is_Hover(layout.scrollbar_arrow_down) ? kText_Bright
-                        : kArrow_Color);
-                Triangle_Up(arrow_cx, layout.scrollbar_arrow_up.y,
-                    arrow_w, layout.scrollbar_arrow_up.h, up_color);
-                Triangle_Down(arrow_cx, layout.scrollbar_arrow_down.y,
-                    arrow_w, layout.scrollbar_arrow_down.h, down_color);
+                // The triangle sits inside the button's frame:
+                // its base spans the inner width (the nominal
+                // width is one more, the rasterisation narrows
+                // the base by a pixel each side) and its height
+                // is half the inner height, so it reads as a
+                // chunky arrowhead. Pressed drops it 1 px, like
+                // a button label. `thickness` is the frame
+                // thickness, in scope from the header above.
+                const int16_t tri_w = (int16_t)(
+                    layout.scrollbar.w - 2 * thickness + 1);
+                const int16_t tri_h = (int16_t)(
+                    (layout.scrollbar_arrow_up.h - 2 * thickness) / 2);
+                // Up arrow: blue face, brighter on hover, darker
+                // while pressed.
+                const bool up_pressed =
+                    Is_Pressed(layout.scrollbar_arrow_up);
+                const s_rgb up_fill = up_pressed
+                    ? kArrowBtn_Pressed_Fill
+                    : (Is_Hover(layout.scrollbar_arrow_up)
+                        ? kArrowBtn_Hover_Fill : kArrowBtn_Fill);
+                Panel(layout.scrollbar_arrow_up, up_fill,
+                    kArrowBtn_Alpha);
+                Triangle_Up(arrow_cx,
+                    (int16_t)(layout.scrollbar_arrow_up.y +
+                        (layout.scrollbar_arrow_up.h - tri_h) / 2 +
+                        (up_pressed ? 1 : 0)),
+                    tri_w, tri_h, kText_Bright);
+                // Down arrow: the same, mirrored.
+                const bool down_pressed =
+                    Is_Pressed(layout.scrollbar_arrow_down);
+                const s_rgb down_fill = down_pressed
+                    ? kArrowBtn_Pressed_Fill
+                    : (Is_Hover(layout.scrollbar_arrow_down)
+                        ? kArrowBtn_Hover_Fill : kArrowBtn_Fill);
+                Panel(layout.scrollbar_arrow_down, down_fill,
+                    kArrowBtn_Alpha);
+                Triangle_Down(arrow_cx,
+                    (int16_t)(layout.scrollbar_arrow_down.y +
+                        (layout.scrollbar_arrow_down.h - tri_h) / 2 +
+                        (down_pressed ? 1 : 0)),
+                    tri_w, tri_h, kText_Bright);
                 Blend_Fill(thumb, kThumb_Fill, kThumb_Alpha);
                 // The thumb's bevel: a 1 px lighter top/left and
                 // darker right/bottom, the colony's indicator bar.

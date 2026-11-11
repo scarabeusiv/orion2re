@@ -28,9 +28,9 @@ namespace SETTINGS_LAYOUT {
         // Horizontal allocation, permille of the width.
         constexpr int32_t kMargin_X = 20;
         constexpr int32_t kTab_Gap = 8;
-        constexpr int32_t kScrollbar_W = 8;
+        constexpr int32_t kScrollbar_W = 20;
         constexpr int32_t kScrollbar_Gap = 6;
-        constexpr int32_t kValue_X = 790;
+        constexpr int32_t kValue_X = 778;
         constexpr int32_t kValue_Gap = 10;
         constexpr int32_t kBottom_Gap = 12;
         // MORE and RETURN are the SAME width: one button width,

@@ -41,12 +41,15 @@ namespace SETTINGS_LAYOUT {
     // tabs) and MORE and RETURN at the right end, the SAME width
     // (0.133, sized for the longer label) with a 0.012 gap between
     // them. The list's rows span the content width minus the
-    // scrollbar strip (0.008 wide, at the content's right edge, with
-    // a 0.006 gap). The strip holds an up arrow at its top and a
-    // down arrow at its bottom (each twice the strip's width tall);
-    // the thumb travels the track between them. The VALUE zone
-    // starts at 0.790 of the width, in the header and in every row
-    // alike.
+    // scrollbar strip (0.020 wide, at the content's right edge, with
+    // a 0.006 gap) -- the strip is chunky, like the colony's, so
+    // the arrows read as buttons. The strip holds an up arrow at
+    // its top and a down arrow at its bottom (each a framed button
+    // twice the strip's width tall); the thumb travels the track
+    // between them. The VALUE zone starts at 0.778 of the width,
+    // in the header and in every row alike -- it moved left with
+    // the strip, so the value boxes keep their exact width and the
+    // strip's extra width comes out of the (wide) name zone.
     //
     // The layout is pure: it takes the screen size and the tab
     // label lengths and returns rectangles. No video, font or
@@ -72,7 +75,9 @@ namespace SETTINGS_LAYOUT {
         // the thumb travels. The arrows are the strip's width
         // and twice as tall (the colony's arrows are ~1:2,
         // 10x20 and 11x22); the track is the strip between
-        // them, so the thumb never runs under an arrow.
+        // them, so the thumb never runs under an arrow. Each
+        // arrow zone is a framed button (a blue face with a
+        // bold white triangle), not a flat glyph.
         s_rect scrollbar_arrow_up;
         s_rect scrollbar_arrow_down;
         s_rect scrollbar_track;

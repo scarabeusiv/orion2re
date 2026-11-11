@@ -50,6 +50,17 @@ namespace SETTINGS_RENDER {
     // state, not as the active tab (whose vivid blue is (24, 12, 252)).
     inline constexpr s_rgb kChevron_Closed{225, 228, 235};
     inline constexpr s_rgb kChevron_Open{52, 48, 136};
+    // The scrollbar arrow buttons: a blue face (the colony's dark
+    // blue arrow field, in the vivid blue's family) with a bold
+    // white triangle. Brighter on hover, darker while pressed --
+    // the face is the state signal, like the dropdown chevron's
+    // colour shift. The blue sits darker than the active tab's
+    // vivid (24, 12, 252), so it reads as a button, not as the
+    // active tab.
+    inline constexpr s_rgb kArrowBtn_Fill{52, 48, 136};
+    inline constexpr s_rgb kArrowBtn_Hover_Fill{72, 68, 170};
+    inline constexpr s_rgb kArrowBtn_Pressed_Fill{36, 32, 96};
+    inline constexpr int kArrowBtn_Alpha = 200;
     inline constexpr int kSelection_Alpha = 230;
     inline constexpr s_rgb kThumb_Fill{140, 142, 150};
     inline constexpr int kThumb_Alpha = 230;
@@ -58,7 +69,6 @@ namespace SETTINGS_RENDER {
     // thumb fill.
     inline constexpr s_rgb kThumb_Edge_Light{180, 182, 190};
     inline constexpr s_rgb kThumb_Edge_Dark{90, 92, 100};
-    inline constexpr s_rgb kArrow_Color{200, 205, 212};
     inline constexpr s_rgb kStar_On{235, 200, 90};
     inline constexpr s_rgb kStar_Off{96, 100, 110};
     // The active edit field is opaque: its fill must erase the
