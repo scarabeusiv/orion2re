@@ -580,6 +580,13 @@ orion2re_add_unit_test(test_settings_value
     LINK_SDL
 )
 
+orion2re_add_unit_test(test_settings_layout
+    SOURCES
+        tests/unit/settings_layout_test.cpp
+    PRODUCTION_SOURCES
+        src/game/settings_layout.cpp
+)
+
 orion2re_add_unit_test(test_config_snapshot
     SOURCES
         tests/unit/config_snapshot_test.cpp
