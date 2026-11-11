@@ -6,7 +6,6 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -25,7 +24,6 @@
 #include "game/russ.h"
 #include "game/settings_screen.h"
 #include "game/timer.h"
-#include "game/ui_kit.h"
 #include "game/user_paths.h"
 #include "game/vfs.h"
 #include "game/video.h"
@@ -34,307 +32,55 @@ namespace SETTINGS_SCREEN {
 
     namespace {
 
-        // Full-window layout, mapped to the colony screens
-        // (COLBLDG.LBX entry 0, colbldg.cpp; COLSUM.LBX, colsum.cpp):
-        // the screen fills the whole 640x480 window. The category
-        // selector bar sits at the bottom, like the colony summary's
-        // sort buttons (Name / Population / Food ...), with MORE
-        // and RETURN beside it on the same line. The list fills the
-        // main panel above it, with SETTING / VALUE header plates
-        // like the colony list's header boxes, and the description
-        // box spans the whole width between the list and the bottom
-        // bar, like the colony screen's bottom info area.
-        //
-        // The background is painted by this screen with the kit,
-        // not loaded from the colony's baked 640x480 background
-        // (COLSUM.LBX entry 0): painting over a baked background
-        // leaves seams -- a black gap beside the VALUE plate, a
-        // repeating pattern from a tiled plate face, speckled
-        // texture behind the description text, notches in the
-        // frame, wrong pixels around the scroll arrows -- and the
-        // settings screen needs coherence (one continuous frame,
-        // one continuous bottom band, clean text) over the baked
-        // texture. The kit draws the frame (Window_Frame, the
-        // bevelled metal band baked into the colony screens'
-        // backgrounds, 9-12 px per side, in theme colours), the
-        // list panel with its row frame lines and column divider
-        // (Draw_List_Background + Draw_List_Columns), the header
-        // plates (flat faces, no tiling), the scrollbar strip with
-        // code-drawn arrows (Scroll_Bar::Draw_Arrows), the
-        // full-width description box and the bottom band -- all in
-        // menu-palette indices, the same technique the game itself
-        // uses for its chrome. The colony's plates carry an
-        // irregular per-row texture a flat fill cannot match 1:1;
-        // the flat faces read as the same plates at a glance, and
-        // they never repeat.
-        //
-        // Asset sourcing: the colony sprites were audited against
-        // COLSUM.LBX (rendered and measured, 2026-11-09), and the
-        // separable ones are derived into orion2re-owned frames by
-        // tools/extract_sprite.py (see tools/sprites/README.md): a
-        // palette remap from the colony palette to the menu palette,
-        // with the baked label blanked where a new label is needed.
-        // Everything else stays engine-drawn Fill/Box in
-        // menu-palette indices:
-        // - Border, list panel, header plates, info area,
-        //   scrollbar track and arrows: kit-drawn, in the theme's
-        //   colours (see above). The toggles are the colony's
-        //   BUILDING toggle (the derived buy-button frames,
-        //   game/ui_kit.h: Button, Toggle kind); the dropdowns
-        //   are framed bevelled controls in the BUILDING column,
-        //   sized to their value.
-        // - Category selectors: the tabs are kit Selector buttons
-        //   drawn by the theme's fallback (a flat fill with a
-        //   border: bright blue 253 active, dark navy 50 at rest),
-        //   not the derived COLSUM sort-button frames. The derived
-        //   frames cannot match the colony's bright blue in the
-        //   menu palette: their top and bottom rows are grey (239)
-        //   and their bands dark (103/50), so the active tab reads
-        //   muted dark blue, while the colony's active tab reads
-        //   bright vivid blue. The menu palette holds no such blue
-        //   -- its brightest is 138 (52, 48, 136), distance 124.6
-        //   from the colony's vivid (24, 12, 252) -- so the
-        //   settings screen patches the vivid blue into
-        //   menu-palette index 253 at setup (see
-        //   Install_Vivid_Blue): 253 is black and unused by the
-        //   settings screen, and the patch is transient -- leaving
-        //   the screen reloads the palette. The fallback draws the
-        //   vivid face full-height with no grey rows. The gaps
-        //   between tabs show the window band's recessed channel,
-        //   not black, like the colony's sort
-        //   strip. The labels are font style 2 (the colony tabs'
-        //   baked labels measure as style 2, not the style 4 the
-        //   rest of this screen uses), white at rest and blue-white
-        //   when active, and the tabs sit 1 px apart at y=446,
-        //   like the colony's sort buttons.
-        // - Star buy buttons (anims[11..20]) are purchase actions,
-        //   not on/off toggles, so they cannot stand in for the
-        //   toggle squares (the diamond is a buy button, not a value).
-        // - Scrollbar arrows (anims[2]/[3]) are real sprites, but
-        //   only their rest state remaps into the menu palette
-        //   (the pressed frame's vivid colony blue 38 has no close
-        //   hue there), and the baked arrows carry wrong pixels
-        //   against the kit-drawn strip -- so the arrows are
-        //   code-drawn triangles in the theme's colours instead.
-        // - Dropdown popup: no popup-window sprite exists; the game's
-        //   own modal lists are engine-drawn.
-        // - RETURN (COLSUM anims[1], 85x26, "RETURN" baked in) is the
-        //   one sprite that matches. It is authored for the colony
-        //   palette (the embedded palette in COLSUM.LBX entry 0;
-        //   indices 80-98 are a grey ramp there) while this screen
-        //   uses the menu palette, so drawing it directly renders a
-        //   multicoloured button; the derived return asset is the
-        //   sprite remapped to the menu palette's grey family (see
-        //   tools/sprites/README.md for why the menu palette is
-        //   MAINMENU.LBX entry 2's embedded palette, not FONTS.LBX
-        //   entry 1). Loading palette 1 for the whole screen is
-        //   not an alternative: it turns the settings text
-        //   pink/red and the panels blue/green/red. The engine-
-        //   drawn metallic RETURN is the fallback when the derived
-        //   frames are missing. The sprite's pressed frame (orange
-        //   text) is derived too, and the button is a kit Image
-        //   button (game/ui_kit.h: Button): while the mouse is held
-        //   on RETURN, the field system holds
-        //   fields::down_mouse_button on the RETURN field and the
-        //   auto function redraws the screen on every hold tick, so
-        //   the draw picks the pressed frame until release.
-        // The columns map to the colony listing's: the star name
-        // (NAME column) is the option, the BUILDING column is the
-        // value. The value column is the colony's BUILDING column
-        // (512..597, 86 px); the name column spans the left block
-        // (13..508), from the NAME column's left edge to the
-        // BUILDING divider (509). The name text starts at TITLE_X,
-        // like the colony's star name; the value text starts at
-        // VALUE_X, like the colony's building name. The toggle
-        // column (599..617, the colony's buy-button cell) holds no
-        // separate value: a bool's toggle IS its value and sits
-        // with it at VALUE_X, and every other widget shows just
-        // its value -- no star beside a dropdown, a number or a
-        // text input.
-        constexpr int16_t TITLE_X = 19;
-        constexpr int16_t TITLE_Y = 8;
-        constexpr int16_t TITLE_WIDTH = 489;
+        // Hi-res rewrite, step 1: the pixel rendering is stripped.
+        // What stays is the settings LOGIC -- the config writer,
+        // the mod catalogue + staging/reload, the metadata rows,
+        // the categories, the XDG fallback, the wheel forwarding
+        // (via the field system), the screen's data flow (which
+        // settings are shown, primary/secondary, the Show all
+        // toggle) -- and the field rects below, kept at the same
+        // 640x480 positions the kit derived so clicks still land
+        // while the screen draws nothing. What is gone: the
+        // wireframe/kit rendering (ui_kit: Frame/Tab_Bar/
+        // Scroll_Bar/Button, the dithered fills and boxes, the
+        // Bayer/hash speckle, the vivid-blue palette-253 patch,
+        // the Moo2 pixel fonts as rendered, the verbatim COLSUM
+        // arrow sprites and the code-drawn triangles/bevels).
+        // The rendering text helpers (Truncate_To_Width,
+        // Wrap_Text, Mod_Help_Text) go with it; step 3/4 re-adds
+        // the ones the hi-res layout needs. The screen renders
+        // nothing until the hi-res background lands in step 2.
+        constexpr int ROWS_PER_PAGE = 10;
+        // Value column, shared by the edit field, the dropdown
+        // and the Resolution popup geometry.
         constexpr int16_t VALUE_X = 512;
         constexpr int16_t VALUE_WIDTH = 86;
-        // List panel: its x and width come from the window frame's
-        // content rect (Make_List_Layout); its y is this screen's
-        // (below the title), and its height, first-row y, row pitch
-        // and scroll track come from the kit layout
-        // (ui_kit::List_Layout), which derives them from the
-        // theme's Spacing -- the colony's 30 px rows on a 31 px
-        // pitch, header 3 px above the first row. The panel ends
-        // list_footing below the last row's bottom edge.
-        constexpr int16_t LIST_PANEL_Y = 30;
-        // SETTING / VALUE header plates, like the colony list's
-        // raised header boxes (NAME, FARMERS, ...), at the top of
-        // the list panel, aligned to the name and value columns.
-        // The SETTING plate starts at the panel's left edge plus 2
-        // and ends 4 px before the VALUE plate, like the colony's
-        // plates (its face is lighter than the list interior).
-        // The plates sit at the colony plates' own position (y
-        // 4..34, the colony plates' full extent including their
-        // bottom bevel). The list rows, panel and description
-        // cascade from these via List_Layout, so they shift up to
-        // match the colony's rows (first row 57 -> 38).
-        constexpr int16_t HEADER_Y = 4;
-        constexpr int16_t HEADER_HEIGHT = 31;
-        // The plates align to the columns: SETTING spans the left
-        // block (13..508, covering the colony's NAME..SCIENTISTS
-        // plates), VALUE spans the value and toggle columns
-        // (512..618, covering the colony's BUILDING plate and its
-        // buy-button cell) -- one plate over the whole value area,
-        // so no gap opens between the VALUE plate and the
-        // scrollbar strip.
-        constexpr int16_t HEADER_SETTING_X = 13;
-        constexpr int16_t HEADER_SETTING_W = 496;
-        constexpr int16_t HEADER_VALUE_X = 512;
-        constexpr int16_t HEADER_VALUE_W = 107;
-        constexpr int ROWS_PER_PAGE = 10;
-        constexpr int16_t ROW_TEXT_Y_OFFSET = 8;
-        // Colony-list scrollbar, like COLSUM's: a 5-wide vertical
-        // bar in its own strip at the right edge of the list panel.
-        // The colony's bar is at x=621, 5 wide, in a 271-tall
-        // track; here the track spans the list's rows, from the
-        // layout. Row fields stop short of the strip, like the colony
-        // list's row fields stop short of its scrollbar.
+        // Scrollbar strip at the right edge of the list: the
+        // colony's track (y 40..311, 271 tall, not 272: the
+        // colony's bottom dots sit at y311).
         constexpr int16_t SCROLL_X = 621;
         constexpr int16_t SCROLL_W = 5;
-        // Colony-list scrollbar track, like COLSUM's: the strip
-        // between the scroll arrows (up y 15..34, down y 316..337),
-        // y 40..311. The kit layout's scroll track spans the rows
-        // (y 38..346), but the colony's thumb slides in the shorter
-        // track, with the down-arrow and the footing below it -- the
-        // settings bar uses the colony's track, so the thumb, the
-        // drag field and the arrows agree. The height is 271, not
-        // 272: the colony's bottom dots sit at y311 (colsum.cpp),
-        // and track_bottom() is track_y + height, so 40 + 271 =
-        // 311 -- 272 would put the dots and the down-arrow 1 px
-        // too low (y312 / y317 instead of y311 / y316).
         constexpr int16_t COLONY_TRACK_Y = 40;
         constexpr int16_t COLONY_TRACK_H = 271;
         constexpr int16_t ROW_FIELD_X_END = SCROLL_X - 2;
-
-        // The bool toggle: 19x29, the colony BUILDING toggle's
-        // size, at the row's top (the row is 30 tall, the toggle
-        // 29) -- but at VALUE_X, left-aligned with the value
-        // text, not in the colony's buy-button cell at the far
-        // right: the toggle IS the bool's value, so it sits with
-        // the value. Non-bool rows show no toggle at all.
-        constexpr int16_t TOGGLE_X = VALUE_X;
-        constexpr int16_t TOGGLE_W = 19;
-        constexpr int16_t TOGGLE_H = 29;
-        // Info area: one box across the whole width -- the
-        // selected row's description lives here, with a
-        // "Requires restart." line for the settings it applies to
-        // and the status line below it. No permanent restart
-        // legend anywhere else. Its top comes from the kit layout
-        // (4 px below the panel, the colony's list-to-info gap)
-        // and its bottom sits the theme's info-to-bar gap above
-        // the bottom bar. The text starts a pixel below the top,
-        // where the colony's planet text starts, and wraps at the
-        // box's right edge (INFO_TEXT_WIDTH): one rendered window
-        // end to end, not the colony's left info box with the
-        // rest of the area empty.
-        constexpr int16_t HELP_LINE_HEIGHT = 15;
-        // Bottom bar: the category selectors on the left, MORE
-        // and RETURN side by side on the right, all on one line —
-        // MORE and RETURN never wrap to a second line. The bar
-        // is the frame's bottom bar (24 tall, like the colony's sort
-        // buttons), so its y and end come from the frame
-        // (Bottom_Bar_Y/Bottom_Bar_End), never from constants here.
-        // MORE and RETURN, side by side at the right end of the
-        // bottom bar. MORE is the short label (the game keeps one
-        // button for the inverse activity: the label stays MORE and
-        // the lit state says it is on), 69 px wide at x 471 —
-        // right-aligned against RETURN with an 8 px gap, the width
-        // the verified metal-button version measured for its labels
-        // plus padding. "RETURN" measures ~64 px, so the button is
-        // 76 px wide (the old 88/68 px widths clipped both labels).
+        // MORE and RETURN in the bottom bar, side by side at the
+        // right end, on one line, never wrapping.
         constexpr int16_t SHOW_MORE_X = 471;
         constexpr int16_t SHOW_MORE_W = 69;
         constexpr int16_t RETURN_X = 548;
-        constexpr int16_t RETURN_W = 76;
-        // The info area's text width: the description spans the
-        // whole info box (x 19..625), one rendered window end to
-        // end -- so the text wraps at the box's right edge, not
-        // at the colony's icons box.
-        constexpr int16_t INFO_TEXT_WIDTH = 606;
-
-        // Colony chrome, in menu-palette indices (MAINMENU.LBX
-        // entries 1/2 palette: 230-249 is a blue-grey ramp).
-        // 230 is the dark panel interior, 234 the mid-grey panel
-        // border. The window frame colours and the list line
-        // colours (row frames, column dividers) live in the theme
-        // (ui_kit::Colony_Theme).
-        constexpr uint8_t PANEL_INTERIOR = 230;
-        constexpr uint8_t PANEL_BORDER = 234;
-        // The bottom band's face: the colony's dark navy (menu 50),
-        // the same face the tab gaps show.
-        constexpr uint8_t BAR_BAND = 50;
 
         // The standard UI text palette, as used by the council screen.
         s_colors g_normal_colors = {{150, 154, 155, 151, 152, 153, 154, 155}};
-        s_colors g_highlight_colors = {{150, 155, 155, 152, 153, 155, 155, 155}};
-
-        // Light-grey title palette: glyph pixel value v maps to
-        // colors[v], so colors[7] is the bright face and colors[0]
-        // the darker outline (same shape as science_high_color).
-        s_colors g_title_colors = {{234, 238, 240, 242, 243, 244, 246, 247}};
 
         // Colony-list palette, as rendered on the settings screen.
         // The colony screen loads palette 1 (colony.cpp), the
         // settings screen the menu palette, so the colony's own
-        // indices (245/253/252) do NOT map to its blue here — 253
-        // renders black and the name indices render dark olive.
-        // The restyle therefore uses the menu palette's own bright
-        // cyan (150-155, the old row color) as the colony-blue
-        // equivalent, with the orange highlight for the selected
-        // row and a bright white for secondary info. The colony
-        // look is carried by the list structure (frame lines,
-        // buttons) as much as by the hue.
+        // indices do NOT map to its blue here -- the restyle uses
+        // the menu palette's own bright cyan (150-155) as the
+        // colony-blue equivalent, with a bright white for
+        // secondary info.
         s_colors g_colony_colors = {{150, 154, 155, 151, 152, 153, 154, 155}};
-        s_colors g_colony_highlight_colors = {{150, 155, 155, 152, 153, 155, 155, 155}};
         s_colors g_colony_dim_colors = {{244, 249, 248, 249, 248, 249, 248, 249}};
-
-        // Flat light text colour for the blue selection bar in the
-        // Resolution dropdown popup. A font style maps glyph shade
-        // to a palette index, so a flat array renders a
-        // single-colour label. (The metal buttons' dark/light label
-        // colours live in the theme now, ui_kit::Button_Style.)
-        s_colors g_light_text_colors = {{247, 247, 247, 247, 247, 247, 247, 247}};
-
-        // The colony listing's squares are the grid cells of the
-        // colony summary list (colsum.cpp / COLSUM.LBX): each data
-        // item sits in its own bordered square/rectangular cell —
-        // a thin metallic border around a dark interior — baked
-        // into the COLSUM.LBX background art (colsum.cpp draws no
-        // cell boxes itself; the background carries the grid). The
-        // header labels (NAME, FARMERS, WORKERS, SCIENTISTS,
-        // BUILDING) sit in the same bordered tab boxes, and each
-        // row's far-right element is the round buy button.
-        //
-        // The diamond is that buy button, not a value container:
-        // COLSUM.LBX entries 11-20, a 19x28-30 two-frame sprite, a
-        // dark plaque with a grey ring around a four-point star.
-        // fields.cpp draws frame 0 while *selection == 0 and frame
-        // 1 once it is set, and selection is the colony's
-        // bought_outright — so frame 0 (grey star) is "not bought",
-        // frame 1 (blue star) is "bought". A colony that cannot buy
-        // gets no live button at all, only the dim disc baked into
-        // the colony background. A settings toggle is a value, not
-        // a buy, so it takes the square — the colony list's value
-        // cell — and the diamond is retired.
-        //
-        // The squares are engine-drawn in the list panel's own
-        // border/interior colours (the colony's cells are baked
-        // art and cannot be drawn here), by the kit now
-        // (game/ui_kit.h: Button, Toggle kind): a toggle is the
-        // colony's BUILDING toggle (the derived buy-button frames:
-        // grey off, blue on with its white starburst), disabled is
-        // the bare cell with no fill, like the colony's no-button
-        // state. Dropdowns are framed bevelled controls in the
-        // BUILDING column, sized to their value with a chevron --
-        // plain text with a "v" does not read as a control.
 
         enum e_apply_result {
             APPLY_LIVE,
@@ -432,129 +178,75 @@ namespace SETTINGS_SCREEN {
 
         s_settings_screen_state g_state;
 
-        // The colony theme for this screen's tab bar, buttons and
-        // window frame (game/ui_kit.h): the tab font, frames,
-        // metrics and window frame of the colony screens, so a
-        // hi-res asset set can replace the theme without touching
-        // the screen. Built in Settings_Screen() by
-        // Load_Colony_Theme, which loads the theme's frames --
-        // including the derived RETURN frames (tools/
-        // extract_sprite.py) -- from MOX::screen_seg on every
-        // entry; the screen never names a sprite id or sees a
-        // frame pointer. A frame that fails to load stays null and
-        // its button falls back to the engine-drawn equivalent.
-        std::unique_ptr<ui_kit::Colony_Theme> g_theme;
+        // Layout (step 1 of the hi-res rewrite): the pixel-rendering
+        // kit (ui_kit) is gone, so the field rects below are plain
+        // constants in the 640x480 game buffer -- the same rects the
+        // kit derived, kept so clicks still land on the rows, tabs
+        // and buttons while the screen draws nothing. Step 3
+        // replaces these with percentage-based positions.
+        // First row: header (y 4, h 31) + 3; rows are 30 px cells
+        // on a 31 px pitch, like the colony list.
+        constexpr int16_t FIRST_ROW_Y = 38;
+        constexpr int16_t ROW_PITCH = 31;
+        constexpr int16_t ROW_HEIGHT = 30;
+        // Window-frame content rect the kit derived (frame insets
+        // 11/12/12/10 on the 640x480 window).
+        constexpr int16_t CONTENT_X = 11;
+        constexpr int16_t CONTENT_RIGHT = 628; // exclusive
+        constexpr int16_t BOTTOM_BAR_Y = 446;
+        constexpr int16_t BOTTOM_BAR_END = 470;
+        // MORE/RETURN keep the derived RETURN frame's geometry
+        // (26 tall, 85 wide): the field rects must not shrink.
+        constexpr int16_t MORE_Y = 445;
+        constexpr int16_t RETURN_Y = 445;
+        constexpr int16_t RETURN_FIELD_W = 85;
+        constexpr int16_t TAB_STRIP_RIGHT = SHOW_MORE_X - 8;
+        constexpr int16_t TAB_HEIGHT = 24;
+        constexpr int16_t TAB_GAP = 1;
 
-        // The window frame for this screen: the whole 640x480
-        // window, drawn by the kit's Window_Frame. Every rect inside
-        // the window -- the list panel, the tab bar, the help box,
-        // the bottom-bar buttons -- is derived from this frame's
-        // content rect, never from hard-coded screen constants.
-        // Only call once g_theme is built (Settings_Screen builds
-        // it before any field rebuild or draw).
-        ui_kit::Window_Frame Make_Window_Frame() {
-            return ui_kit::Window_Frame(0, 0, 640, 480, *g_theme);
+        int16_t Row_Y(int index) {
+            return (int16_t)(FIRST_ROW_Y + index * ROW_PITCH);
         }
 
-        // The bottom bar's y and exclusive end: the frame's bottom
-        // bar, Tab_Height tall, its bottom on the content bottom.
-        int16_t Bottom_Bar_Y() {
-            return Make_Window_Frame().bottom_bar_y(
-                g_theme->Tab_Height());
-        }
-
-        int16_t Bottom_Bar_End() {
-            return (int16_t)(Bottom_Bar_Y() + g_theme->Tab_Height());
-        }
-
-        // The tab bar for the current category set: the rects come
-        // from the bar, so the click fields and the draw cannot drift
-        // apart. With pressed states, a tab draws its pressed frame
-        // while the field system holds its field down (a mouse hold
-        // or a keyboard press); the field build passes false, so a
-        // rebuild never flashes a stale hold.
-        ui_kit::Tab_Bar Make_Tab_Bar(bool with_pressed = false) {
-            // The strip fills the bottom bar from the content edge
-            // to MORE, like the colony summary's sort buttons fill
-            // their bar to RETURN: 8 px clear of MORE, the same gap
-            // MORE keeps from RETURN.
-            ui_kit::Tab_Bar bar(Make_Window_Frame().content_x(),
-                Bottom_Bar_Y(), (int16_t)(SHOW_MORE_X - 8), *g_theme);
-            // The band starts with the SETTINGS label, like the
-            // colony's sort band starts with SORT, then the
-            // category tabs.
-            bar.Set_Label("SETTINGS");
-            for (int category = 0; category < CATEGORY_COUNT; ++category) {
-                bar.Add_Tab(CATEGORY_LABELS[category],
-                    category == g_state.category,
-                    with_pressed &&
-                        g_state.tab_fields[category] >= 0 &&
-                        fields::down_mouse_button ==
-                            g_state.tab_fields[category]);
+        // The category tab rects, laid out like the kit's Tab_Bar
+        // did: the SETTINGS label (style 2 + 12 gap) takes the
+        // start of the strip, the tabs divide the rest in
+        // proportion to their natural widths (style-2 label + 16
+        // padding) with a 1 px gap, the last tab absorbing the
+        // rounding remainder.
+        void Tab_Rect(int category, int16_t* x, int16_t* width) {
+            fonts::Set_Font_Style(2, &g_normal_colors);
+            const int16_t label_w =
+                (int16_t)(fonts::Get_String_Width("SETTINGS") + 12);
+            int16_t natural[CATEGORY_COUNT];
+            int32_t total_natural = 0;
+            for (int c = 0; c < CATEGORY_COUNT; ++c) {
+                natural[c] = (int16_t)(fonts::Get_String_Width(
+                    CATEGORY_LABELS[c]) + 16);
+                total_natural += natural[c];
             }
-            return bar;
-        }
-
-        // The list layout for this screen: the panel rect, header
-        // rect, row rects and scroll track, derived from the
-        // theme's Spacing (game/ui_kit.h), so the fields, the draw
-        // and the scrolling all share one geometry. The panel's x
-        // and width come from the window frame's content rect.
-        // Only call once g_theme is built (Settings_Screen builds
-        // it before any field rebuild or draw).
-        ui_kit::List_Layout Make_List_Layout() {
-            const ui_kit::Window_Frame frame = Make_Window_Frame();
-            return ui_kit::List_Layout(frame.content_x(), LIST_PANEL_Y,
-                frame.content_w(), ROW_FIELD_X_END, HEADER_Y, HEADER_HEIGHT,
-                ROWS_PER_PAGE, g_theme->Spacing());
-        }
-
-        // MORE button geometry follows the theme's derived frame
-        // like RETURN's: a metal button is a RETURN cut into three
-        // slices, so it is the frame's height (26) and
-        // bottom-aligned with the bar, like RETURN -- never the
-        // 24 px tab height, or the frame would overhang the field
-        // by 2 px and the label would centre 1 px high. With no
-        // frame it falls back to the tab-height engine button.
-        int16_t More_Button_Y() {
-            const ui_kit::Frame frame =
-                g_theme->Return_Frames().normal;
-            return !frame.Is_Null()
-                ? (int16_t)(Bottom_Bar_End() - frame.Height() + 1)
-                : Bottom_Bar_Y();
-        }
-
-        int16_t More_Button_H() {
-            const ui_kit::Frame frame =
-                g_theme->Return_Frames().normal;
-            return !frame.Is_Null() ? frame.Height()
-                                    : g_theme->Tab_Height();
-        }
-
-        // RETURN button geometry follows the theme's derived frame
-        // when it loaded (85x26, bottom-aligned with the bar),
-        // else the engine-drawn button's 76x24.
-        int16_t Return_Button_Y() {
-            const ui_kit::Frame frame =
-                g_theme->Return_Frames().normal;
-            return !frame.Is_Null()
-                ? (int16_t)(Bottom_Bar_End() - frame.Height() + 1)
-                : Bottom_Bar_Y();
-        }
-
-        int16_t Return_Button_W() {
-            const ui_kit::Frame frame =
-                g_theme->Return_Frames().normal;
-            return !frame.Is_Null() ? frame.Width() : RETURN_W;
-        }
-
-        // True while the field system holds a field down (a mouse
-        // hold, or a keyboard press -- Push_Field_Down sets
-        // fields::down_mouse_button and the auto function redraws
-        // on every hold tick): the button draws its pressed state
-        // until release.
-        bool Field_Held(int16_t field) {
-            return field >= 0 && fields::down_mouse_button == field;
+            const int16_t available = (int16_t)(TAB_STRIP_RIGHT -
+                CONTENT_X - label_w - (CATEGORY_COUNT - 1) * TAB_GAP);
+            int16_t x_cursor = (int16_t)(CONTENT_X + label_w);
+            int32_t used = 0;
+            for (int c = 0; c < CATEGORY_COUNT; ++c) {
+                int16_t w;
+                if (c + 1 < CATEGORY_COUNT) {
+                    w = (int16_t)(natural[c] * available / total_natural);
+                } else {
+                    w = (int16_t)(available - used);
+                }
+                if (w < 1) {
+                    w = 1;
+                }
+                if (c == category) {
+                    *x = x_cursor;
+                    *width = w;
+                }
+                x_cursor = (int16_t)(x_cursor + w + TAB_GAP);
+                used += w;
+            }
+            fonts::Set_Font_Style(4, &g_normal_colors);
         }
 
         // Rows on the current tab. The Mods tab lists its settings
@@ -579,12 +271,11 @@ namespace SETTINGS_SCREEN {
             return visible - (int)g_state.visible_rows.size();
         }
 
-        // Maximum first-visible-row index on the current tab: the
-        // kit scroll model (game/ui_kit.h: Scroll_Bar), the
-        // colony's `num_colonies - 10` bound.
+        // Maximum first-visible-row index on the current tab:
+        // the colony's `num_colonies - 10` bound.
         int Max_Scroll() {
-            return ui_kit::Scroll_Bar::Max_Scroll(Visible_Count(),
-                ROWS_PER_PAGE);
+            const int total = Visible_Count();
+            return total <= ROWS_PER_PAGE ? 0 : total - ROWS_PER_PAGE;
         }
 
         // Derive the current tab's first visible row from its
@@ -602,9 +293,9 @@ namespace SETTINGS_SCREEN {
             if (slider > max_scroll) {
                 slider = (int16_t)max_scroll;
             }
-            g_state.scroll_top[g_state.category] =
-                ui_kit::Scroll_Bar::Top_From_Slider(slider,
-                    Visible_Count(), ROWS_PER_PAGE);
+            // COLSUM's inverted slider: the top row is the
+            // maximum minus the slider.
+            g_state.scroll_top[g_state.category] = max_scroll - slider;
         }
 
         // First visible row on the current tab (after Sync_Scroll).
@@ -612,81 +303,9 @@ namespace SETTINGS_SCREEN {
             return g_state.scroll_top[g_state.category];
         }
 
-        // Colony-list scrollbar, the kit's Scroll_Bar
-        // (game/ui_kit.h, element 5): colsum's thumb formula, its
-        // bevel edges and its single-dot corner markers, in the
-        // theme's colours, on the colony's track (y 40..311, the
-        // strip between the scroll arrows) -- not the layout's
-        // track, which spans the rows and leaves no room for the
-        // down-arrow below it. This screen shows the bar only when
-        // the list is longer than the window; colsum's own rule
-        // also draws a full-track thumb at exactly 10, which this
-        // screen omits.
-        void Draw_Scroll_Bar() {
-            const int total = Visible_Count();
-            if (total <= ROWS_PER_PAGE) {
-                return;
-            }
-            const ui_kit::Scroll_Bar bar(SCROLL_X, SCROLL_W,
-                COLONY_TRACK_Y, COLONY_TRACK_H, *g_theme);
-            bar.Draw(Scroll_Top(), total, ROWS_PER_PAGE);
-        }
-
         // Rows index for a visible index in a settings category.
         int Visible_Row_Index(int visible) {
             return g_state.visible_rows[(size_t)visible];
-        }
-
-        std::string Truncate_To_Width(const std::string& text, int16_t max_width) {
-            if (fonts::Get_String_Width(text.c_str()) <= max_width) {
-                return text;
-            }
-            std::string truncated = text;
-            while (truncated.size() > 3 &&
-                fonts::Get_String_Width((truncated + "...").c_str()) > max_width) {
-                truncated.pop_back();
-            }
-            return truncated + "...";
-        }
-
-        // Greedy word wrap into at most three lines of the given pixel
-        // width. Anything past the third line is truncated with "...".
-        // The info box fits three description lines plus the restart
-        // note and the status line in its height.
-        void Wrap_Text(const std::string& text, int16_t max_width,
-            std::string* line1, std::string* line2, std::string* line3) {
-            *line1 = "";
-            *line2 = "";
-            *line3 = "";
-            std::string* lines[3] = {line1, line2, line3};
-            int line = 0;
-            std::string current;
-            size_t word_start = 0;
-            while (word_start <= text.size()) {
-                size_t word_end = text.find(' ', word_start);
-                if (word_end == std::string::npos) {
-                    word_end = text.size();
-                }
-                const std::string word = text.substr(word_start, word_end - word_start);
-                const std::string candidate = current.empty() ? word : current + " " + word;
-                if (fonts::Get_String_Width(candidate.c_str()) <= max_width) {
-                    current = candidate;
-                } else if (current.empty()) {
-                    current = Truncate_To_Width(word, max_width);
-                } else if (line < 2) {
-                    *lines[line] = current;
-                    ++line;
-                    current = word;
-                } else {
-                    *lines[line] = Truncate_To_Width(current, max_width);
-                    return;
-                }
-                if (word_end == text.size()) {
-                    break;
-                }
-                word_start = word_end + 1;
-            }
-            *lines[line] = current;
         }
 
         std::string Join_Ids(const std::vector<std::string>& ids) {
@@ -956,40 +575,35 @@ namespace SETTINGS_SCREEN {
         void Rebuild_Fields() {
             fields::Clear_Fields();
             fonts::Set_Font_Style(4, &g_normal_colors);
-            // Category selectors in the bottom bar, like the colony
-            // summary's sort buttons: one hidden field per category,
-            // left to right, each keeping its own scroll position.
-            // The rects come from the tab bar, so the fields match
-            // the drawn tabs exactly.
-            const ui_kit::Tab_Bar tab_bar = Make_Tab_Bar();
+            // Category selectors in the bottom bar: one hidden field
+            // per category, left to right, each keeping its own
+            // scroll position.
             for (int category = 0; category < CATEGORY_COUNT; ++category) {
-                const ui_kit::Tab_Bar::Tab& tab =
-                    tab_bar.tabs()[(size_t)category];
+                int16_t tab_x = 0;
+                int16_t tab_w = 0;
+                Tab_Rect(category, &tab_x, &tab_w);
                 g_state.tab_fields[category] = fields::Add_Hidden_Field(
-                    tab.x, tab_bar.y(), tab.x + tab.width - 1,
-                    tab_bar.y() + tab_bar.height() - 1, "", 0);
+                    tab_x, BOTTOM_BAR_Y, tab_x + tab_w - 1,
+                    BOTTOM_BAR_Y + TAB_HEIGHT - 1, "", 0);
             }
-            const ui_kit::List_Layout layout = Make_List_Layout();
             Sync_Scroll();
             const int first = Scroll_Top();
             const int count = std::min(ROWS_PER_PAGE, Visible_Count() - first);
             for (int index = 0; index < count; ++index) {
-                const int16_t y = layout.row_y(index);
-                // Row fields stop short of the scrollbar strip, like
-                // the colony list's row fields stop short of its
-                // scrollbar, so clicks on the bar reach the bar.
+                const int16_t y = Row_Y(index);
+                // Row fields stop short of the scrollbar strip, so
+                // clicks on the bar reach the bar.
                 g_state.row_fields[index] = fields::Add_Hidden_Field(
-                    8, y, ROW_FIELD_X_END, y + layout.row_height() - 1, "", 0);
+                    8, y, ROW_FIELD_X_END, y + ROW_HEIGHT - 1, "", 0);
             }
             for (int index = count; index < ROWS_PER_PAGE; ++index) {
                 g_state.row_fields[index] = -1;
             }
-            // Colony-list scrollbar, in its own strip at the right
-            // edge of the list panel: a drag-operated Scroll_Field
-            // bound to this tab's slider position, like COLSUM's
-            // Add_Scroll_Field. Only when the list is longer than
-            // the window; the field system's lone-scrollbar rule
-            // makes the wheel scroll it from anywhere over the list.
+            // Scrollbar drag field, bound to this tab's slider
+            // position, like COLSUM's Add_Scroll_Field. Only when
+            // the list is longer than the window; the field
+            // system's lone-scrollbar rule makes the wheel scroll
+            // it from anywhere over the list.
             const int total = Visible_Count();
             if (total > ROWS_PER_PAGE) {
                 g_state.scroll_field = fields::Add_Scroll_Field(SCROLL_X,
@@ -1002,15 +616,15 @@ namespace SETTINGS_SCREEN {
             }
             // MORE and RETURN sit side by side in the bottom
             // bar at the right end: the categories occupy the left
-            // end, so SHOW_MORE_X..RETURN_X+RETURN_W is clear in
-            // every category. They share the bar's single line and
-            // never wrap.
+            // end, so SHOW_MORE_X..RETURN_X+RETURN_FIELD_W is clear
+            // in every category. They share the bar's single line
+            // and never wrap.
             g_state.show_all_field = fields::Add_Hidden_Field(
-                SHOW_MORE_X, More_Button_Y(), SHOW_MORE_X + SHOW_MORE_W - 1,
-                Bottom_Bar_End(), "", 0);
+                SHOW_MORE_X, MORE_Y, SHOW_MORE_X + SHOW_MORE_W - 1,
+                BOTTOM_BAR_END, "", 0);
             g_state.done_field = fields::Add_Hidden_Field(
-                RETURN_X, Return_Button_Y(),
-                RETURN_X + Return_Button_W() - 1, Bottom_Bar_End(), "", 0);
+                RETURN_X, RETURN_Y,
+                RETURN_X + RETURN_FIELD_W - 1, BOTTOM_BAR_END, "", 0);
         }
 
         void Toggle_Show_All() {
@@ -1103,11 +717,9 @@ namespace SETTINGS_SCREEN {
             }
             g_state.editing_row = visible;
             fonts::Set_Font_Style(4, &g_normal_colors);
-            const ui_kit::List_Layout layout = Make_List_Layout();
-            const int16_t y =
-                layout.row_y(visible - Scroll_Top());
+            const int16_t y = Row_Y(visible - Scroll_Top());
             g_state.edit_field = fields::Add_Continuous_String_Input_Field(
-                VALUE_X, y, VALUE_WIDTH, layout.row_height() - 2, g_state.edit_buffer,
+                VALUE_X, y, VALUE_WIDTH, ROW_HEIGHT - 2, g_state.edit_buffer,
                 max_length, 0, 0, 0, 0);
             // The row's full-width hidden field always wins Scan_Field
             // over the edit field added after it, so a click can never
@@ -1168,8 +780,7 @@ namespace SETTINGS_SCREEN {
                 fonts::Get_Font_Vertical_Spacing());
             const int16_t list_height =
                 (int16_t)((type->value_count + 1) * (size_t)y_step);
-            const ui_kit::List_Layout layout = Make_List_Layout();
-            int16_t y = layout.row_y(visible - Scroll_Top());
+            int16_t y = Row_Y(visible - Scroll_Top());
             if (y + list_height > 470) {
                 y = 470 - list_height;
             }
@@ -1271,16 +882,14 @@ namespace SETTINGS_SCREEN {
                 4 + 4 + chevron_w + 4);
             const int16_t button_right =
                 (int16_t)(VALUE_X + button_w - 1);
-            const ui_kit::Window_Frame popup_frame = Make_Window_Frame();
             int16_t x = (int16_t)(button_right + 1 - popup_w);
-            if (x < popup_frame.content_x()) {
-                x = popup_frame.content_x();
+            if (x < CONTENT_X) {
+                x = CONTENT_X;
             }
-            if (x + popup_w > popup_frame.content_right()) {
-                x = (int16_t)(popup_frame.content_right() - popup_w);
+            if (x + popup_w > CONTENT_RIGHT) {
+                x = (int16_t)(CONTENT_RIGHT - popup_w);
             }
-            const ui_kit::List_Layout layout = Make_List_Layout();
-            int16_t y = layout.row_y(visible - Scroll_Top());
+            int16_t y = Row_Y(visible - Scroll_Top());
             if (y + popup_h > 470) {
                 y = 470 - popup_h;
             }
@@ -1517,630 +1126,17 @@ namespace SETTINGS_SCREEN {
                 ". Active mods: " + active + ".";
         }
 
-        std::string Mod_Help_Text(const config::s_mod_catalogue_entry& entry,
-            const std::vector<config::s_mod_catalogue_entry>& catalogue) {
-            std::string help = entry.description.empty() ? entry.id : entry.description;
-            std::string meta;
-            if (entry.broken) {
-                meta = "Broken: " + entry.reason;
-            } else {
-                meta = entry.source == config::MOD_SOURCE_USER ? "Source: user mods"
-                    : "Source: bundled";
-                if (!entry.dependencies.empty()) {
-                    std::vector<std::string> ids;
-                    for (const config::s_mod_dependency& dependency : entry.dependencies) {
-                        ids.push_back(dependency.id);
-                    }
-                    meta += "; Needs: " + Join_Ids(ids);
-                }
-                // Enabled mods that need this one: disabling it disables
-                // them too, so the chain is visible before the click.
-                // (The row's [x]/[ ] already states this mod's own
-                // state, so it is not repeated here in words.)
-                std::vector<std::string> required_by;
-                for (const config::s_mod_catalogue_entry& other : catalogue) {
-                    if (!other.enabled || other.id == entry.id) {
-                        continue;
-                    }
-                    for (const config::s_mod_dependency& dependency : other.dependencies) {
-                        if (dependency.id == entry.id) {
-                            required_by.push_back(other.id);
-                            break;
-                        }
-                    }
-                }
-                if (!required_by.empty()) {
-                    meta += "; Required by: " + Join_Ids(required_by);
-                }
-                if (!entry.conflicts.empty()) {
-                    meta += "; Conflicts: " + Join_Ids(entry.conflicts);
-                }
-            }
-            return help + " | " + meta;
-        }
-
-        // The Resolution dropdown popup, in the fleet-popup shape:
-        // a small window over the screen, the values as rows, a blue
-        // bar on the selected one. Its border is the original GAME
-        // SETTINGS dialog's list-box border (GAME.LBX entry 29,
-        // measured): a bevelled frame around the dark list, not a
-        // flat line. Drawn by Draw_Settings_Screen while the popup
-        // is open.
-        void Draw_Resolution_Popup() {
-            if (!g_state.resolution_popup_open) {
-                return;
-            }
-            const int16_t x = g_state.resolution_popup_x;
-            const int16_t y = g_state.resolution_popup_y;
-            const int16_t w = g_state.resolution_popup_w;
-            const int16_t h = g_state.resolution_popup_h;
-            graphics::Fill(x, y, (int16_t)(x + w - 1), (int16_t)(y + h - 1),
-                PANEL_INTERIOR);
-            // The border around the open list is a bevelled frame,
-            // like the original GAME SETTINGS dialog's list box
-            // (GAME.LBX entry 29, measured): a raised bead around
-            // the dark list -- a bright ridge with a darker line
-            // inside it -- not a flat 1 px line, which does not
-            // read as a border on the panel's own interior. The
-            // kit's list bevel draws it: the bright line outside,
-            // the shade line inside, on all four sides.
-            const ui_kit::List_Style list_style =
-                g_theme->List_Style();
-            // Dithered_Box, not flat Box: the colony's baked
-            // borders are speckled, and a flat border reads as a
-            // smooth line with no bitmap feel (the speckle is one
-            // shade lighter, density 2, like every other border
-            // on this screen).
-            graphics::Dithered_Box(x, y, w, h, 1, list_style.frame_light,
-                (uint8_t)(list_style.frame_light + 1), 2);
-            graphics::Dithered_Box((int16_t)(x + 1), (int16_t)(y + 1),
-                (int16_t)(w - 2), (int16_t)(h - 2), 1,
-                list_style.frame_shade,
-                (uint8_t)(list_style.frame_shade + 1), 2);
-            const int16_t text_x = (int16_t)(x + 1 + 8);
-            // The labels print in style 4: set it before measuring
-            // the row text offset, so the text sits mid-row
-            // whatever font was active when the popup opened.
-            fonts::Set_Font_Style(4, &g_colony_colors);
-            const int16_t text_dy = (int16_t)(
-                (g_state.resolution_popup_row_step - fonts::Get_Font_Height()) / 2);
-            for (size_t index = 0; index < g_state.resolution_options.size(); ++index) {
-                const int16_t row_y = (int16_t)(
-                    g_state.resolution_popup_first_row_y +
-                    (int16_t)index * g_state.resolution_popup_row_step);
-                const int16_t row_end = (int16_t)(row_y +
-                    g_state.resolution_popup_row_step - 1);
-                if ((int)index == g_state.resolution_popup_selected) {
-                    // Blue bar around the selected value, the same blue
-                    // as the active category and the RETURN button: the
-                    // theme's primary face. It stays inside the
-                    // bevelled frame (x+2..x+w-3), so it never paints
-                    // over the frame's inner shade line.
-                    graphics::Fill((int16_t)(x + 2), row_y, (int16_t)(x + w - 3), row_end,
-                        g_theme->Button_Style().primary_face);
-                    fonts::Set_Font_Style(4, &g_light_text_colors);
-                } else {
-                    fonts::Set_Font_Style(4, &g_colony_colors);
-                }
-                fonts::Print(text_x, (int16_t)(row_y + text_dy),
-                    g_state.resolution_options[index].label.c_str());
-            }
-        }
-
-        // The colony's vivid blue (24, 12, 252) is in the
-        // colony's palette at index 56 but not in the menu palette
-        // the settings screen renders with, so the active tab is
-        // patched in: menu-palette index 253 is black (0, 0, 0)
-        // and unused by the settings screen -- no sprite or font
-        // in data/base uses it -- so it is repurposed for the
-        // vivid blue. current_palette stores 6-bit values (the
-        // upload shifts them left 2), so (24, 12, 252) is
-        // (6, 3, 63). The entry is set directly -- never via
-        // Set_Palette_Gradient with count 1, which divides by
-        // (count - 1) = 0 -- then marked changed and uploaded.
-        // Called every frame with a guard (only writes when the
-        // entry is not already vivid), so a palette reload
-        // mid-screen re-installs it on the next frame. Transient:
-        // leaving the screen reloads the palette, restoring 253
-        // to black.
-        void Install_Vivid_Blue() {
-            constexpr uint8_t kVivid_Blue_Index = 253;
-            s_palette_entry& entry =
-                video::current_palette[kVivid_Blue_Index];
-            if (entry.r != 6 || entry.g != 3 || entry.b != 63) {
-                entry.r = 6;
-                entry.g = 3;
-                entry.b = 63;
-                entry.changed = 1;
-                palette::Set_Palette_Changes(kVivid_Blue_Index,
-                    kVivid_Blue_Index);
-                palette::Refresh_Palette();
-            }
-        }
-
+        // Step 1 of the hi-res rewrite: the pixel rendering is
+        // stripped and nothing is drawn yet -- the hi-res
+        // background lands in step 2. The field system still
+        // owns the clicks (Rebuild_Fields), and the edit field
+        // still draws its own text, so the screen's logic stays
+        // drivable while it renders nothing.
         void Draw_Settings_Screen() {
-            Install_Vivid_Blue();
             video::Set_Page_Off();
-
-            // The background is painted here with the kit, not
-            // loaded from the colony's baked background: the frame,
-            // the list panel, the header plates, the scrollbar
-            // strip, the description box and the bottom band are
-            // all drawn with code, in theme colours, so the frame
-            // reads as one continuous line around the whole screen
-            // and the band as one continuous strip. The frame
-            // still positions everything inside it: the list panel,
-            // the tab bar, the help box.
-            const ui_kit::Window_Frame frame = Make_Window_Frame();
-            graphics::Fill(0, 0, 639, 479, 0);
-            frame.Draw(nullptr);
-            // The colony's frame top is dark (20, 36, 44, 52 at
-            // y 0..3) and the plates' top bevel is bright, so the
-            // plates read as raised against a dark frame. The kit
-            // frame's top band is bright (72..116), so the plates
-            // blend into it. Darken the top band to the colony's
-            // profile -- menu-palette greys closest to the
-            // colony's -- so the header plates stand out.
-            // Dithered, not flat: the colony's baked frame top is
-            // a speckle (base grey with ~10-15% speckles of a
-            // neighbouring shade), and a flat darkening reads as a
-            // smooth line with no bitmap feel. The speckle is one
-            // shade lighter, at density 2 (~13%), like the kit
-            // frame's own bands underneath.
-            graphics::Dithered_Fill(0, 0, 639, 0, 84, 85, 2);
-            graphics::Dithered_Fill(0, 1, 639, 1, 230, 231, 2);
-            graphics::Dithered_Fill(0, 2, 639, 2, 230, 231, 2);
-            graphics::Dithered_Fill(0, 3, 639, 3, 233, 234, 2);
-            fonts::Set_Font_Style(4, &g_normal_colors);
-
-            // List panel, like the colony list: the kit draws the
-            // dark interior, the thin grey border, the panel
-            // footing and the right bevel. The rows are text lines
-            // on the panel, not framed cells: no per-row boxes --
-            // the colony's squares were illustrations of the
-            // style, not boxes to draw on the settings -- but the
-            // kit's row frame lines stay, so each row is visually
-            // separated by the light/shade lines at its top and
-            // bottom, like the colony's rows, and the column
-            // divider between SETTING and VALUE stays too, so the
-            // list reads as the colony's grid.
-            const ui_kit::List_Layout layout = Make_List_Layout();
-            ui_kit::Draw_List_Background(*g_theme, layout, true, true);
-            {
-                const std::vector<ui_kit::Column> columns = {
-                    {HEADER_SETTING_X, HEADER_SETTING_W},
-                    {HEADER_VALUE_X, HEADER_VALUE_W},
-                };
-                const ui_kit::Column_Layout column_layout(columns,
-                    layout.row_y(0),
-                    (int16_t)(layout.row_y(ROWS_PER_PAGE - 1) +
-                        layout.row_height() - 1));
-                ui_kit::Draw_List_Columns(*g_theme, column_layout);
-            }
-            // The scrollbar strip: the colony's black track
-            // (y 40..311) between the scroll arrows, with the
-            // down-arrow and the footing below it. The panel fill
-            // above covers the strip with the panel interior, so
-            // the whole strip below the up-arrow is filled black
-            // first, from below the header plates to the panel's
-            // bottom edge; the kit's Scroll_Bar draws the thumb
-            // and the corner dots on top of it (Draw_Scroll_Bar,
-            // below), and the arrows are drawn with the kit too,
-            // so both show cleanly with no baked pixels around
-            // them.
-            {
-                const ui_kit::Spacing strip_spacing =
-                    g_theme->Spacing();
-                const int16_t strip_bottom = (int16_t)(
-                    layout.row_y(ROWS_PER_PAGE - 1) +
-                    layout.row_height() - 1 -
-                    strip_spacing.header_to_first_row +
-                    strip_spacing.list_footing);
-                graphics::Fill(SCROLL_X, HEADER_Y + HEADER_HEIGHT,
-                    (int16_t)(SCROLL_X + SCROLL_W - 1), strip_bottom, 0);
-            }
-            {
-                const ui_kit::Scroll_Bar strip(SCROLL_X, SCROLL_W,
-                    COLONY_TRACK_Y, COLONY_TRACK_H, *g_theme);
-                strip.Draw_Arrows();
-            }
-
-            // Header plates, like the colony list's raised header
-            // boxes (NAME, FARMERS, WORKERS, ...): individual
-            // bevelled plates over the name and value columns at the
-            // top of the list panel, one per column -- not a single
-            // bar spanning the whole width. The face is a flat fill
-            // in the theme's plate-face colour: the colony's plates
-            // carry a dithered face, and tiling a baked strip of it
-            // repeats visibly across the plate (a repeating pattern
-            // in the heading), so the face is flat -- it reads as
-            // the same plate at a glance and never repeats. The
-            // bevels are drawn on all four sides (light top/left,
-            // shade bottom/right), like the colony's plates. Drawn
-            // after the panel fill, so the fill does not cover them.
-            // The band behind them (below the frame's top band) is
-            // the panel interior, so the gaps between the plates
-            // (the colony's grooves) read as dark grooves and the
-            // plates as separate plates, and the frame reads around
-            // them. The VALUE plate spans the value and toggle
-            // columns, so no gap opens beside it; the scrollbar
-            // strip starts right after it, so the colony's
-            // up-arrow (x 619..628, y 15..34) shows.
-            const ui_kit::List_Style list_style = g_theme->List_Style();
-            // The band behind the plates, below the frame's top
-            // band: the panel interior, so the grooves between the
-            // plates read as dark grooves. It stops at the
-            // scrollbar strip, so it never covers the up-arrow.
-            graphics::Fill(frame.content_x(), frame.content_y(),
-                (int16_t)(HEADER_VALUE_X + HEADER_VALUE_W - 1),
-                (int16_t)(HEADER_Y + HEADER_HEIGHT - 1),
-                list_style.interior);
-            const auto draw_header_plate = [&](int16_t x, int16_t w, const char* label) {
-                graphics::Fill(x, HEADER_Y, x + w - 1,
-                    HEADER_Y + HEADER_HEIGHT - 1,
-                    list_style.plate_face);
-                // The colony's plates are a speckle dither, not a
-                // flat fill: ~40% lighter speckles over the face
-                // grey. A flat face reads as a plain bar; the
-                // dither gives the plates the colony's texture.
-                graphics::Dithered_Fill(x + 1, HEADER_Y + 1,
-                    x + w - 2, HEADER_Y + HEADER_HEIGHT - 2,
-                    list_style.plate_face, list_style.border, 6);
-                // Raised bevel: light on the top and left, shade on
-                // the bottom and right, like the colony's plates.
-                // Dithered like every other border on this screen
-                // (speckle one shade lighter, density 2), so the
-                // plate bevels carry the colony's bitmap feel
-                // instead of reading as smooth flat lines.
-                graphics::Dithered_Fill(x, HEADER_Y, x + w - 1, HEADER_Y,
-                    list_style.frame_light,
-                    (uint8_t)(list_style.frame_light + 1), 2);
-                graphics::Dithered_Fill(x, HEADER_Y, x, HEADER_Y + HEADER_HEIGHT - 1,
-                    list_style.frame_light,
-                    (uint8_t)(list_style.frame_light + 1), 2);
-                graphics::Dithered_Fill(x, HEADER_Y + HEADER_HEIGHT - 1,
-                    x + w - 1, HEADER_Y + HEADER_HEIGHT - 1,
-                    list_style.frame_shade,
-                    (uint8_t)(list_style.frame_shade + 1), 2);
-                graphics::Dithered_Fill(x + w - 1, HEADER_Y, x + w - 1,
-                    HEADER_Y + HEADER_HEIGHT - 1, list_style.frame_shade,
-                    (uint8_t)(list_style.frame_shade + 1), 2);
-                // The header-plate labels render in the theme's
-                // display font (Moo2Display, cap 8): the colony's
-                // large display labels are ~14 px per character, and
-                // no engine font renders them at the right width
-                // (real FARMERS 97 px vs style-4 53 px). The bitmap
-                // font inks rows y..y+7, like the engine font it
-                // replaces, so the print y is unchanged; the font
-                // falls back to the style-4 title font when its file
-                // is missing, never a blank label.
-                const ui_kit::Font& header_font = g_theme->Header_Font();
-                const int16_t label_x = (int16_t)(x +
-                    (w - header_font.Width(label)) / 2);
-                // Centre the label in the plate: the colony's plates
-                // are 31 tall and their labels sit mid-plate, not 4 px
-                // from the top the way the old 22-tall plates did.
-                header_font.Print(label_x,
-                    HEADER_Y + (HEADER_HEIGHT - header_font.Height()) / 2,
-                    label, false);
-            };
-            draw_header_plate(HEADER_SETTING_X, HEADER_SETTING_W, "SETTING");
-            draw_header_plate(HEADER_VALUE_X, HEADER_VALUE_W, "VALUE");
-
-            const bool mods_tab = g_state.category == CATEGORY_MODS;
-            Sync_Scroll();
-            const int first = Scroll_Top();
-            const int count = std::min(ROWS_PER_PAGE, Visible_Count() - first);
-            for (int index = 0; index < count; ++index) {
-                const int visible = first + index;
-                const int16_t y = layout.row_y(index);
-                const int16_t text_y = (int16_t)(y + ROW_TEXT_Y_OFFSET);
-                const bool selected = visible == g_state.selected;
-                // Colony-list row: name in the colony color, selected
-                // row in the bright-blue highlight.
-                fonts::Set_Font_Style(4,
-                    selected ? &g_colony_highlight_colors : &g_colony_colors);
-                if (Is_Mod_Row(visible)) {
-                    const config::s_mod_catalogue_entry& entry =
-                        g_state.mods[(size_t)Mod_Index(visible)];
-                    std::string title_text = entry.name;
-                    if (!entry.version_text.empty()) {
-                        title_text += " " + entry.version_text;
-                    }
-                    fonts::Print(TITLE_X, text_y,
-                        Truncate_To_Width(title_text, TITLE_WIDTH).c_str());
-                    // The colony BUILDING toggle: bright blue
-                    // when on, grey when off, bare when the mod is
-                    // broken and cannot be enabled.
-                    const int16_t toggle_x = TOGGLE_X;
-                    const int16_t toggle_y = y;
-                    ui_kit::Button toggle(toggle_x, toggle_y,
-                        TOGGLE_W, TOGGLE_H,
-                        ui_kit::Button_Kind::Toggle, *g_theme);
-                    toggle.Set_State(entry.broken
-                        ? ui_kit::Button_State::Disabled
-                        : (entry.enabled ? ui_kit::Button_State::Active
-                                         : ui_kit::Button_State::Rest));
-                    toggle.Draw();
-                    if (entry.broken) {
-                        // The "Broken" label sits to the right of
-                        // the toggle: the toggle is the value, at
-                        // the value column's left edge, so the
-                        // label follows it instead of crowding the
-                        // title.
-                        fonts::Set_Font_Style(4, &g_colony_dim_colors);
-                        fonts::Print(toggle_x + TOGGLE_W + 6, text_y,
-                            "Broken");
-                    }
-                    continue;
-                }
-                const config::s_settings_row& row =
-                    g_state.rows[(size_t)Visible_Row_Index(visible)];
-                const std::string title_text = Truncate_To_Width(row.title, TITLE_WIDTH);
-                fonts::Print(TITLE_X, text_y, title_text.c_str());
-                // Restart-required settings carry no marker on the
-                // row: the restart note lives in the description box
-                // for the selected row instead.
-                // The edit field draws its own text while it is open.
-                if (visible == g_state.editing_row) {
-                    continue;
-                }
-                if (row.widget == config::SETTINGS_WIDGET_TOGGLE) {
-                    // The colony BUILDING toggle: bright blue when
-                    // on, grey when off.
-                    config::s_typed_value value;
-                    const bool on = config::Get_Settings_Row_Value(row, &value)
-                        && value.bool_value;
-                    const int16_t toggle_x = TOGGLE_X;
-                    const int16_t toggle_y = y;
-                    ui_kit::Button toggle(toggle_x, toggle_y,
-                        TOGGLE_W, TOGGLE_H,
-                        ui_kit::Button_Kind::Toggle, *g_theme);
-                    toggle.Set_State(on ? ui_kit::Button_State::Active
-                                        : ui_kit::Button_State::Rest);
-                    toggle.Draw();
-                } else if (row.widget == config::SETTINGS_WIDGET_DROPDOWN) {
-                    // Dropdown: a real framed control in the
-                    // BUILDING column -- a colony-style bevelled
-                    // button showing the value with a chevron --
-                    // not plain text. The row click
-                    // (Handle_Row_Click) still opens the popup (the
-                    // shared fields::Get_List_Field picker, or the
-                    // Resolution popup for the Resolution row); the
-                    // control is the trigger, sized to its value in
-                    // the BUILDING name's font (style 1), blue
-                    // while its popup is open (the Resolution
-                    // popup redraws the screen behind it).
-                    std::string value_text;
-                    if (Is_Resolution_Row(row)) {
-                        int width = 0;
-                        int height = 0;
-                        value_text = config::Get_Current_Resolution(&width, &height)
-                            ? config::Format_Resolution(width, height)
-                            : "?";
-                    } else {
-                        config::s_typed_value value;
-                        value_text = config::Get_Settings_Row_Value(row, &value)
-                            ? config::Format_Leaf_Value(row.variable_id, value)
-                            : "?";
-                    }
-                    // Style 1, the colony BUILDING name's font:
-                    // style 4's "overview" is ~90 px and truncates
-                    // in the 86 px BUILDING column, while style 1
-                    // fits it like the colony's building names.
-                    fonts::Set_Font_Style(1, &g_colony_dim_colors);
-                    const int16_t chevron_w =
-                        fonts::Get_String_Width("v");
-                    const int16_t chrome =
-                        (int16_t)(4 + 4 + chevron_w + 4);
-                    value_text = Truncate_To_Width(value_text,
-                        (int16_t)(VALUE_WIDTH - chrome));
-                    const int16_t text_w =
-                        fonts::Get_String_Width(value_text.c_str());
-                    const int16_t cell_w =
-                        (int16_t)(text_w + chrome);
-                    const int16_t cell_y = (int16_t)(y + 5);
-                    const int16_t cell_h = 20;
-                    const bool popup_open = Is_Resolution_Row(row) &&
-                        g_state.resolution_popup_open;
-                    const ui_kit::Button_Style button_style =
-                        g_theme->Button_Style();
-                    graphics::Fill(VALUE_X, cell_y,
-                        (int16_t)(VALUE_X + cell_w - 1),
-                        (int16_t)(cell_y + cell_h - 1),
-                        popup_open ? button_style.primary_face
-                                   : button_style.cell_interior);
-                    // Raised bevel: light on the top and left, shade
-                    // on the bottom and right, like the header
-                    // plates.
-                    graphics::Fill(VALUE_X, cell_y,
-                        (int16_t)(VALUE_X + cell_w - 1), cell_y,
-                        list_style.frame_light);
-                    graphics::Fill(VALUE_X, cell_y, VALUE_X,
-                        (int16_t)(cell_y + cell_h - 1),
-                        list_style.frame_light);
-                    graphics::Fill(VALUE_X,
-                        (int16_t)(cell_y + cell_h - 1),
-                        (int16_t)(VALUE_X + cell_w - 1),
-                        (int16_t)(cell_y + cell_h - 1),
-                        list_style.frame_shade);
-                    graphics::Fill(
-                        (int16_t)(VALUE_X + cell_w - 1), cell_y,
-                        (int16_t)(VALUE_X + cell_w - 1),
-                        (int16_t)(cell_y + cell_h - 1),
-                        list_style.frame_shade);
-                    fonts::Set_Font_Style(1,
-                        popup_open ? &g_light_text_colors
-                                   : &g_colony_dim_colors);
-                    fonts::Print((int16_t)(VALUE_X + 4), text_y,
-                        value_text.c_str());
-                    fonts::Print(
-                        (int16_t)(VALUE_X + cell_w - 4 - chevron_w),
-                        text_y, "v");
-                } else {
-                    // Info and edit values: text in the colony dim
-                    // color, left-aligned in the BUILDING column,
-                    // like the colony's building name.
-                    config::s_typed_value value;
-                    std::string value_text;
-                    if (row.widget == config::SETTINGS_WIDGET_INFO) {
-                        value_text = row.info;
-                    } else {
-                        value_text = config::Get_Settings_Row_Value(row, &value)
-                            ? config::Format_Leaf_Value(row.variable_id, value)
-                            : "?";
-                    }
-                    // Style 1, the colony BUILDING name's font.
-                    fonts::Set_Font_Style(1, &g_colony_dim_colors);
-                    value_text = Truncate_To_Width(value_text, VALUE_WIDTH);
-                    fonts::Print(VALUE_X, text_y, value_text.c_str());
-                }
-            }
-
-            Draw_Scroll_Bar();
-
-            // Info area: one box across the whole width -- the
-            // selected row's description lives here, with a
-            // "Requires restart." line for the settings it applies
-            // to and the status line below it. The box has a thin
-            // border (panel border colour) and a flat black
-            // interior, so the white text sits on a clean solid
-            // dark background and reads end to end, not over the
-            // colony's speckled baked texture. There is no
-            // divider inside it and no second box beside it: the
-            // text wraps at the box's right edge, one rendered
-            // window end to end. The strip between the list panel
-            // and here, and between here and the bottom bar, is
-            // the window's black fill, like the colony's dark
-            // gaps. There is no permanent restart legend: the
-            // restart note lives here, only for the selected
-            // setting.
-            const ui_kit::Spacing spacing = g_theme->Spacing();
-            const int16_t desc_y = layout.info_y();
-            const int16_t desc_bottom =
-                (int16_t)(Bottom_Bar_Y() - 1 - spacing.info_to_bar);
-            graphics::Fill(frame.content_x(), desc_y,
-                (int16_t)(frame.content_right() - 1), desc_bottom, 0);
-            // The info box border is dithered like every other
-            // border on this screen (speckle one shade lighter,
-            // density 2), so it carries the colony's bitmap feel
-            // instead of reading as smooth flat lines.
-            graphics::Dithered_Fill(frame.content_x(), desc_y,
-                (int16_t)(frame.content_right() - 1), desc_y,
-                PANEL_BORDER, (uint8_t)(PANEL_BORDER + 1), 2);
-            graphics::Dithered_Fill(frame.content_x(), desc_bottom,
-                (int16_t)(frame.content_right() - 1), desc_bottom,
-                PANEL_BORDER, (uint8_t)(PANEL_BORDER + 1), 2);
-            graphics::Dithered_Fill(frame.content_x(), desc_y, frame.content_x(),
-                desc_bottom, PANEL_BORDER, (uint8_t)(PANEL_BORDER + 1), 2);
-            graphics::Dithered_Fill((int16_t)(frame.content_right() - 1), desc_y,
-                (int16_t)(frame.content_right() - 1), desc_bottom,
-                PANEL_BORDER, (uint8_t)(PANEL_BORDER + 1), 2);
-            std::string help_text;
-            bool restart_required = false;
-            if (mods_tab && Is_Mod_Row(g_state.selected)) {
-                help_text = Mod_Help_Text(g_state.mods[(size_t)Mod_Index(g_state.selected)],
-                    g_state.mods);
-            } else if (Visible_Count() > 0) {
-                const config::s_settings_row& selected_row =
-                    g_state.rows[(size_t)Visible_Row_Index(g_state.selected)];
-                help_text = selected_row.description;
-                restart_required = selected_row.restart_required;
-            }
-            // Style 4 is set before wrapping: the wrap measures
-            // in the font it prints in (the row loop leaves style
-            // 1 set for values).
-            fonts::Set_Font_Style(4, &g_colony_dim_colors);
-            std::string help_line1;
-            std::string help_line2;
-            std::string help_line3;
-            Wrap_Text(help_text, INFO_TEXT_WIDTH,
-                &help_line1, &help_line2, &help_line3);
-            // The text starts where the colony's planet text
-            // starts (a pixel below the info area's top), and the
-            // lines stack directly: the status sits under the
-            // last used line, so no blank line opens up when the
-            // description is short.
-            const int16_t help_y = (int16_t)(desc_y + 1);
-            int16_t next_y = help_y;
-            fonts::Print(TITLE_X, next_y, help_line1.c_str());
-            next_y = (int16_t)(next_y + HELP_LINE_HEIGHT);
-            if (!help_line2.empty()) {
-                fonts::Print(TITLE_X, next_y, help_line2.c_str());
-                next_y = (int16_t)(next_y + HELP_LINE_HEIGHT);
-            }
-            if (!help_line3.empty()) {
-                fonts::Print(TITLE_X, next_y, help_line3.c_str());
-                next_y = (int16_t)(next_y + HELP_LINE_HEIGHT);
-            }
-            if (restart_required) {
-                fonts::Set_Font_Style(4, &g_colony_highlight_colors);
-                fonts::Print(TITLE_X, next_y, "Requires restart.");
-                next_y = (int16_t)(next_y + HELP_LINE_HEIGHT);
-            }
-            fonts::Set_Font_Style(4, &g_colony_dim_colors);
-            fonts::Print(TITLE_X, next_y,
-                Truncate_To_Width(g_state.status, INFO_TEXT_WIDTH).c_str());
-
-            // Bottom bar: the category selectors on the left, like
-            // the colony summary's sort buttons (Name / Population
-            // / Food ...); MORE and RETURN side by side on
-            // the right, on the same line, never wrapping. All of
-            // them are kit buttons: the tabs are Selector buttons
-            // (the bar builds them), MORE a Metal toggle and
-            // RETURN an Image button, like the colony RETURN. A
-            // button held down draws its pressed state until
-            // release.
-            // The bar is one continuous dark-navy band across the
-            // frame's content width -- no black fill and no baked
-            // patch tiling -- so the tabs, MORE and RETURN sit on
-            // one strip and the frame reads as one line around the
-            // whole screen. The tabs are drawn by the theme's
-            // fallback (a flat bright-blue face when active), and
-            // the gaps between the tabs show the band through the
-            // kit's gap fills, like the colony's sort strip.
-            graphics::Fill(frame.content_x(), Bottom_Bar_Y(),
-                (int16_t)(frame.content_right() - 1),
-                (int16_t)(Bottom_Bar_Y() + g_theme->Tab_Height() - 1),
-                BAR_BAND);
-            Make_Tab_Bar(true).Draw();
-            const int16_t bar_y =
-                frame.bottom_bar_y(g_theme->Tab_Height());
-            const int16_t bar_h = g_theme->Tab_Height();
-            // MORE is a RETURN-style metal toggle: the metal face
-            // (not the blue primary face), latched pressed while
-            // the secondary rows are shown, so it stays lit like
-            // RETURN before it closes — the label stays MORE in
-            // both states, the orange lit state is what says it
-            // is on (the game's own choice: one button for the
-            // inverse activity, no second button). Clicking it
-            // again turns it off. Held down it draws pressed too,
-            // like any held button.
-            ui_kit::Button show_more(SHOW_MORE_X, More_Button_Y(),
-                SHOW_MORE_W, More_Button_H(),
-                ui_kit::Button_Kind::Metal, *g_theme);
-            show_more.Set_Label("MORE");
-            show_more.Set_State(Field_Held(g_state.show_all_field) ||
-                    g_state.show_all
-                ? ui_kit::Button_State::Pressed
-                : ui_kit::Button_State::Rest);
-            show_more.Draw();
-            const int16_t return_y = Return_Button_Y();
-            const ui_kit::Frame return_frame =
-                g_theme->Return_Frames().normal;
-            const int16_t return_h = !return_frame.Is_Null()
-                ? return_frame.Height()
-                : bar_h;
-            ui_kit::Button ret(RETURN_X, return_y, Return_Button_W(),
-                return_h, ui_kit::Button_Kind::Image, *g_theme);
-            ret.Set_Label("RETURN");
-            ret.Set_State(Field_Held(g_state.done_field)
-                ? ui_kit::Button_State::Pressed
-                : ui_kit::Button_State::Rest);
-            ret.Draw();
-
-            Draw_Resolution_Popup();
-
+            graphics::Fill(0, 0,
+                (int16_t)(video::g_screen_res_x - 1),
+                (int16_t)(video::g_screen_res_y - 1), 0);
             fields::Draw_Visible_Fields();
         }
 
@@ -2165,14 +1161,6 @@ namespace SETTINGS_SCREEN {
         RUSS::Mox_Update();
         fonts::Set_Font_Style(4, &g_normal_colors);
         fonts::Set_Font_LF(4);
-        // The theme loads its own frames (MOX::screen_seg is
-        // released between screens, so they load on every entry):
-        // the selector frames and the RETURN frames. The screen
-        // never names a sprite id or sees a frame pointer. A frame
-        // that fails to load stays null and its button falls back
-        // to the engine-drawn equivalent.
-        g_theme = ui_kit::Load_Colony_Theme(MOX::screen_seg,
-            g_title_colors);
         Rebuild_Fields();
         fields::Assign_Auto_Function(Draw_Settings_Screen, 2);
 
