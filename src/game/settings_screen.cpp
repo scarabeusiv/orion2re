@@ -1689,11 +1689,14 @@ namespace SETTINGS_SCREEN {
                 }
                 const SETTINGS_LAYOUT::s_rect value_rect =
                     Visible_Value_Rect(index);
-                // The value box is a hardened display: a dark
-                // control face with the industrial frame -- the
-                // colony's inset value cells, clean inside.
+                // The value box is a recessed slot in the panel:
+                // a dark control face with the sunken frame -- the
+                // sample's inset value boxes (Tom, 2026-11-11),
+                // embedded and flat, depressed into the surface
+                // rather than a raised button on top of it. The
+                // star and the dropdowns sit inside the slot.
                 Blend_Fill(value_rect, kControl_Fill, kControl_Alpha);
-                Frame(value_rect, thickness);
+                Sunken_Frame(value_rect, thickness);
                 // The value: toggles and mods show the star (4e);
                 // dropdowns and edits show their text. A dropdown
                 // is a hardened display: like the colony's value
@@ -2064,7 +2067,7 @@ namespace SETTINGS_SCREEN {
                     const SETTINGS_LAYOUT::s_rect edit_rect =
                         Visible_Value_Rect(edit_index);
                     Solid_Fill(edit_rect, kEdit_Fill);
-                    Frame(edit_rect, thickness);
+                    Sunken_Frame(edit_rect, thickness);
                     std::string text = fields::continuous_string;
                     auto edit_measure = [&](const std::string& s) {
                         return Text_Width(s.c_str(), value_cell);

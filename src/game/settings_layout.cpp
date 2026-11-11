@@ -30,9 +30,19 @@ namespace SETTINGS_LAYOUT {
         // no gap between them, one continuous band.
         constexpr int32_t kMargin_Y = 20;
         constexpr int32_t kGap_Y = 0;
+        // The header is the colony's height (26 px at 640x480, its
+        // plates 20 px -- measured from the colony reference): Tom's
+        // "header too large" was the sample's 29 px header, not
+        // this screen's, so the header does not move.
         constexpr int32_t kHeader_H = 55;
-        constexpr int32_t kList_H = 634;
-        constexpr int32_t kDescription_H = 207;
+        // The description is sized to its content (the longest
+        // description, v120, is four lines plus the status line),
+        // not to five lines: the panel's empty area below the text
+        // was the wasted space Tom called out. The list takes the
+        // freed space, so the rows are taller and the value boxes
+        // fill them like the sample's tall inset boxes.
+        constexpr int32_t kList_H = 655;
+        constexpr int32_t kDescription_H = 186;
         constexpr int32_t kBottom_Bar_H = 64;
 
         // Horizontal allocation, permille of the width.
@@ -67,8 +77,10 @@ namespace SETTINGS_LAYOUT {
 
         // The value control's height, as a fraction of the row
         // height (percent): the control is vertically centred in
-        // its row.
-        constexpr int32_t kValue_Control_H_Percent = 62;
+        // its row. 80%: the sample's value boxes are tall inset
+        // slots filling most of the row, not small centred boxes
+        // (62% left empty space above and below them).
+        constexpr int32_t kValue_Control_H_Percent = 80;
 
         // The scrollbar thumb's minimum height, in pixels.
         constexpr int16_t kThumb_Min_H = 8;
