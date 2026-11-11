@@ -4,6 +4,7 @@
 
 #include "game/settings_blend.h"
 #include "game/settings_layout.h"
+#include "game/settings_png.h"
 
 namespace SETTINGS_RENDER {
 
@@ -145,6 +146,34 @@ namespace SETTINGS_RENDER {
         const s_rgb& color);
     void Triangle_Up(int16_t cx, int16_t y, int16_t w, int16_t h,
         const s_rgb& color);
+
+    // Hi-res PNG sprites (the tie-together, Tom 2026-11-11):
+    // bitmap sprites, like the original game's sprites but
+    // hi-res -- not scalable vector vertices. A sprite blits
+    // its RGBA pixels scaled by nearest neighbour (the bitmap
+    // feel survives at any resolution) and alpha-blended over
+    // the page (real transparency: the background shows
+    // through a translucent face, and a glow halo shows the
+    // elements behind it). Alpha is quantized to multiples of
+    // 16, so the blend-table cache stays bounded (the sprites
+    // are authored with quantized alphas).
+    //
+    // Draw_Sprite scales the whole image into the rect.
+    // Draw_Sprite_Tiled tiles the image 1:1 across the rect
+    // (a dithered face: the speckle stays the same grain at
+    // any resolution). Draw_Sprite_9Slice draws a 9-slice
+    // frame/button: the corners scale to the frame thickness,
+    // the edges stretch, the centre tiles. The border's first
+    // two source rows/columns (the light outer edge and the
+    // dark inner line) are preserved 1:1, so the industrial
+    // frame's light+dark edge never washes out when the
+    // border scales down.
+    void Draw_Sprite(const SETTINGS_LAYOUT::s_rect& rect,
+        const SETTINGS_PNG::s_rgba_image& image);
+    void Draw_Sprite_Tiled(const SETTINGS_LAYOUT::s_rect& rect,
+        const SETTINGS_PNG::s_rgba_image& image);
+    void Draw_Sprite_9Slice(const SETTINGS_LAYOUT::s_rect& rect,
+        const SETTINGS_PNG::s_rgba_image& image, int16_t border);
 
     // Mouse helpers for hover / pressed visuals.
     bool Point_In_Rect(int16_t px, int16_t py, const SETTINGS_LAYOUT::s_rect& rect);
