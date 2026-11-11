@@ -50,6 +50,25 @@ namespace SETTINGS_BACKGROUND {
             return *state >> 8;
         }
 
+        // A per-pixel hash in [0, 1): the gradient's dither.
+        // The ramp has only 64 steps, so the vertical gradient
+        // quantizes into ~11-row horizontal bands -- a visible
+        // repeating pattern (Tom, 2026-11-11: the texture must
+        // NOT visibly repeat). Dithering the quantization with
+        // this hash dissolves the band edges into per-pixel
+        // variation with NO repeat period (a Bayer matrix would
+        // repeat every 8 px; a hash has no period at all). The
+        // amplitude is under one ramp step, so the gradient stays
+        // smooth on average and reads as organic, not noisy.
+        double Hash_Dither(int32_t x, int32_t y) {
+            uint32_t h = (uint32_t)x * 374761393u +
+                (uint32_t)y * 668265263u;
+            h ^= h >> 13;
+            h *= 1274126177u;
+            h ^= h >> 16;
+            return (double)(h & 0xFFFFu) / 65536.0;
+        }
+
         struct s_star {
             int32_t x;
             int32_t y;
@@ -129,7 +148,8 @@ namespace SETTINGS_BACKGROUND {
                     const double edge =
                         (ex * ex + ey * ey) / 2.0; // 0 centre, 1 corner
                     const double vignette = edge * edge * 9.0;
-                    double index = base + glow - vignette;
+                    double index = base + glow - vignette +
+                        (Hash_Dither(x, y) - 0.5);
                     if (index < 0.0) {
                         index = 0.0;
                     }

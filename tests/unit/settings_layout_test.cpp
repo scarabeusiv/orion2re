@@ -111,14 +111,14 @@ namespace {
         // the bar's borders.
         CHECK(layout.tab_bar.x == 13);
         CHECK(layout.tab_bar.y == 439);
-        CHECK(layout.tab_bar.w == 428);
+        CHECK(layout.tab_bar.w == 400);
         CHECK(layout.tab_bar.h == 31);
         CHECK(layout.tabs[0].x == 13);
-        CHECK(layout.tabs[0].w == 202);
-        CHECK(layout.tabs[1].x == 215);
-        CHECK(layout.tabs[1].w == 135);
-        CHECK(layout.tabs[2].x == 350);
-        CHECK(layout.tabs[2].w == 91);
+        CHECK(layout.tabs[0].w == 189);
+        CHECK(layout.tabs[1].x == 202);
+        CHECK(layout.tabs[1].w == 126);
+        CHECK(layout.tabs[2].x == 328);
+        CHECK(layout.tabs[2].w == 85);
         CHECK(Rect_Right(layout.tabs[2]) == Rect_Right(layout.tab_bar));
         CHECK(layout.tabs[0].w > layout.tabs[1].w);
         CHECK(layout.tabs[1].w > layout.tabs[2].w);
@@ -140,11 +140,16 @@ namespace {
         CHECK(layout.scrollbar.h == 340);
         CHECK(layout.list.w == 601);
         // MORE / RETURN at the bottom bar's right end, same size,
-        // spanning the bar's full height.
-        CHECK(layout.show_more.x == 449);
-        CHECK(layout.show_more.w == 85);
-        CHECK(layout.done.x == 542);
-        CHECK(layout.done.w == 85);
+        // spanning the bar's full height. The width (99 at 640) fits
+        // RETURN's label (~79 px at button cell 18, measured from the
+        // screenshot) with ~8 px of margin inside the button's borders
+        // on each side (Tom, 2026-11-11: RETURN was tight/clipped
+        // against the frame's right edge at 85 px); the tabs give up
+        // the width.
+        CHECK(layout.show_more.x == 421);
+        CHECK(layout.show_more.w == 99);
+        CHECK(layout.done.x == 528);
+        CHECK(layout.done.w == 99);
         CHECK(layout.show_more.h == 31);
         CHECK(layout.done.h == 31);
         CHECK(layout.show_more.y == 439);

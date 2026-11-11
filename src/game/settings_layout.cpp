@@ -61,9 +61,13 @@ namespace SETTINGS_LAYOUT {
         constexpr int32_t kValue_Gap = 10;
         constexpr int32_t kBottom_Gap = 12;
         // MORE and RETURN are the SAME width: one button width,
-        // sized for the longer label (RETURN), so the two buttons
-        // at the bottom bar's right end do not differ.
-        constexpr int32_t kBottom_Button_W = 133;
+        // sized for the longer label (RETURN) plus a clear margin
+        // on both sides -- RETURN's label is ~79 px at 640, so
+        // 99 px leaves ~8 px of margin inside the button's
+        // borders (Tom, 2026-11-11: RETURN was tight/clipped
+        // against the frame's right edge at 85 px). The tabs
+        // give up the width.
+        constexpr int32_t kBottom_Button_W = 155;
         // MORE / RETURN / tab button height, permille of the height:
         // the full bottom-bar height (the hit area), so the buttons'
         // rects are the bar's rects (they meet the divider above
