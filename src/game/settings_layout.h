@@ -46,8 +46,11 @@ namespace SETTINGS_LAYOUT {
     // tabs -- one continuous band, like the colony's SORT band)
     // and MORE and RETURN at the right end, the SAME width
     // (0.133, sized for the longer label) with a 0.012 gap between
-    // them. The buttons span the bar's full height, so their
-    // borders meet the divider above and the outer frame below.
+    // them. The button rects span the bar's full height (the hit
+    // area); the drawn buttons sit below the bar's top divider, so
+    // their top borders meet the divider's bottom line and the
+    // divider runs the full width above them (the sample's
+    // continuous divider), and their bottoms meet the outer frame.
     // The list's rows span the content width minus the scrollbar
     // strip (0.020 wide, at the content's right edge, touching
     // the list with no gap) -- the strip is chunky, like the

@@ -1454,16 +1454,19 @@ namespace SETTINGS_SCREEN {
             const SETTINGS_LAYOUT::s_rect popup{x, y, w, h};
             // Opaque interior: the popup floats over the list rows,
             // and their labels must not show through it (the edit
-            // overpaint is opaque for the same reason).
-            Solid_Fill(popup, kPanel_Fill);
-            // The border around the open list is a bevelled frame,
-            // like the original GAME SETTINGS dialog's list box
-            // (GAME.LBX entry 29, measured): a bright ridge with a
-            // darker line inside it -- not a flat 1 px line (the
+            // overpaint is opaque for the same reason). The border
+            // around the open list is a bevelled frame, like the
+            // original GAME SETTINGS dialog's list box (GAME.LBX
+            // entry 29, measured): a bright ridge with a darker
+            // line inside it -- not a flat 1 px line (the
             // pixel-era point 14). The industrial frame draws it:
             // the dark outer border, the light inner line, on all
-            // four sides.
-            Frame(popup, thickness);
+            // four sides. Its corners are rounded like the value
+            // boxes (2 at 640) -- the popup is a list of values,
+            // so it takes their radius, not the plates'.
+            Rounded_Frame(popup, thickness,
+                SETTINGS_RENDER::Scaled_Radius(Layout().width, 2),
+                kPanel_Fill);
             const int16_t text_x = (int16_t)(x + thickness + pad);
             for (size_t index = 0; index < g_state.popup_labels.size();
                 ++index) {
@@ -1498,6 +1501,15 @@ namespace SETTINGS_SCREEN {
             const int16_t pad = Text_Pad(layout.width);
             const int16_t thickness =
                 SETTINGS_RENDER::Frame_Thickness(layout.width);
+            // Corner radii (640-space, scaled): the sample's value
+            // boxes are barely round (2), the header plates and
+            // the bottom-bar buttons clearly round (4).
+            const int16_t value_radius =
+                SETTINGS_RENDER::Scaled_Radius(layout.width, 2);
+            const int16_t plate_radius =
+                SETTINGS_RENDER::Scaled_Radius(layout.width, 4);
+            const int16_t button_radius =
+                SETTINGS_RENDER::Scaled_Radius(layout.width, 4);
             using namespace SETTINGS_RENDER;
 
             // The elements' borders blend into one continuous
@@ -1510,22 +1522,25 @@ namespace SETTINGS_SCREEN {
             // each element draws its own border as part of
             // itself). Interiors are clean flat fills: no dither,
             // no speckle inside an element.
-            const int16_t content_inner_x =
-                (int16_t)(layout.content.x + thickness);
-            const int16_t content_inner_right =
-                (int16_t)(SETTINGS_LAYOUT::Rect_Right(layout.content) -
-                    thickness);
+            //
+            // The outer border is the sample's THICK metal frame
+            // (Tom, 2026-11-11): four bevelled bands from the
+            // screen edge to the content rect, with rivets -- the
+            // content margins ARE the frame. The content rect's
+            // own edge is the frame's bright inner line, so the
+            // panel face fills the whole content rect, and every
+            // divider runs to the content rect and ties into the
+            // frame instead of stopping 2 px short of it.
+            const int16_t content_x = layout.content.x;
+            const int16_t content_right =
+                SETTINGS_LAYOUT::Rect_Right(layout.content);
             // One continuous frame around the whole content, and
             // the band dividers (header/list, list/description,
             // description/bottom bar). The face is the panel's
             // own clean fill: the screen reads as one machine
             // panel, not as boxes on a background.
-            Blend_Fill(SETTINGS_LAYOUT::s_rect{content_inner_x,
-                (int16_t)(layout.content.y + thickness),
-                (int16_t)(content_inner_right - content_inner_x),
-                (int16_t)(layout.content.h - 2 * thickness)},
-                kPanel_Fill, kPanel_Alpha);
-            Frame(layout.content, thickness);
+            Blend_Fill(layout.content, kPanel_Fill, kPanel_Alpha);
+            Outer_Frame(layout.content, layout.width, layout.height);
             // A horizontal divider: a light line over a dark line
             // (the colony's row-separator tones, measured), so the
             // bands read as the colony's list rows do.
@@ -1535,33 +1550,32 @@ namespace SETTINGS_SCREEN {
                 Solid_Fill(SETTINGS_LAYOUT::s_rect{x0, (int16_t)(y + 1),
                     (int16_t)(x1 - x0), 1}, kDivider_Dark);
             };
-            divider(layout.list.y, content_inner_x,
-                content_inner_right);
-            divider(layout.description.y, content_inner_x,
-                content_inner_right);
-            divider(layout.bottom_bar.y, content_inner_x,
-                content_inner_right);
+            divider(layout.list.y, content_x, content_right);
+            divider(layout.description.y, content_x, content_right);
+            divider(layout.bottom_bar.y, content_x, content_right);
             // The scrollbar strip's left edge: the vertical
             // divider between the list and the strip, running
             // the strip's full height (header band to list
-            // bottom). Its right edge is the outer frame; its
-            // top and bottom edges are the frame and the
-            // list/description divider.
+            // bottom) -- from the frame's inner line at the top,
+            // so the strip plugs into the frame. Its right edge
+            // is the outer frame; its top and bottom edges are
+            // the frame and the list/description divider.
             auto vdivider = [&](int16_t x, int16_t y0, int16_t y1) {
                 Solid_Fill(SETTINGS_LAYOUT::s_rect{x, y0, 1,
                     (int16_t)(y1 - y0)}, kDivider_Light);
                 Solid_Fill(SETTINGS_LAYOUT::s_rect{(int16_t)(x + 1),
                     y0, 1, (int16_t)(y1 - y0)}, kDivider_Dark);
             };
-            vdivider(layout.scrollbar.x,
-                (int16_t)(layout.content.y + thickness + 1),
+            vdivider(layout.scrollbar.x, layout.content.y,
                 SETTINGS_LAYOUT::Rect_Bottom(layout.list));
             // The row separators run to the list's right edge
-            // (the strip's divider), not across the strip.
+            // (the strip's divider), not across the strip -- and
+            // from the frame's inner line on the left, so they
+            // tie into the frame.
             const int16_t list_right = layout.list.x + layout.list.w;
             const int page_rows = Page_Count();
             for (int index = 1; index < page_rows; ++index) {
-                divider(Visible_Row_Rect(index).y, content_inner_x,
+                divider(Visible_Row_Rect(index).y, content_x,
                     list_right);
             }
             // The EMPTY rows (below the last option, when the
@@ -1570,7 +1584,7 @@ namespace SETTINGS_SCREEN {
             for (int slot = Visible_Slot(page_rows);
                 slot < ROWS_PER_PAGE; ++slot) {
                 divider(SETTINGS_LAYOUT::Row_Rect(layout, slot).y,
-                    content_inner_x, list_right);
+                    content_x, list_right);
             }
 
             // Header: two bevelled grey plates, SETTING and VALUE
@@ -1582,7 +1596,8 @@ namespace SETTINGS_SCREEN {
             // The inset is the frame thickness plus one: the
             // plates sit tight under the frame's top inner line
             // and clear of its side inner lines, like the colony's
-            // plates sit tight under its frame.
+            // plates sit tight under its frame. Their corners are
+            // cut to the sample's clearly-round plates.
             const int16_t plate_inset = (int16_t)(thickness + 1);
             const SETTINGS_LAYOUT::s_rect setting_plate{
                 (int16_t)(layout.header_setting.x + plate_inset),
@@ -1594,8 +1609,8 @@ namespace SETTINGS_SCREEN {
                 (int16_t)(layout.header.y + plate_inset),
                 (int16_t)(layout.header_value.w - 2 * plate_inset),
                 (int16_t)(layout.header.h - 2 * plate_inset)};
-            Plate(setting_plate);
-            Plate(value_plate);
+            Plate(setting_plate, plate_radius);
+            Plate(value_plate, plate_radius);
             const int header_cell = Text_Cell_For(layout.header.h, 62);
             const int16_t header_y =
                 (int16_t)(setting_plate.y +
@@ -1694,9 +1709,13 @@ namespace SETTINGS_SCREEN {
                 // sample's inset value boxes (Tom, 2026-11-11),
                 // embedded and flat, depressed into the surface
                 // rather than a raised button on top of it. The
-                // star and the dropdowns sit inside the slot.
-                Blend_Fill(value_rect, kControl_Fill, kControl_Alpha);
-                Sunken_Frame(value_rect, thickness);
+                // star and the dropdowns sit inside the slot. Its
+                // corners are cut to the sample's barely-round
+                // boxes, and the face is filled rounded too, so
+                // its corners do not stick out past the ring.
+                Rounded_Blend_Fill(value_rect, value_radius,
+                    kControl_Fill, kControl_Alpha);
+                Sunken_Frame(value_rect, thickness, value_radius);
                 // The value: toggles and mods show the star (4e);
                 // dropdowns and edits show their text. A dropdown
                 // is a hardened display: like the colony's value
@@ -1834,7 +1853,9 @@ namespace SETTINGS_SCREEN {
             // borders: inset from the strip's divider on the left
             // and the frame's inner line on the right, below the
             // frame's inner line on top (up) and above the
-            // list/description divider on the bottom (down).
+            // list/description divider on the bottom (down). The
+            // faces run to the content rect's edges, so they plug
+            // into the thick outer frame and the band dividers.
             // The triangle is the colony's size in the zone
             // (~7 px wide, ~11 tall at 640x480): its base spans
             // the face's width, its height half the face's
@@ -1847,9 +1868,9 @@ namespace SETTINGS_SCREEN {
                     : (hover ? kArrow_Face_Hover : kArrow_Face);
                 const int16_t face_x0 =
                     (int16_t)(layout.scrollbar.x + 2);
-                const int16_t face_x1 = content_inner_right - 1;
+                const int16_t face_x1 = content_right;
                 const int16_t face_y0 = up
-                    ? (int16_t)(layout.content.y + thickness + 1)
+                    ? layout.content.y
                     : (int16_t)(SETTINGS_LAYOUT::Rect_Bottom(
                         layout.scrollbar_track) + 2);
                 const int16_t face_y1 = up
@@ -1971,81 +1992,133 @@ namespace SETTINGS_SCREEN {
             // band: dark-navy inactive tabs, the active tab dark
             // navy at its edges with the vivid blue band behind
             // its label, all sharing one continuous band (no gaps
-            // between tabs) and spanning the bar's full height,
-            // so their borders are the bar's borders. MORE and
-            // RETURN are the colony's RETURN / the main menu's
-            // grey bevelled buttons, with black labels. No halos:
-            // the tie-together's orange glow and blue bloom were
+            // between tabs). The buttons sit BELOW the bar's top
+            // divider -- their top borders meet the divider's
+            // bottom line, they do not paint over it, so the
+            // divider runs the full width above them (the
+            // sample's divider is continuous) -- and their bottoms
+            // meet the outer frame. MORE and RETURN are the
+            // colony's RETURN / the main menu's grey bevelled
+            // buttons, with black labels, their corners cut to
+            // the sample's round buttons. No halos: the
+            // tie-together's orange glow and blue bloom were
             // invented, not the original game's -- a pressed
             // button darkens and its label drops 1 px, like the
             // original's pressed frame.
             const int button_cell =
                 Text_Cell_For(layout.show_more.h, 60);
+            // The divider's height: its light line plus its dark
+            // line. The layout rect is the hit area; the draw
+            // rect is the visible button, below the divider.
+            const int16_t divider_h = 2;
             auto draw_button = [&](const SETTINGS_LAYOUT::s_rect& rect,
-                const char* label, bool active, bool grey) {
+                const char* label, bool active, bool grey,
+                uint8_t corners) {
                 const bool pressed = Is_Pressed(rect);
                 const bool hover = !pressed && Is_Hover(rect);
-                const int16_t text_y = (int16_t)(rect.y +
-                    (rect.h - button_cell) / 2 + (pressed ? 1 : 0));
+                const SETTINGS_LAYOUT::s_rect draw{
+                    rect.x, (int16_t)(rect.y + divider_h), rect.w,
+                    (int16_t)(rect.h - divider_h)};
+                const int16_t text_y = (int16_t)(draw.y +
+                    (draw.h - button_cell) / 2 + (pressed ? 1 : 0));
                 if (grey) {
                     // A grey metal button: an opaque face, the
                     // industrial frame, a 1 px top sheen (not
-                    // when pressed), a black label.
+                    // when pressed), a black label -- all rounded
+                    // to the sample's round buttons.
                     const s_rgb face = pressed ? kGreyButton_Pressed
                         : (hover ? kGreyButton_Hover : kGreyButton_Face);
-                    Solid_Fill(rect, face);
-                    Frame(rect, thickness);
+                    Rounded_Frame(draw, thickness, button_radius,
+                        face);
                     if (!pressed) {
                         Blend_Fill(SETTINGS_LAYOUT::s_rect{
-                            (int16_t)(rect.x + thickness),
-                            (int16_t)(rect.y + thickness),
-                            (int16_t)(rect.w - 2 * thickness), 1},
+                            (int16_t)(draw.x + thickness),
+                            (int16_t)(draw.y + thickness),
+                            (int16_t)(draw.w - 2 * thickness), 1},
                             s_rgb{255, 255, 255}, 40);
                     }
-                    Draw_Text((int16_t)(rect.x + rect.w / 2), text_y,
+                    Draw_Text((int16_t)(draw.x + draw.w / 2), text_y,
                         label, kGreyButton_Text, button_cell, 1);
                     return;
                 }
-                // A category tab: the colony's SORT band.
+                // A category tab: the colony's SORT band. The tabs
+                // share one continuous band: their fills tile it,
+                // the dividers between them are single shared
+                // lines (drawn after the fills, below), and only
+                // the band's outer corners are rounded -- the
+                // sample's SORT / Gameplay / Mods corners. The
+                // tab's own border is the bar's divider above and
+                // the outer frame below, not a frame of its own:
+                // the old per-tab frames doubled the borders
+                // between tabs.
                 if (active) {
                     // Dark navy at the top and bottom, the vivid
                     // blue band behind the label in the middle
                     // (the colony's active tab is vivid behind
-                    // its label, navy at the edges).
+                    // its label, navy at the edges). Each part
+                    // rounds only the corners that fall in it:
+                    // the top part the top corners, the bottom
+                    // part the bottom corners, the vivid band
+                    // none.
                     const s_rgb vivid = pressed ? kTab_Active_Pressed
                         : kActive_Fill;
                     const int16_t band_h =
                         (int16_t)(button_cell + 4);
-                    const int16_t band_y = (int16_t)(rect.y +
-                        (rect.h - band_h) / 2);
-                    Blend_Fill(SETTINGS_LAYOUT::s_rect{rect.x, rect.y,
-                        rect.w, (int16_t)(band_y - rect.y)},
-                        kTab_Inactive, kActive_Alpha);
-                    Blend_Fill(SETTINGS_LAYOUT::s_rect{rect.x, band_y,
-                        rect.w, band_h}, vivid, kActive_Alpha);
-                    Blend_Fill(SETTINGS_LAYOUT::s_rect{rect.x,
-                        (int16_t)(band_y + band_h), rect.w,
-                        (int16_t)(rect.y + rect.h - band_y - band_h)},
-                        kTab_Inactive, kActive_Alpha);
-                    Frame(rect, thickness);
-                    Draw_Text((int16_t)(rect.x + rect.w / 2), text_y,
+                    const int16_t band_y = (int16_t)(draw.y +
+                        (draw.h - band_h) / 2);
+                    Rounded_Blend_Fill(
+                        SETTINGS_LAYOUT::s_rect{draw.x, draw.y,
+                        draw.w, (int16_t)(band_y - draw.y)},
+                        button_radius, kTab_Inactive, kActive_Alpha,
+                        (uint8_t)(corners & 0x3));
+                    Rounded_Blend_Fill(
+                        SETTINGS_LAYOUT::s_rect{draw.x, band_y,
+                        draw.w, band_h}, button_radius, vivid,
+                        kActive_Alpha, 0);
+                    Rounded_Blend_Fill(SETTINGS_LAYOUT::s_rect{draw.x,
+                        (int16_t)(band_y + band_h), draw.w,
+                        (int16_t)(draw.y + draw.h - band_y - band_h)},
+                        button_radius, kTab_Inactive, kActive_Alpha,
+                        (uint8_t)(corners & 0xC));
+                    Draw_Text((int16_t)(draw.x + draw.w / 2), text_y,
                         label, kText_Header, button_cell, 1);
                 } else {
                     const s_rgb face = pressed ? kTab_Inactive_Pressed
                         : (hover ? kTab_Inactive_Hover : kTab_Inactive);
-                    Blend_Fill(rect, face, kActive_Alpha);
-                    Frame(rect, thickness);
-                    Draw_Text((int16_t)(rect.x + rect.w / 2), text_y,
+                    Rounded_Blend_Fill(draw, button_radius, face,
+                        kActive_Alpha, corners);
+                    Draw_Text((int16_t)(draw.x + draw.w / 2), text_y,
                         label, kText_Bright, button_cell, 1);
                 }
             };
+            // The tabs' outer corners: the first tab rounds its
+            // left corners, the last its right corners, the middle
+            // none -- the band's corners are the outer ones.
+            const uint8_t tab_corners[3] = {0x9, 0x0, 0x6};
             for (int category = 0; category < CATEGORY_COUNT; ++category) {
                 draw_button(layout.tabs[category],
                     CATEGORY_LABELS[category],
-                    category == g_state.category, false);
+                    category == g_state.category, false,
+                    tab_corners[category]);
             }
-            draw_button(layout.show_more, "MORE", false, true);
-            draw_button(layout.done, "RETURN", false, true);
+            draw_button(layout.show_more, "MORE", false, true, 0xF);
+            draw_button(layout.done, "RETURN", false, true, 0xF);
+            // The shared dividers between the tabs and at the
+            // band's right end: single light-over-dark lines,
+            // spanning the buttons' height (below the bar's
+            // divider, down to the frame) -- the buttons connect
+            // to each other and to the frame.
+            const int16_t buttons_y0 =
+                (int16_t)(layout.bottom_bar.y + divider_h);
+            const int16_t buttons_y1 =
+                SETTINGS_LAYOUT::Rect_Bottom(layout.bottom_bar);
+            for (int category = 1; category < CATEGORY_COUNT;
+                ++category) {
+                vdivider(layout.tabs[category].x, buttons_y0,
+                    buttons_y1);
+            }
+            vdivider(SETTINGS_LAYOUT::Rect_Right(layout.tab_bar),
+                buttons_y0, buttons_y1);
 
             // The open dropdown popup floats over the list: drawn
             // after the rows and the bottom bar, so it paints over
@@ -2060,14 +2133,18 @@ namespace SETTINGS_SCREEN {
             // opaque fill and draw the live text (the field
             // system's continuous string, cursor "_" included) in
             // the HD font, showing the tail when the text is wider
-            // than the rect so the cursor stays visible.
+            // than the rect so the cursor stays visible. The erase
+            // and the frame are rounded like the value box: the
+            // field text is padded and centred, so no glyph pixel
+            // reaches the cut corners.
             if (g_state.editing_row >= 0) {
                 const int edit_index = g_state.editing_row - Scroll_Top();
                 if (edit_index >= 0 && edit_index < Page_Count()) {
                     const SETTINGS_LAYOUT::s_rect edit_rect =
                         Visible_Value_Rect(edit_index);
-                    Solid_Fill(edit_rect, kEdit_Fill);
-                    Sunken_Frame(edit_rect, thickness);
+                    Rounded_Solid_Fill(edit_rect, value_radius,
+                        kEdit_Fill);
+                    Sunken_Frame(edit_rect, thickness, value_radius);
                     std::string text = fields::continuous_string;
                     auto edit_measure = [&](const std::string& s) {
                         return Text_Width(s.c_str(), value_cell);

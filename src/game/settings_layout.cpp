@@ -23,10 +23,11 @@ namespace SETTINGS_LAYOUT {
         // into one continuous frame, close to how the rest of
         // the interfaces are done -- not separate floating
         // boxes with gaps. The list absorbs the freed space.
-        // The bottom-bar buttons span the bar's full height,
-        // so their borders meet the divider above and the
-        // outer frame below (the colony's SORT band fills its
-        // bar the same way); the tabs tile their strip with
+        // The bottom-bar button rects span the bar's full height
+        // (the hit area); the drawn buttons sit below the bar's
+        // top divider, so their borders meet the divider above
+        // and the outer frame below (the colony's SORT band fills
+        // its bar the same way); the tabs tile their strip with
         // no gap between them, one continuous band.
         constexpr int32_t kMargin_Y = 20;
         constexpr int32_t kGap_Y = 0;
@@ -64,10 +65,12 @@ namespace SETTINGS_LAYOUT {
         // at the bottom bar's right end do not differ.
         constexpr int32_t kBottom_Button_W = 133;
         // MORE / RETURN / tab button height, permille of the height:
-        // the full bottom-bar height, so the buttons' borders are
-        // the bar's borders (they meet the divider above and the
-        // outer frame below, and the corner buttons tie into the
-        // mechanical frame the elements' borders form).
+        // the full bottom-bar height (the hit area), so the buttons'
+        // rects are the bar's rects (they meet the divider above
+        // and the outer frame below, and the corner buttons tie
+        // into the mechanical frame the elements' borders form).
+        // The drawn buttons sit 2 px below the divider -- see
+        // Draw_Elements -- so the divider stays visible above them.
         constexpr int32_t kButton_H = 64;
 
         // A tab's width weight is its label length plus this

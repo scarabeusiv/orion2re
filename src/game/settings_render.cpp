@@ -26,15 +26,6 @@ namespace SETTINGS_RENDER {
         // The engine font style the HD font decodes from.
         constexpr int kFont_Style = 4;
 
-        // Frame palette (menu palette; the background ramp owns
-        // 160-223, so these stay clear of it): the colony's outer
-        // frame is dark outside (20..52, menu 230 is (36, 36, 40))
-        // and light inside (88..112, menu 237 is (96, 96, 104)).
-        // The frame is a dark outer border with a light inner
-        // line -- not the light-outer bevel the tie-together had.
-        constexpr uint8_t kFrame_Outer = 230;
-        constexpr uint8_t kFrame_Inner = 237;
-
         // Alpha levels for text coverage: coverage is quantized to
         // 32 levels so the blend tables stay bounded (one table per
         // colour per level, built once and reused every frame).
@@ -179,6 +170,28 @@ namespace SETTINGS_RENDER {
         // (The sprite blits that used a cached variant are gone
         // with the PNG sprites.)
 
+        // The corner inset of a rounded rect: how far the span
+        // starts in from the rect's edge, on a corner row `i`
+        // rows in from the corner's outer edge (0-based). The arc
+        // is the quarter circle of radius r centred at (r, r) in
+        // the corner square; a pixel is in when its centre is
+        // inside the circle. r 4 cuts 2, 1, 0, 0 px off the four
+        // corner rows; r 2 cuts 1, 0 -- the sample's barely-round
+        // value boxes.
+        int16_t Corner_Inset(int16_t r, int16_t i) {
+            if (r <= 1 || i < 0 || i >= r) {
+                return 0;
+            }
+            const double dy = (double)r - (double)i - 0.5;
+            const double edge = (double)r -
+                std::sqrt((double)r * (double)r - dy * dy);
+            const int16_t inset = (int16_t)std::ceil(edge - 0.5);
+            if (inset < 0) {
+                return 0;
+            }
+            return inset > r ? r : inset;
+        }
+
     } // namespace
 
     int16_t Frame_Thickness(int16_t screen_width) {
@@ -190,6 +203,15 @@ namespace SETTINGS_RENDER {
             return 6;
         }
         return thickness;
+    }
+
+    int16_t Scaled_Radius(int16_t screen_width, int16_t base_radius) {
+        if (base_radius <= 0 || screen_width <= 0) {
+            return 1;
+        }
+        const int16_t radius =
+            (int16_t)((base_radius * screen_width + 320) / 640);
+        return radius < 1 ? 1 : radius;
     }
 
     void Reset() {
@@ -399,22 +421,174 @@ namespace SETTINGS_RENDER {
             (int16_t)(rect.y + rect.h - 1), Nearest_Index(color));
     }
 
-    void Frame(const SETTINGS_LAYOUT::s_rect& rect, int16_t thickness) {
-        if (rect.w <= 0 || rect.h <= 0 || thickness <= 0) {
+    bool Rounded_Row_Span(const SETTINGS_LAYOUT::s_rect& rect,
+        int16_t radius, uint8_t corners, int16_t y, int16_t& x0,
+        int16_t& x1) {
+        if (rect.w <= 0 || rect.h <= 0 || y < rect.y ||
+            y >= (int16_t)(rect.y + rect.h)) {
+            return false;
+        }
+        if (radius > rect.w / 2) {
+            radius = (int16_t)(rect.w / 2);
+        }
+        if (radius > rect.h / 2) {
+            radius = (int16_t)(rect.h / 2);
+        }
+        x0 = rect.x;
+        x1 = (int16_t)(rect.x + rect.w);
+        if (radius > 0) {
+            if (y < (int16_t)(rect.y + radius)) {
+                const int16_t i = (int16_t)(y - rect.y);
+                if ((corners & 0x1) != 0) {
+                    x0 = (int16_t)(x0 + Corner_Inset(radius, i));
+                }
+                if ((corners & 0x2) != 0) {
+                    x1 = (int16_t)(x1 - Corner_Inset(radius, i));
+                }
+            } else if (y >= (int16_t)(rect.y + rect.h - radius)) {
+                const int16_t i =
+                    (int16_t)(rect.y + rect.h - 1 - y);
+                if ((corners & 0x8) != 0) {
+                    x0 = (int16_t)(x0 + Corner_Inset(radius, i));
+                }
+                if ((corners & 0x4) != 0) {
+                    x1 = (int16_t)(x1 - Corner_Inset(radius, i));
+                }
+            }
+        }
+        return x1 > x0;
+    }
+
+    void Rounded_Solid_Fill(const SETTINGS_LAYOUT::s_rect& rect,
+        int16_t radius, const s_rgb& color, uint8_t corners) {
+        if (rect.w <= 0 || rect.h <= 0) {
             return;
         }
-        // The colony's bevel: a dark outer border, with a 1 px
-        // light inner line. The outer border is the element's
-        // edge; the inner line is the raised lip inside it.
-        graphics::Box(rect.x, rect.y, rect.w, rect.h, thickness, kFrame_Outer);
-        if (rect.w > 2 * thickness + 2 && rect.h > 2 * thickness + 2) {
-            graphics::Box((int16_t)(rect.x + thickness), (int16_t)(rect.y + thickness),
-                (int16_t)(rect.w - 2 * thickness), (int16_t)(rect.h - 2 * thickness),
-                1, kFrame_Inner);
+        const uint8_t index = Nearest_Index(color);
+        s_page_lock lock;
+        if (video::current_video_page == nullptr) {
+            return;
+        }
+        for (int16_t y = rect.y; y < (int16_t)(rect.y + rect.h); ++y) {
+            int16_t x0 = 0;
+            int16_t x1 = 0;
+            if (Rounded_Row_Span(rect, radius, corners, y, x0, x1)) {
+                Fill_Span(x0, (int16_t)(x1 - 1), y, index);
+            }
         }
     }
 
-    void Sunken_Frame(const SETTINGS_LAYOUT::s_rect& rect, int16_t thickness) {
+    void Rounded_Blend_Fill(const SETTINGS_LAYOUT::s_rect& rect,
+        int16_t radius, const s_rgb& color, int alpha,
+        uint8_t corners) {
+        if (rect.w <= 0 || rect.h <= 0 || alpha <= 0) {
+            return;
+        }
+        if (alpha >= 255) {
+            Rounded_Solid_Fill(rect, radius, color, corners);
+            return;
+        }
+        const std::array<uint8_t, 256>& table = Blend_Table(color, alpha);
+        s_page_lock lock;
+        if (video::current_video_page == nullptr) {
+            return;
+        }
+        const int32_t stride = video::g_screen_res_x;
+        const int32_t screen_h = video::g_screen_res_y;
+        for (int16_t y = rect.y; y < (int16_t)(rect.y + rect.h); ++y) {
+            int16_t x0 = 0;
+            int16_t x1 = 0;
+            if (!Rounded_Row_Span(rect, radius, corners, y, x0, x1)) {
+                continue;
+            }
+            if (y < 0 || y >= screen_h) {
+                continue;
+            }
+            const int16_t cx0 = (int16_t)std::max<int32_t>(0, x0);
+            const int16_t cx1 =
+                (int16_t)std::min<int32_t>(stride - 1, x1 - 1);
+            if (cx1 < cx0) {
+                continue;
+            }
+            uint8_t* row = video::current_video_page +
+                (size_t)y * (size_t)stride + (size_t)cx0;
+            for (int16_t px = cx0; px <= cx1; ++px) {
+                *row = table[*row];
+                ++row;
+            }
+        }
+    }
+
+    void Rounded_Ring(const SETTINGS_LAYOUT::s_rect& rect,
+        int16_t radius, int16_t inset, int16_t width,
+        const s_rgb& color, uint8_t corners) {
+        if (rect.w <= 0 || rect.h <= 0 || width <= 0 || inset < 0) {
+            return;
+        }
+        const int16_t outer_radius =
+            std::max<int16_t>(0, (int16_t)(radius - inset));
+        const int16_t inner_radius =
+            std::max<int16_t>(0, (int16_t)(radius - inset - width));
+        const SETTINGS_LAYOUT::s_rect outer{
+            (int16_t)(rect.x + inset), (int16_t)(rect.y + inset),
+            (int16_t)(rect.w - 2 * inset),
+            (int16_t)(rect.h - 2 * inset)};
+        const SETTINGS_LAYOUT::s_rect inner{
+            (int16_t)(rect.x + inset + width),
+            (int16_t)(rect.y + inset + width),
+            (int16_t)(rect.w - 2 * inset - 2 * width),
+            (int16_t)(rect.h - 2 * inset - 2 * width)};
+        if (outer.w <= 0 || outer.h <= 0) {
+            return;
+        }
+        const uint8_t index = Nearest_Index(color);
+        s_page_lock lock;
+        if (video::current_video_page == nullptr) {
+            return;
+        }
+        for (int16_t y = outer.y;
+            y < (int16_t)(outer.y + outer.h); ++y) {
+            int16_t ox0 = 0;
+            int16_t ox1 = 0;
+            if (!Rounded_Row_Span(outer, outer_radius, corners, y,
+                ox0, ox1)) {
+                continue;
+            }
+            // The inner span, empty when the row is above or below
+            // the inner rect (the ring's top and bottom bands) or
+            // the inner rect has no width there: then the whole
+            // outer span is ring.
+            int16_t ix0 = ox0;
+            int16_t ix1 = ox0;
+            if (inner.w > 0 && inner.h > 0) {
+                Rounded_Row_Span(inner, inner_radius, corners, y,
+                    ix0, ix1);
+            }
+            if (ix0 > ox0) {
+                Fill_Span(ox0,
+                    (int16_t)(std::min(ix0, ox1) - 1), y, index);
+            }
+            if (ix1 < ox1) {
+                Fill_Span((int16_t)std::max(ix1, ox0),
+                    (int16_t)(ox1 - 1), y, index);
+            }
+        }
+    }
+
+    void Rounded_Frame(const SETTINGS_LAYOUT::s_rect& rect,
+        int16_t thickness, int16_t radius, const s_rgb& face) {
+        if (rect.w <= 0 || rect.h <= 0 || thickness <= 0) {
+            return;
+        }
+        // The face first, then the rings over it: the rings only
+        // cover the border, so the face shows through inside.
+        Rounded_Solid_Fill(rect, radius, face);
+        Rounded_Ring(rect, radius, 0, thickness, kFrame_Dark);
+        Rounded_Ring(rect, radius, thickness, 1, kFrame_Light);
+    }
+
+    void Sunken_Frame(const SETTINGS_LAYOUT::s_rect& rect,
+        int16_t thickness, int16_t radius) {
         if (rect.w <= 0 || rect.h <= 0 || thickness <= 0) {
             return;
         }
@@ -424,49 +598,268 @@ namespace SETTINGS_RENDER {
         // left inner lines reuse the outer dark tone, so that side
         // reads as one thick dark edge; the bottom and right get
         // the light inner line, so the slot reads as cut into the
-        // surface rather than sitting on it.
-        graphics::Box(rect.x, rect.y, rect.w, rect.h, thickness, kFrame_Outer);
-        if (rect.w > 2 * thickness + 2 && rect.h > 2 * thickness + 2) {
-            const int16_t x0 = (int16_t)(rect.x + thickness);
-            const int16_t y0 = (int16_t)(rect.y + thickness);
-            const int16_t x1 =
-                (int16_t)(rect.x + rect.w - thickness - 1);
-            const int16_t y1 =
-                (int16_t)(rect.y + rect.h - thickness - 1);
-            graphics::Fill(x0, y0, x1, y0, kFrame_Outer);
-            graphics::Fill(x0, y0, x0, y1, kFrame_Outer);
-            graphics::Fill(x0, y1, x1, y1, kFrame_Inner);
-            graphics::Fill(x1, y0, x1, y1, kFrame_Inner);
+        // surface rather than sitting on it. The inner lines
+        // follow the corner arcs: the top and bottom lines are the
+        // inner rect's own top and bottom row spans, and the side
+        // lines are one pixel at each row's span edge.
+        Rounded_Ring(rect, radius, 0, thickness, kFrame_Dark);
+        const int16_t inner_radius =
+            std::max<int16_t>(0, (int16_t)(radius - thickness));
+        const SETTINGS_LAYOUT::s_rect inner{
+            (int16_t)(rect.x + thickness),
+            (int16_t)(rect.y + thickness),
+            (int16_t)(rect.w - 2 * thickness),
+            (int16_t)(rect.h - 2 * thickness)};
+        if (inner.w <= 0 || inner.h <= 0) {
+            return;
+        }
+        int16_t x0 = 0;
+        int16_t x1 = 0;
+        if (Rounded_Row_Span(inner, inner_radius, 0xF, inner.y,
+            x0, x1)) {
+            Solid_Fill(SETTINGS_LAYOUT::s_rect{x0, inner.y,
+                (int16_t)(x1 - x0), 1}, kFrame_Dark);
+        }
+        if (Rounded_Row_Span(inner, inner_radius, 0xF,
+            (int16_t)(inner.y + inner.h - 1), x0, x1)) {
+            Solid_Fill(SETTINGS_LAYOUT::s_rect{x0,
+                (int16_t)(inner.y + inner.h - 1),
+                (int16_t)(x1 - x0), 1}, kFrame_Light);
+        }
+        const uint8_t dark_index = Nearest_Index(kFrame_Dark);
+        const uint8_t light_index = Nearest_Index(kFrame_Light);
+        s_page_lock lock;
+        if (video::current_video_page == nullptr) {
+            return;
+        }
+        for (int16_t y = (int16_t)(inner.y + 1);
+            y < (int16_t)(inner.y + inner.h - 1); ++y) {
+            if (!Rounded_Row_Span(inner, inner_radius, 0xF, y,
+                x0, x1)) {
+                continue;
+            }
+            Write_Pixel(x0, y, dark_index);
+            Write_Pixel((int16_t)(x1 - 1), y, light_index);
         }
     }
 
-    void Plate(const SETTINGS_LAYOUT::s_rect& rect) {
+    void Plate(const SETTINGS_LAYOUT::s_rect& rect, int16_t radius) {
         if (rect.w <= 0 || rect.h <= 0) {
             return;
         }
         // The colony's header plate: a clean grey face, a
         // dark-then-bright top bevel, dark bottom and sides.
         // The face is a flat fill -- no dither, no speckle.
-        Solid_Fill(rect, kPlate_Face);
-        const int16_t x1 = (int16_t)(rect.x + rect.w - 1);
-        const int16_t y1 = (int16_t)(rect.y + rect.h - 1);
+        // The bevel rows are the plate's own top and bottom row
+        // spans, so they follow the corner arcs; the side
+        // columns are one pixel at each row's span edge, between
+        // the top bevel and the bottom row.
+        Rounded_Solid_Fill(rect, radius, kPlate_Face);
+        int16_t x0 = 0;
+        int16_t x1 = 0;
         if (rect.h >= 3) {
             // Top bevel: dark outer row, bright inner row.
-            Solid_Fill(SETTINGS_LAYOUT::s_rect{rect.x, rect.y,
-                rect.w, 1}, kPlate_Top_Outer);
-            Solid_Fill(SETTINGS_LAYOUT::s_rect{rect.x,
-                (int16_t)(rect.y + 1), rect.w, 1}, kPlate_Top_Inner);
+            if (Rounded_Row_Span(rect, radius, 0xF, rect.y, x0, x1)) {
+                Solid_Fill(SETTINGS_LAYOUT::s_rect{x0, rect.y,
+                    (int16_t)(x1 - x0), 1}, kPlate_Top_Outer);
+            }
+            if (Rounded_Row_Span(rect, radius, 0xF,
+                (int16_t)(rect.y + 1), x0, x1)) {
+                Solid_Fill(SETTINGS_LAYOUT::s_rect{x0,
+                    (int16_t)(rect.y + 1), (int16_t)(x1 - x0), 1},
+                    kPlate_Top_Inner);
+            }
         } else {
-            Solid_Fill(SETTINGS_LAYOUT::s_rect{rect.x, rect.y,
-                rect.w, 1}, kPlate_Top_Inner);
+            if (Rounded_Row_Span(rect, radius, 0xF, rect.y, x0, x1)) {
+                Solid_Fill(SETTINGS_LAYOUT::s_rect{x0, rect.y,
+                    (int16_t)(x1 - x0), 1}, kPlate_Top_Inner);
+            }
         }
-        // Bottom row and side columns, dark.
-        Solid_Fill(SETTINGS_LAYOUT::s_rect{rect.x, y1, rect.w, 1},
-            kPlate_Dark);
-        Solid_Fill(SETTINGS_LAYOUT::s_rect{rect.x, rect.y, 1, rect.h},
-            kPlate_Dark);
-        Solid_Fill(SETTINGS_LAYOUT::s_rect{x1, rect.y, 1, rect.h},
-            kPlate_Dark);
+        // Bottom row, dark.
+        if (Rounded_Row_Span(rect, radius, 0xF,
+            (int16_t)(rect.y + rect.h - 1), x0, x1)) {
+            Solid_Fill(SETTINGS_LAYOUT::s_rect{x0,
+                (int16_t)(rect.y + rect.h - 1), (int16_t)(x1 - x0), 1},
+                kPlate_Dark);
+        }
+        const uint8_t dark_index = Nearest_Index(kPlate_Dark);
+        s_page_lock lock;
+        if (video::current_video_page == nullptr) {
+            return;
+        }
+        for (int16_t y = (int16_t)(rect.y + 2);
+            y < (int16_t)(rect.y + rect.h - 1); ++y) {
+            if (!Rounded_Row_Span(rect, radius, 0xF, y, x0, x1)) {
+                continue;
+            }
+            Write_Pixel(x0, y, dark_index);
+            Write_Pixel((int16_t)(x1 - 1), y, dark_index);
+        }
+    }
+
+    void Disc(int16_t cx, int16_t cy, int16_t radius,
+        const s_rgb& color) {
+        if (radius < 0) {
+            return;
+        }
+        const uint8_t index = Nearest_Index(color);
+        s_page_lock lock;
+        if (video::current_video_page == nullptr) {
+            return;
+        }
+        for (int16_t dy = (int16_t)(-radius); dy <= radius; ++dy) {
+            const int16_t half = (int16_t)std::floor(
+                std::sqrt((double)(radius * radius - dy * dy)));
+            Fill_Span((int16_t)(cx - half), (int16_t)(cx + half),
+                (int16_t)(cy + dy), index);
+        }
+    }
+
+    void Rivet(int16_t cx, int16_t cy, int16_t radius) {
+        if (radius < 2) {
+            Disc(cx, cy, radius, kRivet_Face);
+            return;
+        }
+        Disc(cx, cy, radius, kRivet_Dark);
+        Disc(cx, cy, (int16_t)(radius - 1), kRivet_Face);
+        // The highlight: the top-left of the face catches the light.
+        s_page_lock lock;
+        if (video::current_video_page == nullptr) {
+            return;
+        }
+        Write_Pixel((int16_t)(cx - 1), (int16_t)(cy - 1),
+            Nearest_Index(kRivet_Light));
+    }
+
+    void Outer_Frame(const SETTINGS_LAYOUT::s_rect& content,
+        int16_t screen_width, int16_t screen_height) {
+        if (content.w <= 0 || content.h <= 0 || screen_width <= 0 ||
+            screen_height <= 0) {
+            return;
+        }
+        const int16_t left_t = content.x;
+        const int16_t right_t =
+            (int16_t)(screen_width - (content.x + content.w));
+        const int16_t top_t = content.y;
+        const int16_t bottom_t =
+            (int16_t)(screen_height - (content.y + content.h));
+        const int16_t cx1 = (int16_t)(content.x + content.w);
+        const int16_t cy1 = (int16_t)(content.y + content.h);
+        // A band's bevel, from its outer edge: a dark outer edge,
+        // a mid-grey face, a dark groove, a bright inner line.
+        // The groove and the inner line are fixed widths; the face
+        // takes the rest. (The sample's top band, at 640: dark
+        // 0..2, face 2..6, groove 6..9, bright 9..10.)
+        auto hband = [&](int16_t x, int16_t y, int16_t w, int16_t t,
+            bool bright_first) {
+            if (w <= 0 || t <= 0) {
+                return;
+            }
+            const int16_t outer = t >= 8 ? 2 : 1;
+            const int16_t groove = std::min<int16_t>(3,
+                (int16_t)((t - outer - 1) / 2));
+            const int16_t inner = 1;
+            const int16_t face =
+                (int16_t)(t - outer - groove - inner);
+            int16_t row = y;
+            auto fill_rows = [&](int16_t n, const s_rgb& color) {
+                if (n > 0) {
+                    Solid_Fill(SETTINGS_LAYOUT::s_rect{x, row, w, n},
+                        color);
+                }
+                row = (int16_t)(row + n);
+            };
+            if (bright_first) {
+                // The inner edge is on top (the bottom band).
+                fill_rows(inner, kOuterFrame_Bright);
+                fill_rows(groove, kOuterFrame_Groove);
+                fill_rows(face, kOuterFrame_Face);
+                fill_rows(outer, kOuterFrame_Outer);
+            } else {
+                fill_rows(outer, kOuterFrame_Outer);
+                fill_rows(face, kOuterFrame_Face);
+                fill_rows(groove, kOuterFrame_Groove);
+                fill_rows(inner, kOuterFrame_Bright);
+            }
+        };
+        // A vertical band: the same bevel across its columns.
+        // The side bands also carry a 1 px bright strip inside
+        // the face, a third of the way in from the outer edge --
+        // the light catching the face (the sample's left and right
+        // bands both show it, at ~4 px in from the outer edge).
+        auto vband = [&](int16_t x, int16_t y, int16_t t, int16_t h,
+            bool bright_first) {
+            if (t <= 0 || h <= 0) {
+                return;
+            }
+            const int16_t outer = t >= 8 ? 2 : 1;
+            const int16_t groove = std::min<int16_t>(3,
+                (int16_t)((t - outer - 1) / 2));
+            const int16_t inner = 1;
+            const int16_t face =
+                (int16_t)(t - outer - groove - inner);
+            int16_t col = x;
+            auto fill_cols = [&](int16_t n, const s_rgb& color) {
+                if (n > 0) {
+                    Solid_Fill(SETTINGS_LAYOUT::s_rect{col, y, n, h},
+                        color);
+                }
+                col = (int16_t)(col + n);
+            };
+            if (bright_first) {
+                // The inner edge is on the left (the right band).
+                fill_cols(inner, kOuterFrame_Bright);
+                fill_cols(groove, kOuterFrame_Groove);
+                fill_cols(face, kOuterFrame_Face);
+                fill_cols(outer, kOuterFrame_Outer);
+            } else {
+                fill_cols(outer, kOuterFrame_Outer);
+                fill_cols(face, kOuterFrame_Face);
+                fill_cols(groove, kOuterFrame_Groove);
+                fill_cols(inner, kOuterFrame_Bright);
+            }
+            if (face > 2) {
+                const int16_t strip = bright_first
+                    ? (int16_t)(x + t - 1 - outer - 2)
+                    : (int16_t)(x + outer + 2);
+                Solid_Fill(SETTINGS_LAYOUT::s_rect{strip, y, 1, h},
+                    kOuterFrame_Bright);
+            }
+        };
+        // The top and bottom bands span the full width (their
+        // ends are the screen's corners); the sides run between
+        // them, so the corners belong to one band, not two.
+        hband(0, 0, screen_width, top_t, false);
+        hband(0, cy1, screen_width, bottom_t, true);
+        vband(0, content.y, left_t, content.h, false);
+        vband(cx1, content.y, right_t, content.h, true);
+        // Rivets: one at each corner, then evenly spaced along
+        // each edge. The sample's spacing is irregular
+        // (AI-generated), so even spacing at the sample's ~78 px
+        // pitch is the closest clean reading: 7 along the top
+        // and bottom, 5 along each side.
+        const int16_t rivet_r = std::max<int16_t>(2,
+            (int16_t)(3 * screen_width / 640));
+        const int16_t rcx0 = (int16_t)(left_t / 2);
+        const int16_t rcx1 = (int16_t)(cx1 + right_t / 2);
+        const int16_t rcy0 = (int16_t)(top_t / 2);
+        const int16_t rcy1 = (int16_t)(cy1 + bottom_t / 2);
+        Rivet(rcx0, rcy0, rivet_r);
+        Rivet(rcx1, rcy0, rivet_r);
+        Rivet(rcx0, rcy1, rivet_r);
+        Rivet(rcx1, rcy1, rivet_r);
+        for (int i = 1; i <= 7; ++i) {
+            const int16_t x =
+                (int16_t)(rcx0 + (rcx1 - rcx0) * i / 8);
+            Rivet(x, rcy0, rivet_r);
+            Rivet(x, rcy1, rivet_r);
+        }
+        for (int i = 1; i <= 5; ++i) {
+            const int16_t y =
+                (int16_t)(rcy0 + (rcy1 - rcy0) * i / 6);
+            Rivet(rcx0, y, rivet_r);
+            Rivet(rcx1, y, rivet_r);
+        }
     }
 
     void Star(int16_t cx, int16_t cy, int16_t radius, const s_rgb& color,
