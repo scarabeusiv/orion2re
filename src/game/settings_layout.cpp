@@ -156,7 +156,18 @@ namespace SETTINGS_LAYOUT {
         layout.list = s_rect{content_x, list_y,
             (int16_t)(list_right - content_x), list_h};
         layout.scrollbar = s_rect{scrollbar_x, list_y, scrollbar_w, list_h};
-        layout.scrollbar_track = layout.scrollbar;
+        // The arrow zones cap the strip (each twice the strip's
+        // width tall, the colony's ~1:2 arrow aspect); the track
+        // is the strip between them, where the thumb travels.
+        const int16_t arrow_h = (int16_t)(2 * scrollbar_w);
+        layout.scrollbar_arrow_up =
+            s_rect{scrollbar_x, list_y, scrollbar_w, arrow_h};
+        layout.scrollbar_arrow_down = s_rect{scrollbar_x,
+            (int16_t)(list_y + list_h - arrow_h), scrollbar_w, arrow_h};
+        const int16_t track_h =
+            (int16_t)std::max(0, list_h - 2 * arrow_h);
+        layout.scrollbar_track = s_rect{scrollbar_x,
+            (int16_t)(list_y + arrow_h), scrollbar_w, track_h};
 
         // The VALUE zone starts at the same x in the header and
         // in every row, and runs to the list's right edge.

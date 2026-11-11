@@ -53,6 +53,11 @@ namespace SETTINGS_RENDER {
     inline constexpr int kSelection_Alpha = 230;
     inline constexpr s_rgb kThumb_Fill{140, 142, 150};
     inline constexpr int kThumb_Alpha = 230;
+    // The thumb's bevel edges (the colony's indicator bar): a
+    // lighter top/left and a darker bottom/right, around the
+    // thumb fill.
+    inline constexpr s_rgb kThumb_Edge_Light{180, 182, 190};
+    inline constexpr s_rgb kThumb_Edge_Dark{90, 92, 100};
     inline constexpr s_rgb kArrow_Color{200, 205, 212};
     inline constexpr s_rgb kStar_On{235, 200, 90};
     inline constexpr s_rgb kStar_Off{96, 100, 110};
@@ -135,13 +140,5 @@ namespace SETTINGS_RENDER {
     bool Point_In_Rect(int16_t px, int16_t py, const SETTINGS_LAYOUT::s_rect& rect);
     bool Is_Hover(const SETTINGS_LAYOUT::s_rect& rect);
     bool Is_Pressed(const SETTINGS_LAYOUT::s_rect& rect);
-
-    // The drawn thumb rect: the layout thumb inset between the
-    // arrow zones at the strip's ends (arrow_h px each). Empty
-    // (w == 0) when the layout thumb is empty. Hit-testing still
-    // uses the full strip; only the drawn thumb is inset.
-    SETTINGS_LAYOUT::s_rect Scrollbar_Thumb_Draw_Rect(
-        const SETTINGS_LAYOUT::s_rect& thumb,
-        const SETTINGS_LAYOUT::s_rect& strip, int16_t arrow_h);
 
 } // namespace SETTINGS_RENDER

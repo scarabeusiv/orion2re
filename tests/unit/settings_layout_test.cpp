@@ -247,10 +247,10 @@ namespace {
         // at the bottom at the end.
         const s_rect top = Scrollbar_Thumb_Rect(layout, 186, 0, 10);
         CHECK(top.w == layout.scrollbar_track.w);
-        CHECK(top.h == 15);
+        CHECK(top.h == 14);
         CHECK(top.y == layout.scrollbar_track.y);
         const s_rect bottom = Scrollbar_Thumb_Rect(layout, 186, 176, 10);
-        CHECK(bottom.h == 15);
+        CHECK(bottom.h == 14);
         CHECK(Rect_Bottom(bottom) == Rect_Bottom(layout.scrollbar_track));
         const s_rect middle = Scrollbar_Thumb_Rect(layout, 186, 88, 10);
         CHECK(middle.y > top.y);
@@ -260,6 +260,45 @@ namespace {
         const s_rect tiny = Scrollbar_Thumb_Rect(layout, 1000, 500, 10);
         CHECK(tiny.h == 8);
         CHECK(Inside(tiny, layout.scrollbar_track));
+    }
+
+    TEST_CASE("scrollbar arrows cap the strip and the thumb travels the track between them") {
+        const s_settings_layout layout =
+            Compute_Layout(640, 480, 10, kLabel_Lengths);
+        // The arrows are the strip's width and twice as tall
+        // (the colony's ~1:2 arrow aspect: 10x20, 11x22).
+        CHECK(layout.scrollbar_arrow_up.x == layout.scrollbar.x);
+        CHECK(layout.scrollbar_arrow_up.y == layout.scrollbar.y);
+        CHECK(layout.scrollbar_arrow_up.w == layout.scrollbar.w);
+        CHECK(layout.scrollbar_arrow_up.h == 2 * layout.scrollbar.w);
+        CHECK(layout.scrollbar_arrow_up.h == 10);
+        CHECK(layout.scrollbar_arrow_down.x == layout.scrollbar.x);
+        CHECK(layout.scrollbar_arrow_down.w == layout.scrollbar.w);
+        CHECK(layout.scrollbar_arrow_down.h == 2 * layout.scrollbar.w);
+        CHECK(Rect_Bottom(layout.scrollbar_arrow_down) ==
+            Rect_Bottom(layout.scrollbar));
+        // The track is the strip between the arrows.
+        CHECK(layout.scrollbar_track.x == layout.scrollbar.x);
+        CHECK(layout.scrollbar_track.w == layout.scrollbar.w);
+        CHECK(layout.scrollbar_track.y ==
+            layout.scrollbar.y + layout.scrollbar_arrow_up.h);
+        CHECK(Rect_Bottom(layout.scrollbar_track) ==
+            layout.scrollbar_arrow_down.y);
+        CHECK(layout.scrollbar_track.h ==
+            layout.scrollbar.h - 2 * layout.scrollbar_arrow_up.h);
+        CHECK(layout.scrollbar_track.h == 267);
+        // The thumb stays inside the track at both ends.
+        const s_rect top = Scrollbar_Thumb_Rect(layout, 186, 0, 10);
+        CHECK(top.y == layout.scrollbar_track.y);
+        CHECK(Inside(top, layout.scrollbar_track));
+        const s_rect bottom = Scrollbar_Thumb_Rect(layout, 186, 176, 10);
+        CHECK(Rect_Bottom(bottom) == Rect_Bottom(layout.scrollbar_track));
+        CHECK(Inside(bottom, layout.scrollbar_track));
+        // The arrow zones do not overlap the track.
+        CHECK_FALSE(Overlaps(layout.scrollbar_arrow_up,
+            layout.scrollbar_track));
+        CHECK_FALSE(Overlaps(layout.scrollbar_arrow_down,
+            layout.scrollbar_track));
     }
 
     TEST_CASE("dropdown popup anchors to the control and stays in the frame") {
