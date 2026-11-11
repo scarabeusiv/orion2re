@@ -112,10 +112,36 @@ namespace SETTINGS_RENDER {
     // (measured: light lines (112, 112, 112) over dark (60, 60, 60)).
     inline constexpr s_rgb kDivider_Light{112, 112, 112};
     inline constexpr s_rgb kDivider_Dark{60, 60, 60};
+    // The thick mechanical outer frame (Tom, 2026-11-11): the
+    // sample's frame is a thick dark-grey metal band, bevelled
+    // with depth -- a dark outer edge, a mid-grey face, a dark
+    // groove, a bright inner line. Measured from the sample at
+    // 640x480: outer (24..28), face (63..88), groove (31..54),
+    // bright inner line (113..120).
+    inline constexpr s_rgb kOuterFrame_Outer{28, 28, 28};
+    inline constexpr s_rgb kOuterFrame_Face{72, 72, 72};
+    inline constexpr s_rgb kOuterFrame_Groove{44, 44, 44};
+    inline constexpr s_rgb kOuterFrame_Bright{115, 115, 115};
+    // The rivet on the outer frame: a screw head -- a dark rim,
+    // a mid-grey face, a light top-left highlight.
+    inline constexpr s_rgb kRivet_Dark{32, 32, 32};
+    inline constexpr s_rgb kRivet_Face{96, 96, 96};
+    inline constexpr s_rgb kRivet_Light{160, 160, 160};
+    // The industrial frame's tones as s_rgb, for the rounded
+    // frames: the dark outer border and the light inner line.
+    // These ARE menu palette 230 (36, 36, 40) and 237
+    // (96, 96, 104), so Nearest_Index maps them back exactly.
+    inline constexpr s_rgb kFrame_Dark{36, 36, 40};
+    inline constexpr s_rgb kFrame_Light{96, 96, 104};
 
     // Multi-pixel frame thickness for a screen of the given width:
     // 2 px at 640, 4 at 1280, 6 at 1920 and above.
     int16_t Frame_Thickness(int16_t screen_width);
+
+    // A corner radius given in 640-space, scaled to the screen
+    // width: base 2 is 2 px at 640 and 4 at 1280. At least 1, so a
+    // rounded element keeps a cut corner at any resolution.
+    int16_t Scaled_Radius(int16_t screen_width, int16_t base_radius);
 
     // Clear the blend-table and scaled-glyph caches. Call on screen
     // entry, after the background palette is installed (the tables
@@ -149,30 +175,80 @@ namespace SETTINGS_RENDER {
     // Opaque fill in the nearest palette colour to rgb.
     void Solid_Fill(const SETTINGS_LAYOUT::s_rect& rect, const s_rgb& color);
 
-    // The industrial frame: the colony's bevel -- a dark outer
-    // border of Frame_Thickness, plus a 1 px light inner line
-    // (measured from the colony's outer frame: dark outside
-    // (20..52), light inside (88..112)). The frame's own border
-    // is the element's border: adjacent elements share it, so
-    // the borders blend into one continuous mechanical frame.
-    void Frame(const SETTINGS_LAYOUT::s_rect& rect, int16_t thickness);
+    // The horizontal span [x0, x1) of a rounded rect at row y: the
+    // rect's own span on the straight rows, narrowed by the corner
+    // arc on the corner rows. False when y is outside the rect or
+    // the span is empty. `corners` selects which corners are
+    // rounded: bit 0 top-left, 1 top-right, 2 bottom-right,
+    // 3 bottom-left (all four by default); a square corner spans
+    // the rect's full edge.
+    bool Rounded_Row_Span(const SETTINGS_LAYOUT::s_rect& rect,
+        int16_t radius, uint8_t corners, int16_t y, int16_t& x0,
+        int16_t& x1);
+
+    // Opaque / translucent fill of a rounded rect (corners as in
+    // Rounded_Row_Span). The fill follows the corner arcs, so it
+    // never sticks out past a rounded border drawn over it.
+    void Rounded_Solid_Fill(const SETTINGS_LAYOUT::s_rect& rect,
+        int16_t radius, const s_rgb& color, uint8_t corners = 0xF);
+    void Rounded_Blend_Fill(const SETTINGS_LAYOUT::s_rect& rect,
+        int16_t radius, const s_rgb& color, int alpha,
+        uint8_t corners = 0xF);
+
+    // A ring `width` px wide starting `inset` px inside a rounded
+    // rect: a border that follows the corner arcs. inset 0 and
+    // width thickness is the frame's dark outer ring; inset
+    // thickness and width 1 is its light inner line.
+    void Rounded_Ring(const SETTINGS_LAYOUT::s_rect& rect,
+        int16_t radius, int16_t inset, int16_t width,
+        const s_rgb& color, uint8_t corners = 0xF);
+
+    // A raised rounded frame: a rounded face, a dark outer ring
+    // and a 1 px light inner line -- the colony's bevel, round
+    // (the sample's bottom-bar buttons, Tom, 2026-11-11).
+    void Rounded_Frame(const SETTINGS_LAYOUT::s_rect& rect,
+        int16_t thickness, int16_t radius, const s_rgb& face);
 
     // A sunken (recessed) frame: the value box is a depression in
     // the panel, not a raised button -- the sample's inset value
     // boxes (Tom, 2026-11-11). The outer border is the frame's
     // dark edge; inside it the top and left are dark (the shadow
     // of the recess) and the bottom and right are light (the lit
-    // lip) -- the reverse of Frame's raised lip. The box reads as
+    // lip) -- the reverse of a raised frame's lip. The box reads as
     // a slot cut into the surface, flat and embedded, and a
-    // pressed control sinks further into it.
+    // pressed control sinks further into it. `radius` cuts the
+    // corners to the sample's barely-round value boxes (2 at
+    // 640); the face is filled by the caller first, with a
+    // rounded fill, so its corners do not stick out past the ring.
     void Sunken_Frame(const SETTINGS_LAYOUT::s_rect& rect,
-        int16_t thickness);
+        int16_t thickness, int16_t radius);
 
     // A header plate: the colony's bevelled grey plate (SETTING /
     // VALUE), a clean grey face with a dark-then-bright top bevel
     // and dark bottom/sides. The plate is its own element, with
-    // its own border -- it does not borrow the frame's.
-    void Plate(const SETTINGS_LAYOUT::s_rect& rect);
+    // its own border -- it does not borrow the frame's. `radius`
+    // cuts the corners to the sample's clearly-round plates (4 at
+    // 640); the bevel rows follow the arcs.
+    void Plate(const SETTINGS_LAYOUT::s_rect& rect, int16_t radius);
+
+    // A filled disc, centred on (cx, cy).
+    void Disc(int16_t cx, int16_t cy, int16_t radius,
+        const s_rgb& color);
+
+    // A rivet: a screw head on the outer frame -- a dark rim, a
+    // mid-grey face, a light top-left highlight.
+    void Rivet(int16_t cx, int16_t cy, int16_t radius);
+
+    // The thick mechanical outer frame (Tom, 2026-11-11): four
+    // bevelled metal bands from the screen edge to the content
+    // rect -- the content margins ARE the frame -- with circular
+    // rivets at the corners and evenly spaced along the edges.
+    // The content rect's own edge is the frame's bright inner
+    // line, so the panel fill starts at the content rect, not
+    // inside it, and every band divider runs to the content
+    // rect and ties into the frame.
+    void Outer_Frame(const SETTINGS_LAYOUT::s_rect& content,
+        int16_t screen_width, int16_t screen_height);
 
     // Five-point star, centred on (cx, cy), outer radius in px.
     // Filled when `filled` (bool ON); outline only when false
