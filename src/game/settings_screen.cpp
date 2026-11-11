@@ -1554,7 +1554,7 @@ namespace SETTINGS_SCREEN {
                             chevron_right - chevron_w / 2);
                         const int16_t chevron_y = (int16_t)(value_rect.y +
                             (value_rect.h - chevron_h) / 2);
-                        // The chevron is the knob: black while the
+                        // The chevron is the knob: white while the
                         // dropdown is closed, the open blue while
                         // its popup is up -- the colour shift is
                         // the state signal.
