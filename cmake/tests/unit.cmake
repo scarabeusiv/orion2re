@@ -587,6 +587,26 @@ orion2re_add_unit_test(test_settings_layout
         src/game/settings_layout.cpp
 )
 
+orion2re_add_unit_test(test_settings_png
+    SOURCES
+        tests/unit/settings_png_test.cpp
+    PRODUCTION_SOURCES
+        src/game/settings_png.cpp
+        src/game/compat.cpp
+        src/game/vfs.cpp
+        src/game/vfs_file.cpp
+        src/game/vfs_lbx.cpp
+        src/game/vfs_path.cpp
+        src/game/vfs_zip.cpp
+        vendors/yyjson/src/yyjson.c
+    LIBRARIES
+        miniz
+    LINK_SDL
+)
+target_include_directories(test_settings_png PRIVATE
+    "${ORION2RE_VENDORED_YYJSON_DIR}/src"
+)
+
 orion2re_add_unit_test(test_settings_blend
     SOURCES
         tests/unit/settings_blend_test.cpp

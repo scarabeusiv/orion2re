@@ -171,6 +171,194 @@ namespace SETTINGS_RENDER {
             }
         }
 
+        // The nearest palette index for a colour, cached by RGB:
+        // the sprites use a small fixed colour set, so the cache
+        // stays tiny, and the per-pixel opaque path does not pay
+        // a 256-entry palette scan per pixel. Cleared by Reset(),
+        // with the blend tables, when the palette changes.
+        std::map<uint32_t, uint8_t> g_nearest;
+
+        uint8_t Nearest_Index_Cached(const s_rgb& color) {
+            const uint32_t key = ((uint32_t)color.r << 16) |
+                ((uint32_t)color.g << 8) | (uint32_t)color.b;
+            auto found = g_nearest.find(key);
+            if (found != g_nearest.end()) {
+                return found->second;
+            }
+            const uint8_t index = Nearest_Index(color);
+            g_nearest.emplace(key, index);
+            return index;
+        }
+
+        // A one-entry cache for the last blend table: adjacent
+        // pixels usually share a colour/alpha (a dithered face
+        // uses a few shades, a halo a few alpha steps), so the
+        // map lookup is skipped for most pixels.
+        struct s_blend_cache {
+            uint32_t key = 0xFFFFFFFF;
+            const std::array<uint8_t, 256>* table = nullptr;
+
+            uint8_t Blend(uint8_t dst, const s_rgb& color, int alpha) {
+                const uint32_t k = ((uint32_t)color.r << 24) |
+                    ((uint32_t)color.g << 16) |
+                    ((uint32_t)color.b << 8) | (uint32_t)(alpha & 0xFF);
+                if (k != key || table == nullptr) {
+                    table = &Blend_Table(color, alpha);
+                    key = k;
+                }
+                return (*table)[dst];
+            }
+        };
+
+        // Map a destination position to a source position,
+        // preserving the first `preserve` source pixels 1:1 and
+        // scaling the rest. The frame's light outer edge and dark
+        // inner line are the first two source rows/columns, so
+        // preserve 2 keeps them as 1 px lines however the border
+        // scales down; the speckle band scales.
+        int Scale_Preserve(int dst, int dst_len, int src_len,
+            int preserve) {
+            if (dst < preserve) {
+                return dst < src_len ? dst : src_len - 1;
+            }
+            const int src_rest = src_len - preserve;
+            const int dst_rest = dst_len - preserve;
+            if (src_rest <= 0 || dst_rest <= 0) {
+                return src_len - 1;
+            }
+            return preserve + (dst - preserve) * src_rest / dst_rest;
+        }
+
+        // Blend one sprite pixel over the destination pixel.
+        // Alpha is quantized to multiples of 16 (the sprites are
+        // authored with quantized alphas), so the blend-table
+        // cache stays bounded.
+        void Blend_Sprite_Pixel(uint8_t& dst, const uint8_t* pixel,
+            s_blend_cache& cache) {
+            int alpha = (pixel[3] + 8) & ~15;
+            if (alpha <= 0) {
+                return;
+            }
+            if (alpha > 255) {
+                alpha = 255;
+            }
+            const s_rgb color{pixel[0], pixel[1], pixel[2]};
+            if (alpha >= 255) {
+                dst = Nearest_Index_Cached(color);
+                return;
+            }
+            dst = cache.Blend(dst, color, alpha);
+        }
+
+        // Clip a destination rect to the screen; false when empty.
+        bool Clip_Dst(const SETTINGS_LAYOUT::s_rect& dst,
+            int16_t& x0, int16_t& y0, int16_t& x1, int16_t& y1) {
+            const int32_t stride = video::g_screen_res_x;
+            const int32_t screen_h = video::g_screen_res_y;
+            x0 = (int16_t)std::max<int32_t>(0, dst.x);
+            y0 = (int16_t)std::max<int32_t>(0, dst.y);
+            x1 = (int16_t)std::min<int32_t>(stride - 1, dst.x + dst.w - 1);
+            y1 = (int16_t)std::min<int32_t>(screen_h - 1, dst.y + dst.h - 1);
+            return x1 >= x0 && y1 >= y0;
+        }
+
+        // Scale a source sub-rect into a destination rect by
+        // nearest neighbour, alpha-blended. `preserve_x/y` keep
+        // that many leading source pixels 1:1 (the frame edges).
+        void Blit_Scaled(const SETTINGS_LAYOUT::s_rect& dst,
+            const SETTINGS_PNG::s_rgba_image& image,
+            int src_x, int src_y, int src_w, int src_h,
+            int preserve_x, int preserve_y) {
+            if (dst.w <= 0 || dst.h <= 0 || src_w <= 0 || src_h <= 0 ||
+                image.empty()) {
+                return;
+            }
+            s_page_lock lock;
+            if (video::current_video_page == nullptr) {
+                return;
+            }
+            int16_t x0 = 0;
+            int16_t y0 = 0;
+            int16_t x1 = 0;
+            int16_t y1 = 0;
+            if (!Clip_Dst(dst, x0, y0, x1, y1)) {
+                return;
+            }
+            const int32_t stride = video::g_screen_res_x;
+            s_blend_cache cache;
+            for (int16_t py = y0; py <= y1; ++py) {
+                const int sy = src_y + Scale_Preserve(py - dst.y,
+                    dst.h, src_h, preserve_y);
+                uint8_t* row = video::current_video_page +
+                    (size_t)py * (size_t)stride + (size_t)x0;
+                for (int16_t px = x0; px <= x1; ++px) {
+                    const int sx = src_x + Scale_Preserve(px - dst.x,
+                        dst.w, src_w, preserve_x);
+                    const uint8_t* pixel = image.Pixel(sx, sy);
+                    if (pixel != nullptr) {
+                        Blend_Sprite_Pixel(*row, pixel, cache);
+                    }
+                    ++row;
+                }
+            }
+        }
+
+        // Tile a source sub-rect 1:1 across a destination rect,
+        // alpha-blended. A dithered face tiles: the speckle stays
+        // the same grain at any resolution.
+        void Blit_Tiled(const SETTINGS_LAYOUT::s_rect& dst,
+            const SETTINGS_PNG::s_rgba_image& image,
+            int src_x, int src_y, int src_w, int src_h) {
+            if (dst.w <= 0 || dst.h <= 0 || src_w <= 0 || src_h <= 0 ||
+                image.empty()) {
+                return;
+            }
+            s_page_lock lock;
+            if (video::current_video_page == nullptr) {
+                return;
+            }
+            int16_t x0 = 0;
+            int16_t y0 = 0;
+            int16_t x1 = 0;
+            int16_t y1 = 0;
+            if (!Clip_Dst(dst, x0, y0, x1, y1)) {
+                return;
+            }
+            const int32_t stride = video::g_screen_res_x;
+            s_blend_cache cache;
+            for (int16_t py = y0; py <= y1; ++py) {
+                const int sy = src_y + (py - dst.y) % src_h;
+                uint8_t* row = video::current_video_page +
+                    (size_t)py * (size_t)stride + (size_t)x0;
+                for (int16_t px = x0; px <= x1; ++px) {
+                    const int sx = src_x + (px - dst.x) % src_w;
+                    const uint8_t* pixel = image.Pixel(sx, sy);
+                    if (pixel != nullptr) {
+                        Blend_Sprite_Pixel(*row, pixel, cache);
+                    }
+                    ++row;
+                }
+            }
+        }
+
+        // True when a source sub-rect has any non-transparent
+        // pixel: the 9-slice centre tiles only when it is visible
+        // (the frame sprite's centre is transparent -- the border
+        // is the whole sprite -- so tiling it would be a no-op
+        // over the whole interior).
+        bool Region_Visible(const SETTINGS_PNG::s_rgba_image& image,
+            int src_x, int src_y, int src_w, int src_h) {
+            for (int y = src_y; y < src_y + src_h; ++y) {
+                for (int x = src_x; x < src_x + src_w; ++x) {
+                    const uint8_t* pixel = image.Pixel(x, y);
+                    if (pixel != nullptr && pixel[3] > 0) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
     } // namespace
 
     int16_t Frame_Thickness(int16_t screen_width) {
@@ -186,6 +374,7 @@ namespace SETTINGS_RENDER {
 
     void Reset() {
         g_blend_tables.clear();
+        g_nearest.clear();
         g_scaled.clear();
         g_font = s_font_cache{};
     }
@@ -389,6 +578,86 @@ namespace SETTINGS_RENDER {
         }
         graphics::Fill(rect.x, rect.y, (int16_t)(rect.x + rect.w - 1),
             (int16_t)(rect.y + rect.h - 1), Nearest_Index(color));
+    }
+
+    void Draw_Sprite(const SETTINGS_LAYOUT::s_rect& rect,
+        const SETTINGS_PNG::s_rgba_image& image) {
+        if (image.empty()) {
+            return;
+        }
+        Blit_Scaled(rect, image, 0, 0, image.width, image.height, 0, 0);
+    }
+
+    void Draw_Sprite_Tiled(const SETTINGS_LAYOUT::s_rect& rect,
+        const SETTINGS_PNG::s_rgba_image& image) {
+        if (image.empty()) {
+            return;
+        }
+        Blit_Tiled(rect, image, 0, 0, image.width, image.height);
+    }
+
+    void Draw_Sprite_9Slice(const SETTINGS_LAYOUT::s_rect& rect,
+        const SETTINGS_PNG::s_rgba_image& image, int16_t border) {
+        if (rect.w <= 0 || rect.h <= 0 || image.empty() || border <= 0) {
+            return;
+        }
+        // The target border is the frame thickness for this
+        // screen width (2 px at 640, 4 at 1280, 6 at 1920), so
+        // the sprite frame matches the vector frame's weight.
+        const int16_t t = Frame_Thickness(video::g_screen_res_x);
+        const int bw = image.width;
+        const int bh = image.height;
+        const int b = std::min<int>(border, std::min(bw, bh) / 2);
+        if (b <= 0) {
+            return;
+        }
+        // Corners: the source border corners scale to the target
+        // border, preserving the light edge + dark line (2 px).
+        Blit_Scaled(SETTINGS_LAYOUT::s_rect{rect.x, rect.y, t, t},
+            image, 0, 0, b, b, 2, 2);
+        Blit_Scaled(SETTINGS_LAYOUT::s_rect{
+            (int16_t)(rect.x + rect.w - t), rect.y, t, t},
+            image, bw - b, 0, b, b, 2, 2);
+        Blit_Scaled(SETTINGS_LAYOUT::s_rect{rect.x,
+            (int16_t)(rect.y + rect.h - t), t, t},
+            image, 0, bh - b, b, b, 2, 2);
+        Blit_Scaled(SETTINGS_LAYOUT::s_rect{
+            (int16_t)(rect.x + rect.w - t),
+            (int16_t)(rect.y + rect.h - t), t, t},
+            image, bw - b, bh - b, b, b, 2, 2);
+        // Edges: the top/bottom strips stretch horizontally, the
+        // left/right strips vertically; the thickness axis keeps
+        // the light edge + dark line.
+        if (rect.w > 2 * t) {
+            Blit_Scaled(SETTINGS_LAYOUT::s_rect{
+                (int16_t)(rect.x + t), rect.y,
+                (int16_t)(rect.w - 2 * t), t},
+                image, b, 0, bw - 2 * b, b, 0, 2);
+            Blit_Scaled(SETTINGS_LAYOUT::s_rect{
+                (int16_t)(rect.x + t), (int16_t)(rect.y + rect.h - t),
+                (int16_t)(rect.w - 2 * t), t},
+                image, b, bh - b, bw - 2 * b, b, 0, 2);
+        }
+        if (rect.h > 2 * t) {
+            Blit_Scaled(SETTINGS_LAYOUT::s_rect{rect.x,
+                (int16_t)(rect.y + t), t, (int16_t)(rect.h - 2 * t)},
+                image, 0, b, b, bh - 2 * b, 2, 0);
+            Blit_Scaled(SETTINGS_LAYOUT::s_rect{
+                (int16_t)(rect.x + rect.w - t), (int16_t)(rect.y + t),
+                t, (int16_t)(rect.h - 2 * t)},
+                image, bw - b, b, b, bh - 2 * b, 2, 0);
+        }
+        // Centre: the dithered face tiles, so the speckle never
+        // stretches into streaks. Skipped when the centre is
+        // fully transparent (the frame sprite: the border is the
+        // whole sprite, and the caller tiles the face under it).
+        if (rect.w > 2 * t && rect.h > 2 * t &&
+            Region_Visible(image, b, b, bw - 2 * b, bh - 2 * b)) {
+            Blit_Tiled(SETTINGS_LAYOUT::s_rect{
+                (int16_t)(rect.x + t), (int16_t)(rect.y + t),
+                (int16_t)(rect.w - 2 * t), (int16_t)(rect.h - 2 * t)},
+                image, b, b, bw - 2 * b, bh - 2 * b);
+        }
     }
 
     void Frame(const SETTINGS_LAYOUT::s_rect& rect, int16_t thickness) {

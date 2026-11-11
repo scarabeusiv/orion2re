@@ -18,10 +18,15 @@ namespace SETTINGS_LAYOUT {
         }
 
         // Vertical allocation, permille of the height.
+        // The bands TOUCH (no gaps): the tie-together pass
+        // (Tom, 2026-11-11) integrates the elements' borders
+        // into one continuous frame, close to how the rest of
+        // the interfaces are done -- not separate floating
+        // boxes with gaps. The list absorbs the freed space.
         constexpr int32_t kMargin_Y = 20;
-        constexpr int32_t kGap_Y = 12;
+        constexpr int32_t kGap_Y = 0;
         constexpr int32_t kHeader_H = 55;
-        constexpr int32_t kList_H = 598;
+        constexpr int32_t kList_H = 634;
         constexpr int32_t kDescription_H = 207;
         constexpr int32_t kBottom_Bar_H = 64;
 
@@ -29,7 +34,10 @@ namespace SETTINGS_LAYOUT {
         constexpr int32_t kMargin_X = 20;
         constexpr int32_t kTab_Gap = 8;
         constexpr int32_t kScrollbar_W = 20;
-        constexpr int32_t kScrollbar_Gap = 6;
+        // The scrollbar strip touches the list (no gap): its
+        // left frame edge is the divider between the list and
+        // the strip, one continuous line.
+        constexpr int32_t kScrollbar_Gap = 0;
         constexpr int32_t kValue_X = 778;
         constexpr int32_t kValue_Gap = 10;
         constexpr int32_t kBottom_Gap = 12;

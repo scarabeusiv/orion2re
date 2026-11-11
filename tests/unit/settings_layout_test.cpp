@@ -22,15 +22,20 @@ namespace {
     }
 
     void Check_Bands_In_Order(const s_settings_layout& layout) {
-        // Top to bottom, no overlaps, no gaps in the reading order:
-        // header, list, description, bottom bar (which holds the
-        // tabs, MORE and RETURN).
+        // Top to bottom, no overlaps: header, list, description,
+        // bottom bar (which holds the tabs, MORE and RETURN).
+        // The bands TOUCH (the tie-together: one continuous
+        // frame, no gaps between bands), so adjacency is the
+        // invariant, not separation.
         CHECK(layout.header.y < layout.list.y);
         CHECK(layout.list.y < layout.description.y);
         CHECK(layout.description.y < layout.bottom_bar.y);
         CHECK_FALSE(Overlaps(layout.header, layout.list));
         CHECK_FALSE(Overlaps(layout.list, layout.description));
         CHECK_FALSE(Overlaps(layout.description, layout.bottom_bar));
+        CHECK(Rect_Bottom(layout.header) == layout.list.y);
+        CHECK(Rect_Bottom(layout.list) == layout.description.y);
+        CHECK(Rect_Bottom(layout.description) == layout.bottom_bar.y);
         // The tabs sit in the bottom bar, left of MORE / RETURN.
         CHECK(Inside(layout.tab_bar, layout.bottom_bar));
         for (int tab = 0; tab < 3; ++tab) {
@@ -73,23 +78,25 @@ namespace {
         CHECK(layout.content.x == 13);
         CHECK(layout.content.y == 10);
         CHECK(layout.content.w == 614);
-        CHECK(layout.content.h == 461);
+        CHECK(layout.content.h == 460);
         // Vertical bands (permille of 480, rounded): the header is
         // the first band; the list takes the old top tab bar's
-        // space; the tabs live in the bottom bar.
+        // space; the tabs live in the bottom bar. The bands touch
+        // (the tie-together: the list absorbed the gaps), so the
+        // list is taller and the bottom bar sits one pixel higher.
         CHECK(layout.header.y == 10);
         CHECK(layout.header.h == 26);
-        CHECK(layout.list.y == 42);
-        CHECK(layout.list.h == 287);
-        CHECK(layout.description.y == 335);
+        CHECK(layout.list.y == 36);
+        CHECK(layout.list.h == 304);
+        CHECK(layout.description.y == 340);
         CHECK(layout.description.h == 99);
-        CHECK(layout.bottom_bar.y == 440);
+        CHECK(layout.bottom_bar.y == 439);
         CHECK(layout.bottom_bar.h == 31);
-        CHECK(Rect_Bottom(layout.bottom_bar) == 471);
+        CHECK(Rect_Bottom(layout.bottom_bar) == 470);
         // Tabs tile the bottom bar's left width in proportion to
         // their label lengths.
         CHECK(layout.tab_bar.x == 13);
-        CHECK(layout.tab_bar.y == 443);
+        CHECK(layout.tab_bar.y == 442);
         CHECK(layout.tab_bar.w == 428);
         CHECK(layout.tab_bar.h == 25);
         CHECK(layout.tabs[0].x == 13);
@@ -104,15 +111,17 @@ namespace {
         // VALUE zone at 77.8% of the width, in the header and rows.
         // It moved left with the (wider) scrollbar strip, so the
         // value boxes keep their exact width -- the strip's extra
-        // width comes out of the name zone instead.
+        // width comes out of the name zone instead. The strip now
+        // touches the list (no gap), so the value zone is 4 px
+        // wider than before.
         CHECK(layout.header_value.x == 498);
-        CHECK(layout.header_value.w == 112);
+        CHECK(layout.header_value.w == 116);
         CHECK(layout.header_setting.w == 479);
         // Scrollbar strip at the content's right edge: chunky, like
         // the colony's, so the arrows read as buttons.
         CHECK(layout.scrollbar.x == 614);
         CHECK(layout.scrollbar.w == 13);
-        CHECK(layout.list.w == 597);
+        CHECK(layout.list.w == 601);
         // MORE / RETURN at the bottom bar's right end, same size.
         CHECK(layout.show_more.x == 449);
         CHECK(layout.show_more.w == 85);
@@ -120,17 +129,17 @@ namespace {
         CHECK(layout.done.w == 85);
         CHECK(layout.show_more.h == 25);
         CHECK(layout.done.h == 25);
-        CHECK(layout.show_more.y == 443);
+        CHECK(layout.show_more.y == 442);
         // Rows tile the list height exactly. The description is
         // one row taller than before (it took one row slot's
         // height from the list), so the rows are one row slot
         // shorter and the bottom bar does not move.
-        CHECK(Row_Rect(layout, 0).y == 42);
-        CHECK(Row_Rect(layout, 0).h == 28);
-        CHECK(Row_Rect(layout, 9).y == 300);
-        CHECK(Rect_Bottom(Row_Rect(layout, 9)) == 329);
-        CHECK(Row_Value_Rect(layout, 0).y == 47);
-        CHECK(Row_Value_Rect(layout, 0).h == 17);
+        CHECK(Row_Rect(layout, 0).y == 36);
+        CHECK(Row_Rect(layout, 0).h == 30);
+        CHECK(Row_Rect(layout, 9).y == 309);
+        CHECK(Rect_Bottom(Row_Rect(layout, 9)) == 340);
+        CHECK(Row_Value_Rect(layout, 0).y == 42);
+        CHECK(Row_Value_Rect(layout, 0).h == 18);
         Check_Bands_In_Order(layout);
     }
 
@@ -139,10 +148,13 @@ namespace {
             Compute_Layout(640, 480, 10, kLabel_Lengths);
         const s_settings_layout big =
             Compute_Layout(1280, 960, 10, kLabel_Lengths);
-        // Doubling the screen doubles every rect (within 1 px of
+        // Doubling the screen doubles every rect (within 2 px of
         // rounding): the layout is percentages, not fixed pixels.
+        // The tolerance is 2, not 1: each band rounds independently,
+        // so a doubled rect can drift by the rounding of every
+        // band above it (the bottom bar's y drifts 2 px).
         const auto near_double = [](int16_t a, int16_t b) {
-            return b >= 2 * a - 1 && b <= 2 * a + 1;
+            return b >= 2 * a - 2 && b <= 2 * a + 2;
         };
         CHECK(near_double(small.tab_bar.y, big.tab_bar.y));
         CHECK(near_double(small.tab_bar.h, big.tab_bar.h));
@@ -164,14 +176,14 @@ namespace {
 
         const s_settings_layout wide =
             Compute_Layout(1920, 1440, 10, kLabel_Lengths);
-        CHECK(wide.tab_bar.y == 1326);
-        CHECK(wide.list.h == 861);
+        CHECK(wide.tab_bar.y == 1327);
+        CHECK(wide.list.h == 913);
         Check_Bands_In_Order(wide);
 
         const s_settings_layout mid =
             Compute_Layout(800, 600, 10, kLabel_Lengths);
         CHECK(mid.tab_bar.y == 552);
-        CHECK(mid.list.h == 359);
+        CHECK(mid.list.h == 380);
         Check_Bands_In_Order(mid);
     }
 
@@ -251,10 +263,10 @@ namespace {
         // at the bottom at the end.
         const s_rect top = Scrollbar_Thumb_Rect(layout, 186, 0, 10);
         CHECK(top.w == layout.scrollbar_track.w);
-        CHECK(top.h == 12);
+        CHECK(top.h == 13);
         CHECK(top.y == layout.scrollbar_track.y);
         const s_rect bottom = Scrollbar_Thumb_Rect(layout, 186, 176, 10);
-        CHECK(bottom.h == 12);
+        CHECK(bottom.h == 13);
         CHECK(Rect_Bottom(bottom) == Rect_Bottom(layout.scrollbar_track));
         const s_rect middle = Scrollbar_Thumb_Rect(layout, 186, 88, 10);
         CHECK(middle.y > top.y);
@@ -290,7 +302,7 @@ namespace {
             layout.scrollbar_arrow_down.y);
         CHECK(layout.scrollbar_track.h ==
             layout.scrollbar.h - 2 * layout.scrollbar_arrow_up.h);
-        CHECK(layout.scrollbar_track.h == 235);
+        CHECK(layout.scrollbar_track.h == 252);
         // The thumb stays inside the track at both ends.
         const s_rect top = Scrollbar_Thumb_Rect(layout, 186, 0, 10);
         CHECK(top.y == layout.scrollbar_track.y);
@@ -308,7 +320,7 @@ namespace {
     TEST_CASE("dropdown popup anchors to the control and stays in the frame") {
         const s_settings_layout layout =
             Compute_Layout(640, 480, 10, kLabel_Lengths);
-        // content 13..627 x 10..471 at 640x480 (margins 20 permille).
+        // content 13..627 x 10..470 at 640x480 (margins 20 permille).
         CHECK(layout.content.x == 13);
         CHECK(layout.content.y == 10);
         CHECK(Rect_Right(layout.content) == 627);
@@ -329,7 +341,7 @@ namespace {
         // Anchored near the bottom: the popup shifts up so its
         // bottom is the frame's, never past it.
         const s_rect past_bottom = Popup_Rect(layout.content, 618, 450, 120, 90);
-        CHECK(Rect_Bottom(past_bottom) == 471);
+        CHECK(Rect_Bottom(past_bottom) == 470);
         CHECK(Inside(past_bottom, layout.content));
         // Anchored above the frame: the popup pins to the top.
         const s_rect above = Popup_Rect(layout.content, 618, -50, 120, 90);
