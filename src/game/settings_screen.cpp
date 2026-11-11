@@ -1455,6 +1455,14 @@ namespace SETTINGS_SCREEN {
                 SETTINGS_LAYOUT::Row_Rect(layout, 0).h, 62);
             const int value_cell = Text_Cell_For(
                 SETTINGS_LAYOUT::Row_Value_Rect(layout, 0).h, 80);
+            // The value-box indicator (star, chevron) stays one
+            // line tall: its size comes from a single-slot row,
+            // so a wrapped row's taller box does not grow it --
+            // it is centred in the box instead. (The chevron
+            // already is: it derives from value_cell, above.)
+            const int16_t indicator_radius = (int16_t)std::max(3,
+                (SETTINGS_LAYOUT::Row_Value_Rect(layout, 0).h -
+                    2 * thickness) / 2);
             for (int index = 0; index < count; ++index) {
                 // The row spans its slots: two for a wrapped
                 // label, one otherwise.
@@ -1600,12 +1608,14 @@ namespace SETTINGS_SCREEN {
                 if (show_star) {
                     // The star sits centred in the value box: filled
                     // gold when on, a grey outline when off -- the
-                    // state reads at a glance.
-                    const int16_t radius = (int16_t)std::max(3,
-                        (value_rect.h - 2 * thickness) / 2);
+                    // state reads at a glance. Its radius is the
+                    // one-slot indicator size, not the row's height,
+                    // so a wrapped row's star is the same size as
+                    // the rest (Tom, 2026-11-11).
                     Star((int16_t)(value_rect.x + value_rect.w / 2),
                         (int16_t)(value_rect.y + value_rect.h / 2),
-                        radius, star_on ? kStar_On : kStar_Off, star_on);
+                        indicator_radius,
+                        star_on ? kStar_On : kStar_Off, star_on);
                 }
             }
             // Slots past the last visible row keep their empty
