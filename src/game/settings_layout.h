@@ -134,6 +134,16 @@ namespace SETTINGS_LAYOUT {
     s_rect Scrollbar_Thumb_Rect(const s_settings_layout& layout,
         int total_lines, int first_line, int visible_lines);
 
+    // The popup rect for a dropdown list of size `popup_w` x
+    // `popup_h`: anchored with its right edge at `anchor_right`
+    // (the closed control's right edge) and its top at `anchor_y`
+    // (the row's top), clamped inside `content` so the popup --
+    // and every label in it -- stays inside the frame. A popup
+    // wider or taller than the content is pinned to the content's
+    // top-left corner instead of running off an edge.
+    s_rect Popup_Rect(const s_rect& content, int16_t anchor_right,
+        int16_t anchor_y, int16_t popup_w, int16_t popup_h);
+
     // Exclusive right / bottom edges.
     int16_t Rect_Right(const s_rect& rect);
     int16_t Rect_Bottom(const s_rect& rect);

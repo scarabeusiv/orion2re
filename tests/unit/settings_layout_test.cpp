@@ -262,6 +262,50 @@ namespace {
         CHECK(Inside(tiny, layout.scrollbar_track));
     }
 
+    TEST_CASE("dropdown popup anchors to the control and stays in the frame") {
+        const s_settings_layout layout =
+            Compute_Layout(640, 480, 10, kLabel_Lengths);
+        // content 13..627 x 10..471 at 640x480 (margins 20 permille).
+        CHECK(layout.content.x == 13);
+        CHECK(layout.content.y == 10);
+        CHECK(Rect_Right(layout.content) == 627);
+        // A popup anchored to the value column's right edge (the
+        // closed control's right edge) sits with its right edge
+        // there, its top at the row's top.
+        const s_rect at_anchor = Popup_Rect(layout.content, 618, 100, 120, 90);
+        CHECK(Rect_Right(at_anchor) == 618);
+        CHECK(at_anchor.y == 100);
+        CHECK(at_anchor.w == 120);
+        CHECK(at_anchor.h == 90);
+        CHECK(Inside(at_anchor, layout.content));
+        // Anchored past the frame's right edge: the popup shifts
+        // left so its right edge is the frame's, never past it.
+        const s_rect past_right = Popup_Rect(layout.content, 700, 100, 120, 90);
+        CHECK(Rect_Right(past_right) == 627);
+        CHECK(Inside(past_right, layout.content));
+        // Anchored near the bottom: the popup shifts up so its
+        // bottom is the frame's, never past it.
+        const s_rect past_bottom = Popup_Rect(layout.content, 618, 450, 120, 90);
+        CHECK(Rect_Bottom(past_bottom) == 471);
+        CHECK(Inside(past_bottom, layout.content));
+        // Anchored above the frame: the popup pins to the top.
+        const s_rect above = Popup_Rect(layout.content, 618, -50, 120, 90);
+        CHECK(above.y == layout.content.y);
+        CHECK(Inside(above, layout.content));
+        // A popup wider than the content pins to the content's
+        // left edge instead of running off the right one.
+        const s_rect too_wide = Popup_Rect(layout.content, 618, 100, 900, 90);
+        CHECK(too_wide.x == layout.content.x);
+        // The same placement scales: at 1920x1440 the anchored
+        // popup still sits inside the frame.
+        const s_settings_layout wide =
+            Compute_Layout(1920, 1440, 10, kLabel_Lengths);
+        const s_rect wide_popup = Popup_Rect(wide.content,
+            Rect_Right(wide.header_value), 300, 360, 270);
+        CHECK(Rect_Right(wide_popup) == Rect_Right(wide.header_value));
+        CHECK(Inside(wide_popup, wide.content));
+    }
+
     TEST_CASE("degenerate sizes lay out nothing") {
         const s_settings_layout zero =
             Compute_Layout(0, 0, 10, kLabel_Lengths);

@@ -102,6 +102,14 @@ namespace {
         CHECK(Truncate_To_Width("abc def", 50, Fixed_Measure) == "ab...");
     }
 
+    TEST_CASE("settings_hd_font truncate tail") {
+        CHECK(Truncate_Tail_To_Width("abcdefgh", 50, Fixed_Measure) == "...gh");
+        CHECK(Truncate_Tail_To_Width("abc", 50, Fixed_Measure) == "abc");
+        CHECK(Truncate_Tail_To_Width("abcdefgh", 20, Fixed_Measure) == "");
+        CHECK(Truncate_Tail_To_Width("abcdefgh", 30, Fixed_Measure) == "...");
+        CHECK(Truncate_Tail_To_Width("abc def", 50, Fixed_Measure) == "...ef");
+    }
+
     TEST_CASE("settings_hd_font wrap") {
         const std::vector<std::string> lines =
             Wrap_Text("aaa bbb ccc ddd", 70, Fixed_Measure, 5);

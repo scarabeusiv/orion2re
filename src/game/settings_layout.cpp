@@ -338,6 +338,37 @@ namespace SETTINGS_LAYOUT {
         return s_rect{track.x, thumb_y, track.w, thumb_h};
     }
 
+    s_rect Popup_Rect(const s_rect& content, int16_t anchor_right,
+        int16_t anchor_y, int16_t popup_w, int16_t popup_h) {
+        if (popup_w < 1) {
+            popup_w = 1;
+        }
+        if (popup_h < 1) {
+            popup_h = 1;
+        }
+        int16_t x = (int16_t)(anchor_right - popup_w);
+        if (x < content.x) {
+            x = content.x;
+        }
+        if (x + popup_w > Rect_Right(content)) {
+            x = (int16_t)(Rect_Right(content) - popup_w);
+            if (x < content.x) {
+                x = content.x;
+            }
+        }
+        int16_t y = anchor_y;
+        if (y < content.y) {
+            y = content.y;
+        }
+        if (y + popup_h > Rect_Bottom(content)) {
+            y = (int16_t)(Rect_Bottom(content) - popup_h);
+            if (y < content.y) {
+                y = content.y;
+            }
+        }
+        return s_rect{x, y, popup_w, popup_h};
+    }
+
     int16_t Rect_Right(const s_rect& rect) {
         return (int16_t)(rect.x + rect.w);
     }
