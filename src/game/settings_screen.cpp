@@ -23,6 +23,7 @@
 #include "game/platform.h"
 #include "game/russ.h"
 #include "game/settings_background.h"
+#include "game/settings_layout.h"
 #include "game/settings_screen.h"
 #include "game/timer.h"
 #include "game/user_paths.h"
@@ -33,42 +34,27 @@ namespace SETTINGS_SCREEN {
 
     namespace {
 
-        // Hi-res rewrite, step 1: the pixel rendering is stripped.
+        // Hi-res rewrite, steps 1-3: the pixel rendering is stripped.
         // What stays is the settings LOGIC -- the config writer,
         // the mod catalogue + staging/reload, the metadata rows,
         // the categories, the XDG fallback, the wheel forwarding
         // (via the field system), the screen's data flow (which
         // settings are shown, primary/secondary, the Show all
-        // toggle) -- and the field rects below, kept at the same
-        // 640x480 positions the kit derived so clicks still land
-        // while the screen draws nothing. What is gone: the
-        // wireframe/kit rendering (ui_kit: Frame/Tab_Bar/
-        // Scroll_Bar/Button, the dithered fills and boxes, the
-        // Bayer/hash speckle, the vivid-blue palette-253 patch,
-        // the Moo2 pixel fonts as rendered, the verbatim COLSUM
-        // arrow sprites and the code-drawn triangles/bevels).
-        // The rendering text helpers (Truncate_To_Width,
-        // Wrap_Text, Mod_Help_Text) go with it; step 3/4 re-adds
-        // the ones the hi-res layout needs. The screen renders
-        // nothing until the hi-res background lands in step 2.
+        // toggle). What is gone: the wireframe/kit rendering
+        // (ui_kit: Frame/Tab_Bar/Scroll_Bar/Button, the dithered
+        // fills and boxes, the Bayer/hash speckle, the vivid-blue
+        // palette-253 patch, the Moo2 pixel fonts as rendered, the
+        // verbatim COLSUM arrow sprites and the code-drawn
+        // triangles/bevels). The rendering text helpers
+        // (Truncate_To_Width, Wrap_Text, Mod_Help_Text) go with
+        // it; step 3/4 re-adds the ones the hi-res layout needs.
+        // Step 3: the field rects come from the percentage-based
+        // layout (settings_layout), computed for the current game
+        // resolution -- the same rects draw the placeholder frames
+        // and take the clicks, so drawing and hit-testing agree.
+        // The screen renders the background plus placeholders
+        // until step 4 renders the elements themselves.
         constexpr int ROWS_PER_PAGE = 10;
-        // Value column, shared by the edit field, the dropdown
-        // and the Resolution popup geometry.
-        constexpr int16_t VALUE_X = 512;
-        constexpr int16_t VALUE_WIDTH = 86;
-        // Scrollbar strip at the right edge of the list: the
-        // colony's track (y 40..311, 271 tall, not 272: the
-        // colony's bottom dots sit at y311).
-        constexpr int16_t SCROLL_X = 621;
-        constexpr int16_t SCROLL_W = 5;
-        constexpr int16_t COLONY_TRACK_Y = 40;
-        constexpr int16_t COLONY_TRACK_H = 271;
-        constexpr int16_t ROW_FIELD_X_END = SCROLL_X - 2;
-        // MORE and RETURN in the bottom bar, side by side at the
-        // right end, on one line, never wrapping.
-        constexpr int16_t SHOW_MORE_X = 471;
-        constexpr int16_t SHOW_MORE_W = 69;
-        constexpr int16_t RETURN_X = 548;
 
         // The standard UI text palette, as used by the council screen.
         s_colors g_normal_colors = {{150, 154, 155, 151, 152, 153, 154, 155}};
@@ -179,75 +165,21 @@ namespace SETTINGS_SCREEN {
 
         s_settings_screen_state g_state;
 
-        // Layout (step 1 of the hi-res rewrite): the pixel-rendering
-        // kit (ui_kit) is gone, so the field rects below are plain
-        // constants in the 640x480 game buffer -- the same rects the
-        // kit derived, kept so clicks still land on the rows, tabs
-        // and buttons while the screen draws nothing. Step 3
-        // replaces these with percentage-based positions.
-        // First row: header (y 4, h 31) + 3; rows are 30 px cells
-        // on a 31 px pitch, like the colony list.
-        constexpr int16_t FIRST_ROW_Y = 38;
-        constexpr int16_t ROW_PITCH = 31;
-        constexpr int16_t ROW_HEIGHT = 30;
-        // Window-frame content rect the kit derived (frame insets
-        // 11/12/12/10 on the 640x480 window).
-        constexpr int16_t CONTENT_X = 11;
-        constexpr int16_t CONTENT_RIGHT = 628; // exclusive
-        constexpr int16_t BOTTOM_BAR_Y = 446;
-        constexpr int16_t BOTTOM_BAR_END = 470;
-        // MORE/RETURN keep the derived RETURN frame's geometry
-        // (26 tall, 85 wide): the field rects must not shrink.
-        constexpr int16_t MORE_Y = 445;
-        constexpr int16_t RETURN_Y = 445;
-        constexpr int16_t RETURN_FIELD_W = 85;
-        constexpr int16_t TAB_STRIP_RIGHT = SHOW_MORE_X - 8;
-        constexpr int16_t TAB_HEIGHT = 24;
-        constexpr int16_t TAB_GAP = 1;
-
-        int16_t Row_Y(int index) {
-            return (int16_t)(FIRST_ROW_Y + index * ROW_PITCH);
-        }
-
-        // The category tab rects, laid out like the kit's Tab_Bar
-        // did: the SETTINGS label (style 2 + 12 gap) takes the
-        // start of the strip, the tabs divide the rest in
-        // proportion to their natural widths (style-2 label + 16
-        // padding) with a 1 px gap, the last tab absorbing the
-        // rounding remainder.
-        void Tab_Rect(int category, int16_t* x, int16_t* width) {
-            fonts::Set_Font_Style(2, &g_normal_colors);
-            const int16_t label_w =
-                (int16_t)(fonts::Get_String_Width("SETTINGS") + 12);
-            int16_t natural[CATEGORY_COUNT];
-            int32_t total_natural = 0;
+        // Layout (step 3 of the hi-res rewrite): every element
+        // rect comes from the percentage-based layout
+        // (settings_layout), computed for the current game
+        // resolution. The same rects draw the placeholder frames
+        // and take the clicks, so drawing and hit-testing agree.
+        // The tabs moved to the top of the screen (modern gaming
+        // design): the bottom bar keeps only MORE and RETURN.
+        SETTINGS_LAYOUT::s_settings_layout Layout() {
+            int lengths[CATEGORY_COUNT];
             for (int c = 0; c < CATEGORY_COUNT; ++c) {
-                natural[c] = (int16_t)(fonts::Get_String_Width(
-                    CATEGORY_LABELS[c]) + 16);
-                total_natural += natural[c];
+                lengths[c] = (int)strlen(CATEGORY_LABELS[c]);
             }
-            const int16_t available = (int16_t)(TAB_STRIP_RIGHT -
-                CONTENT_X - label_w - (CATEGORY_COUNT - 1) * TAB_GAP);
-            int16_t x_cursor = (int16_t)(CONTENT_X + label_w);
-            int32_t used = 0;
-            for (int c = 0; c < CATEGORY_COUNT; ++c) {
-                int16_t w;
-                if (c + 1 < CATEGORY_COUNT) {
-                    w = (int16_t)(natural[c] * available / total_natural);
-                } else {
-                    w = (int16_t)(available - used);
-                }
-                if (w < 1) {
-                    w = 1;
-                }
-                if (c == category) {
-                    *x = x_cursor;
-                    *width = w;
-                }
-                x_cursor = (int16_t)(x_cursor + w + TAB_GAP);
-                used += w;
-            }
-            fonts::Set_Font_Style(4, &g_normal_colors);
+            return SETTINGS_LAYOUT::Compute_Layout(
+                video::g_screen_res_x, video::g_screen_res_y,
+                ROWS_PER_PAGE, lengths);
         }
 
         // Rows on the current tab. The Mods tab lists its settings
@@ -576,26 +508,28 @@ namespace SETTINGS_SCREEN {
         void Rebuild_Fields() {
             fields::Clear_Fields();
             fonts::Set_Font_Style(4, &g_normal_colors);
-            // Category selectors in the bottom bar: one hidden field
-            // per category, left to right, each keeping its own
-            // scroll position.
+            const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
+            // Category tabs at the top of the screen: one hidden
+            // field per category, left to right, each keeping its
+            // own scroll position.
             for (int category = 0; category < CATEGORY_COUNT; ++category) {
-                int16_t tab_x = 0;
-                int16_t tab_w = 0;
-                Tab_Rect(category, &tab_x, &tab_w);
+                const SETTINGS_LAYOUT::s_rect tab = layout.tabs[category];
                 g_state.tab_fields[category] = fields::Add_Hidden_Field(
-                    tab_x, BOTTOM_BAR_Y, tab_x + tab_w - 1,
-                    BOTTOM_BAR_Y + TAB_HEIGHT - 1, "", 0);
+                    tab.x, tab.y, (int16_t)(tab.x + tab.w - 1),
+                    (int16_t)(tab.y + tab.h - 1), "", 0);
             }
             Sync_Scroll();
             const int first = Scroll_Top();
             const int count = std::min(ROWS_PER_PAGE, Visible_Count() - first);
             for (int index = 0; index < count; ++index) {
-                const int16_t y = Row_Y(index);
-                // Row fields stop short of the scrollbar strip, so
-                // clicks on the bar reach the bar.
+                const SETTINGS_LAYOUT::s_rect row =
+                    SETTINGS_LAYOUT::Row_Rect(layout, index);
+                // Row fields span the list area, stopping short of
+                // the scrollbar strip, so clicks on the bar reach
+                // the bar.
                 g_state.row_fields[index] = fields::Add_Hidden_Field(
-                    8, y, ROW_FIELD_X_END, y + ROW_HEIGHT - 1, "", 0);
+                    row.x, row.y, (int16_t)(row.x + row.w - 1),
+                    (int16_t)(row.y + row.h - 1), "", 0);
             }
             for (int index = count; index < ROWS_PER_PAGE; ++index) {
                 g_state.row_fields[index] = -1;
@@ -607,25 +541,26 @@ namespace SETTINGS_SCREEN {
             // it from anywhere over the list.
             const int total = Visible_Count();
             if (total > ROWS_PER_PAGE) {
-                g_state.scroll_field = fields::Add_Scroll_Field(SCROLL_X,
-                    COLONY_TRACK_Y, 0, (int16_t)total, 0,
-                    (int16_t)Max_Scroll(), SCROLL_W,
-                    COLONY_TRACK_H,
+                g_state.scroll_field = fields::Add_Scroll_Field(
+                    layout.scrollbar.x, layout.scrollbar.y, 0,
+                    (int16_t)total, 0, (int16_t)Max_Scroll(),
+                    layout.scrollbar.w, layout.scrollbar.h,
                     &g_state.slider_position[g_state.category], "", 0);
             } else {
                 g_state.scroll_field = -1;
             }
             // MORE and RETURN sit side by side in the bottom
-            // bar at the right end: the categories occupy the left
-            // end, so SHOW_MORE_X..RETURN_X+RETURN_FIELD_W is clear
-            // in every category. They share the bar's single line
-            // and never wrap.
+            // bar at the right end. They share the bar's single
+            // line and never wrap.
             g_state.show_all_field = fields::Add_Hidden_Field(
-                SHOW_MORE_X, MORE_Y, SHOW_MORE_X + SHOW_MORE_W - 1,
-                BOTTOM_BAR_END, "", 0);
+                layout.show_more.x, layout.show_more.y,
+                (int16_t)(layout.show_more.x + layout.show_more.w - 1),
+                (int16_t)(layout.show_more.y + layout.show_more.h - 1),
+                "", 0);
             g_state.done_field = fields::Add_Hidden_Field(
-                RETURN_X, RETURN_Y,
-                RETURN_X + RETURN_FIELD_W - 1, BOTTOM_BAR_END, "", 0);
+                layout.done.x, layout.done.y,
+                (int16_t)(layout.done.x + layout.done.w - 1),
+                (int16_t)(layout.done.y + layout.done.h - 1), "", 0);
         }
 
         void Toggle_Show_All() {
@@ -718,9 +653,15 @@ namespace SETTINGS_SCREEN {
             }
             g_state.editing_row = visible;
             fonts::Set_Font_Style(4, &g_normal_colors);
-            const int16_t y = Row_Y(visible - Scroll_Top());
+            // The edit field is the row's value-control rect: the
+            // same rect the placeholder draws, so the click that
+            // opened the edit and the typing land in the same place.
+            const SETTINGS_LAYOUT::s_rect value_rect =
+                SETTINGS_LAYOUT::Row_Value_Rect(Layout(),
+                    visible - Scroll_Top());
             g_state.edit_field = fields::Add_Continuous_String_Input_Field(
-                VALUE_X, y, VALUE_WIDTH, ROW_HEIGHT - 2, g_state.edit_buffer,
+                value_rect.x, value_rect.y, value_rect.w, value_rect.h,
+                g_state.edit_buffer,
                 max_length, 0, 0, 0, 0);
             // The row's full-width hidden field always wins Scan_Field
             // over the edit field added after it, so a click can never
@@ -773,20 +714,26 @@ namespace SETTINGS_SCREEN {
                 width = (int16_t)std::max<int32_t>(width,
                     fonts::Get_String_Width(type->values[index].name) + 16);
             }
-            int16_t x = VALUE_X;
-            if (x + width > 632) {
-                x = 632 - width;
+            const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
+            int16_t x = layout.header_value.x;
+            const int16_t content_right =
+                SETTINGS_LAYOUT::Rect_Right(layout.content);
+            if (x + width > content_right) {
+                x = (int16_t)(content_right - width);
             }
             const int16_t y_step = (int16_t)(fonts::Get_Font_Height() +
                 fonts::Get_Font_Vertical_Spacing());
             const int16_t list_height =
                 (int16_t)((type->value_count + 1) * (size_t)y_step);
-            int16_t y = Row_Y(visible - Scroll_Top());
-            if (y + list_height > 470) {
-                y = 470 - list_height;
+            int16_t y = SETTINGS_LAYOUT::Row_Rect(layout,
+                visible - Scroll_Top()).y;
+            const int16_t content_bottom =
+                SETTINGS_LAYOUT::Rect_Bottom(layout.content);
+            if (y + list_height > content_bottom) {
+                y = (int16_t)(content_bottom - list_height);
             }
-            if (y < 30) {
-                y = 30;
+            if (y < layout.content.y) {
+                y = layout.content.y;
             }
             int8_t selected_index = (int8_t)current_index;
             // The list items render in the colony-list color, so the
@@ -873,7 +820,8 @@ namespace SETTINGS_SCREEN {
                 pad_top + pad_bottom + 2);
             // The dropdown button's right edge, like the row draw:
             // the current value in style 1, plus the button chrome
-            // (padding, chevron, padding).
+            // (padding, chevron, padding), inside the row's
+            // value-control rect.
             fonts::Set_Font_Style(1, &g_colony_dim_colors);
             const std::string current_label =
                 config::Format_Resolution(current_width, current_height);
@@ -881,21 +829,28 @@ namespace SETTINGS_SCREEN {
             const int16_t button_w = (int16_t)(
                 fonts::Get_String_Width(current_label.c_str()) +
                 4 + 4 + chevron_w + 4);
+            const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
+            const SETTINGS_LAYOUT::s_rect value_rect =
+                SETTINGS_LAYOUT::Row_Value_Rect(layout,
+                    visible - Scroll_Top());
             const int16_t button_right =
-                (int16_t)(VALUE_X + button_w - 1);
+                (int16_t)(value_rect.x + button_w - 1);
             int16_t x = (int16_t)(button_right + 1 - popup_w);
-            if (x < CONTENT_X) {
-                x = CONTENT_X;
+            if (x < layout.content.x) {
+                x = layout.content.x;
             }
-            if (x + popup_w > CONTENT_RIGHT) {
-                x = (int16_t)(CONTENT_RIGHT - popup_w);
+            if (x + popup_w > SETTINGS_LAYOUT::Rect_Right(layout.content)) {
+                x = (int16_t)(SETTINGS_LAYOUT::Rect_Right(layout.content) -
+                    popup_w);
             }
-            int16_t y = Row_Y(visible - Scroll_Top());
-            if (y + popup_h > 470) {
-                y = 470 - popup_h;
+            int16_t y = value_rect.y;
+            const int16_t content_bottom =
+                SETTINGS_LAYOUT::Rect_Bottom(layout.content);
+            if (y + popup_h > content_bottom) {
+                y = (int16_t)(content_bottom - popup_h);
             }
-            if (y < 30) {
-                y = 30;
+            if (y < layout.content.y) {
+                y = layout.content.y;
             }
             g_state.resolution_popup_x = x;
             g_state.resolution_popup_y = y;
@@ -1127,16 +1082,103 @@ namespace SETTINGS_SCREEN {
                 ". Active mods: " + active + ".";
         }
 
-        // Step 2 of the hi-res rewrite: the background is the
+        // Step 3 of the hi-res rewrite: the background is the
         // generated hi-res surface (settings_background): a smooth
         // navy gradient with two soft glows, a deterministic
         // starfield and a vignette, generated per pixel for the
         // current game resolution -- no baked colony bitmap, no
-        // dither, no pixel art. Rows, tabs and elements land on
-        // it in steps 3/4.
+        // dither, no pixel art. On top of it sit the positioned
+        // placeholder elements (Draw_Layout_Placeholders): each
+        // element draws its OWN border/frame as part of itself, in
+        // hi-res. The background is just a background -- it
+        // controls no element part. The elements themselves are
+        // NOT yet rendered (no HD font text, no finished
+        // buttons/dropdowns/toggles/scrollbar -- step 4); what
+        // step 3 proves is the positions and proportions.
+        //
+        // Placeholder palette (menu palette; the background's
+        // transient ramp occupies 160-223, so these stay clear
+        // of it): 230 dark panel interior, 232 dark control fill,
+        // 234 dim frame, 244 light frame, 138 blue for the active
+        // tab.
+        constexpr uint8_t kPlaceholder_Panel = 230;
+        constexpr uint8_t kPlaceholder_Control = 232;
+        constexpr uint8_t kPlaceholder_Dim_Frame = 234;
+        constexpr uint8_t kPlaceholder_Frame = 244;
+        constexpr uint8_t kPlaceholder_Active_Tab = 138;
+
+        void Draw_Placeholder_Frame(const SETTINGS_LAYOUT::s_rect& rect,
+            uint8_t fill, uint8_t border, int16_t thickness) {
+            graphics::Fill(rect.x, rect.y,
+                (int16_t)(rect.x + rect.w - 1),
+                (int16_t)(rect.y + rect.h - 1), fill);
+            graphics::Box(rect.x, rect.y, rect.w, rect.h, thickness,
+                border);
+        }
+
+        void Draw_Layout_Placeholders() {
+            const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
+            // The frame scales with the screen: 1 px at 640 wide,
+            // 2 px at 1280, 3 px at 1920.
+            const int16_t thickness =
+                (int16_t)std::max<int32_t>(1, layout.width / 640);
+            // Tab bar at the top: one frame for the strip, then
+            // each tab's own frame; the active tab reads blue.
+            Draw_Placeholder_Frame(layout.tab_bar, kPlaceholder_Panel,
+                kPlaceholder_Frame, thickness);
+            for (int category = 0; category < CATEGORY_COUNT; ++category) {
+                Draw_Placeholder_Frame(layout.tabs[category],
+                    category == g_state.category
+                        ? kPlaceholder_Active_Tab
+                        : kPlaceholder_Control,
+                    kPlaceholder_Frame, thickness);
+            }
+            // SETTING / VALUE header row under the tabs: one frame,
+            // with the VALUE zone's own frame inside it.
+            Draw_Placeholder_Frame(layout.header, kPlaceholder_Panel,
+                kPlaceholder_Frame, thickness);
+            Draw_Placeholder_Frame(layout.header_value,
+                kPlaceholder_Control, kPlaceholder_Dim_Frame, thickness);
+            // List area: each row its own frame, with the value
+            // control's own frame nested inside it.
+            for (int index = 0; index < ROWS_PER_PAGE; ++index) {
+                Draw_Placeholder_Frame(
+                    SETTINGS_LAYOUT::Row_Rect(layout, index),
+                    kPlaceholder_Panel, kPlaceholder_Dim_Frame, thickness);
+                Draw_Placeholder_Frame(
+                    SETTINGS_LAYOUT::Row_Value_Rect(layout, index),
+                    kPlaceholder_Control, kPlaceholder_Frame, thickness);
+            }
+            // Scrollbar on the right of the list: the strip's own
+            // frame, with the thumb inside it when the list scrolls.
+            Draw_Placeholder_Frame(layout.scrollbar, kPlaceholder_Panel,
+                kPlaceholder_Dim_Frame, thickness);
+            const SETTINGS_LAYOUT::s_rect thumb =
+                SETTINGS_LAYOUT::Scrollbar_Thumb_Rect(layout,
+                    Visible_Count(), Scroll_Top());
+            if (thumb.w > 0) {
+                graphics::Fill(thumb.x, thumb.y,
+                    (int16_t)(thumb.x + thumb.w - 1),
+                    (int16_t)(thumb.y + thumb.h - 1),
+                    kPlaceholder_Frame);
+            }
+            // Description box: one frame across the full width.
+            Draw_Placeholder_Frame(layout.description, kPlaceholder_Panel,
+                kPlaceholder_Frame, thickness);
+            // Bottom bar: one frame, with MORE and RETURN's own
+            // frames inside it at the right end.
+            Draw_Placeholder_Frame(layout.bottom_bar, kPlaceholder_Panel,
+                kPlaceholder_Frame, thickness);
+            Draw_Placeholder_Frame(layout.show_more, kPlaceholder_Control,
+                kPlaceholder_Frame, thickness);
+            Draw_Placeholder_Frame(layout.done, kPlaceholder_Control,
+                kPlaceholder_Frame, thickness);
+        }
+
         void Draw_Settings_Screen() {
             video::Set_Page_Off();
             SETTINGS_BACKGROUND::Draw_Background();
+            Draw_Layout_Placeholders();
             fields::Draw_Visible_Fields();
         }
 
