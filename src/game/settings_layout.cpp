@@ -191,8 +191,28 @@ namespace SETTINGS_LAYOUT {
             (int16_t)(y1 - y0)};
     }
 
-    s_rect Row_Name_Rect(const s_settings_layout& layout, int index) {
-        const s_rect row = Row_Rect(layout, index);
+    s_rect Row_Rect_For_Span(const s_settings_layout& layout,
+        int first_slot, int lines) {
+        if (lines < 1) {
+            lines = 1;
+        }
+        if (first_slot < 0) {
+            first_slot = 0;
+        }
+        if (first_slot >= layout.row_count) {
+            first_slot = layout.row_count - 1;
+        }
+        if (first_slot + lines > layout.row_count) {
+            lines = layout.row_count - first_slot;
+        }
+        const s_rect first = Row_Rect(layout, first_slot);
+        const s_rect last = Row_Rect(layout, first_slot + lines - 1);
+        return s_rect{first.x, first.y, first.w,
+            (int16_t)(Rect_Bottom(last) - first.y)};
+    }
+
+    s_rect Row_Name_Rect_For_Row(const s_settings_layout& layout,
+        const s_rect& row) {
         // The name zone ends where the header's SETTING zone ends
         // (the gap before the VALUE zone); the row starts at the
         // list's left edge, like the header.
@@ -200,8 +220,12 @@ namespace SETTINGS_LAYOUT {
             (int16_t)(Rect_Right(layout.header_setting) - row.x), row.h};
     }
 
-    s_rect Row_Value_Rect(const s_settings_layout& layout, int index) {
-        const s_rect row = Row_Rect(layout, index);
+    s_rect Row_Name_Rect(const s_settings_layout& layout, int index) {
+        return Row_Name_Rect_For_Row(layout, Row_Rect(layout, index));
+    }
+
+    s_rect Row_Value_Rect_For_Row(const s_settings_layout& layout,
+        const s_rect& row) {
         const int16_t value_h =
             (int16_t)(row.h * kValue_Control_H_Percent / 100);
         const int16_t value_y =
@@ -210,21 +234,97 @@ namespace SETTINGS_LAYOUT {
             layout.header_value.w, value_h};
     }
 
+    s_rect Row_Value_Rect(const s_settings_layout& layout, int index) {
+        return Row_Value_Rect_For_Row(layout, Row_Rect(layout, index));
+    }
+
+    int Settings_On_Page(const int* line_counts, int total, int first,
+        int page_lines) {
+        if (line_counts == nullptr || total <= 0 || page_lines <= 0) {
+            return 0;
+        }
+        if (first < 0) {
+            first = 0;
+        }
+        if (first >= total) {
+            return 0;
+        }
+        int used = 0;
+        int count = 0;
+        for (int i = first; i < total; ++i) {
+            const int lines = line_counts[i] < 1 ? 1 : line_counts[i];
+            if (count > 0 && used + lines > page_lines) {
+                break;
+            }
+            used += lines;
+            ++count;
+        }
+        return count;
+    }
+
+    int First_For_Last_Page(const int* line_counts, int total,
+        int page_lines) {
+        if (line_counts == nullptr || total <= 0 || page_lines <= 0) {
+            return 0;
+        }
+        // Walk back from the end, taking settings while they fit
+        // in the page: the first one taken is the last page's
+        // first setting. The whole list fits when the walk
+        // reaches the first setting.
+        int used = 0;
+        int first = total;
+        for (int i = total - 1; i >= 0; --i) {
+            const int lines = line_counts[i] < 1 ? 1 : line_counts[i];
+            if (used + lines > page_lines) {
+                break;
+            }
+            used += lines;
+            first = i;
+        }
+        return first;
+    }
+
+    int Lines_Before(const int* line_counts, int total, int first) {
+        if (line_counts == nullptr || total <= 0 || first <= 0) {
+            return 0;
+        }
+        if (first > total) {
+            first = total;
+        }
+        int sum = 0;
+        for (int i = 0; i < first; ++i) {
+            sum += line_counts[i] < 1 ? 1 : line_counts[i];
+        }
+        return sum;
+    }
+
+    int Lines_On_Page(const int* line_counts, int total, int first,
+        int page_lines) {
+        const int count =
+            Settings_On_Page(line_counts, total, first, page_lines);
+        int sum = 0;
+        for (int i = first; i < first + count; ++i) {
+            sum += line_counts[i] < 1 ? 1 : line_counts[i];
+        }
+        return sum;
+    }
+
     s_rect Scrollbar_Thumb_Rect(const s_settings_layout& layout,
-        int total_rows, int scroll_top) {
+        int total_lines, int first_line, int visible_lines) {
         const s_rect track = layout.scrollbar_track;
-        if (total_rows <= layout.row_count || total_rows <= 0) {
+        if (total_lines <= visible_lines || total_lines <= 0 ||
+            visible_lines <= 0) {
             return s_rect{track.x, track.y, 0, 0};
         }
-        const int max_scroll = total_rows - layout.row_count;
-        if (scroll_top < 0) {
-            scroll_top = 0;
+        const int max_first = total_lines - visible_lines;
+        if (first_line < 0) {
+            first_line = 0;
         }
-        if (scroll_top > max_scroll) {
-            scroll_top = max_scroll;
+        if (first_line > max_first) {
+            first_line = max_first;
         }
         int16_t thumb_h =
-            (int16_t)(track.h * layout.row_count / total_rows);
+            (int16_t)(track.h * visible_lines / total_lines);
         if (thumb_h < kThumb_Min_H) {
             thumb_h = kThumb_Min_H;
         }
@@ -232,8 +332,8 @@ namespace SETTINGS_LAYOUT {
             thumb_h = track.h;
         }
         const int16_t travel = (int16_t)(track.h - thumb_h);
-        const int16_t thumb_y = max_scroll > 0
-            ? (int16_t)(track.y + travel * scroll_top / max_scroll)
+        const int16_t thumb_y = max_first > 0
+            ? (int16_t)(track.y + travel * first_line / max_first)
             : track.y;
         return s_rect{track.x, thumb_y, track.w, thumb_h};
     }

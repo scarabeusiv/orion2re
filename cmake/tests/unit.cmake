@@ -587,6 +587,20 @@ orion2re_add_unit_test(test_settings_layout
         src/game/settings_layout.cpp
 )
 
+orion2re_add_unit_test(test_settings_blend
+    SOURCES
+        tests/unit/settings_blend_test.cpp
+    PRODUCTION_SOURCES
+        src/game/settings_blend.cpp
+)
+
+orion2re_add_unit_test(test_settings_hd_font
+    SOURCES
+        tests/unit/settings_hd_font_test.cpp
+    PRODUCTION_SOURCES
+        src/game/settings_hd_font.cpp
+)
+
 orion2re_add_unit_test(test_config_snapshot
     SOURCES
         tests/unit/config_snapshot_test.cpp

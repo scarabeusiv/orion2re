@@ -21,7 +21,9 @@ namespace SETTINGS_LAYOUT {
     //   top margin      0.020
     //   header row      0.055  (SETTING / VALUE column labels)
     //   gap             0.012
-    //   list            0.665  (10 rows, tiled exactly)
+    //   list            0.665  (10 row slots, tiled exactly; a
+    //                            row whose label wraps takes two
+    //                            slots, so it renders at full size)
     //   gap             0.012
     //   description     0.140  (selected row's description + status)
     //   gap             0.012
@@ -77,9 +79,24 @@ namespace SETTINGS_LAYOUT {
     // absorbs the rounding remainder.
     s_rect Row_Rect(const s_settings_layout& layout, int index);
 
+    // The rect spanning slots [first_slot, first_slot + lines):
+    // a row whose label wraps takes two slots, so the label
+    // renders at full size instead of shrinking into one slot.
+    // `lines` is clamped to at least 1 and the span is clipped
+    // to the list area.
+    s_rect Row_Rect_For_Span(const s_settings_layout& layout,
+        int first_slot, int lines);
+
     // The setting-name zone inside a row: the row minus the VALUE
     // zone and the gap between them.
     s_rect Row_Name_Rect(const s_settings_layout& layout, int index);
+
+    // The setting-name / value-control zones for an arbitrary row
+    // rect (a single slot, or a multi-slot span for a wrapped row).
+    s_rect Row_Name_Rect_For_Row(const s_settings_layout& layout,
+        const s_rect& row);
+    s_rect Row_Value_Rect_For_Row(const s_settings_layout& layout,
+        const s_rect& row);
 
     // The value-control zone inside a row: the row's VALUE zone,
     // vertically centred, 62% of the row height. Dropdowns,
@@ -87,14 +104,31 @@ namespace SETTINGS_LAYOUT {
     // them; step 3 only allocates it).
     s_rect Row_Value_Rect(const s_settings_layout& layout, int index);
 
-    // The scrollbar thumb for a list of `total_rows` rows whose
-    // first visible row is `scroll_top`. Empty (w == 0) when the
-    // whole list fits (no scrolling), otherwise a rect inside the
-    // scrollbar track, its height proportional to the visible
-    // fraction and its position proportional to the scroll offset
-    // (top of the track = first rows).
+    // Slot arithmetic over per-setting line counts (each entry is
+    // 1, or 2 for a setting whose label wraps onto a second line):
+    // how many settings from `first` fit in `page_lines` slots
+    // (at least 1, so a page never shows nothing); the smallest
+    // first index whose settings to the end fit in `page_lines`
+    // slots (0 when the whole list fits); the slots the settings
+    // before `first` take; and the slots the page from `first`
+    // uses.
+    int Settings_On_Page(const int* line_counts, int total, int first,
+        int page_lines);
+    int First_For_Last_Page(const int* line_counts, int total,
+        int page_lines);
+    int Lines_Before(const int* line_counts, int total, int first);
+    int Lines_On_Page(const int* line_counts, int total, int first,
+        int page_lines);
+
+    // The scrollbar thumb for a list of `total_lines` lines whose
+    // first visible line is `first_line` and whose page shows
+    // `visible_lines` lines. Empty (w == 0) when the whole list
+    // fits (no scrolling), otherwise a rect inside the scrollbar
+    // track, its height proportional to the visible fraction and
+    // its position proportional to the scroll offset (top of the
+    // track = first lines).
     s_rect Scrollbar_Thumb_Rect(const s_settings_layout& layout,
-        int total_rows, int scroll_top);
+        int total_lines, int first_line, int visible_lines);
 
     // Exclusive right / bottom edges.
     int16_t Rect_Right(const s_rect& rect);

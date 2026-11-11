@@ -23,7 +23,9 @@
 #include "game/platform.h"
 #include "game/russ.h"
 #include "game/settings_background.h"
+#include "game/settings_hd_font.h"
 #include "game/settings_layout.h"
+#include "game/settings_render.h"
 #include "game/settings_screen.h"
 #include "game/timer.h"
 #include "game/user_paths.h"
@@ -54,6 +56,16 @@ namespace SETTINGS_SCREEN {
         // and take the clicks, so drawing and hit-testing agree.
         // The screen renders the background plus placeholders
         // until step 4 renders the elements themselves.
+        // Slot geometry for wrapped rows (defined with the draw
+        // helpers, after the font helpers): a row whose label
+        // wraps takes two slots, so the label renders at full
+        // size. Declared here because Rebuild_Fields and the
+        // popups use them before their definitions.
+        void Rebuild_Row_Lines();
+        int Page_Count();
+        SETTINGS_LAYOUT::s_rect Visible_Row_Rect(int offset);
+        SETTINGS_LAYOUT::s_rect Visible_Value_Rect(int offset);
+
         constexpr int ROWS_PER_PAGE = 10;
 
         // The standard UI text palette, as used by the council screen.
@@ -110,6 +122,13 @@ namespace SETTINGS_SCREEN {
             std::vector<config::s_settings_row> rows;
             // Indices into rows for the current settings category.
             std::vector<int> visible_rows;
+            // Lines each visible row takes (1, or 2 for a row whose
+            // label wraps onto a second line), parallel to the
+            // visible indices (settings rows, then catalogue
+            // entries on the Mods tab). Rebuilt with the visible
+            // rows: a wrapped row takes two slots, so its label
+            // renders at full size.
+            std::vector<int> row_lines;
             // Catalogue entries for the Mods category.
             std::vector<config::s_mod_catalogue_entry> mods;
             // Working enabled set, in file order: the `enable` lines
@@ -210,10 +229,12 @@ namespace SETTINGS_SCREEN {
         }
 
         // Maximum first-visible-row index on the current tab:
-        // the colony's `num_colonies - 10` bound.
+        // the smallest first index whose settings to the end fit
+        // in the page's row slots (a wrapped row takes two).
         int Max_Scroll() {
-            const int total = Visible_Count();
-            return total <= ROWS_PER_PAGE ? 0 : total - ROWS_PER_PAGE;
+            return SETTINGS_LAYOUT::First_For_Last_Page(
+                g_state.row_lines.data(), Visible_Count(),
+                ROWS_PER_PAGE);
         }
 
         // Derive the current tab's first visible row from its
@@ -484,6 +505,7 @@ namespace SETTINGS_SCREEN {
                 }
                 g_state.visible_rows.push_back((int)index);
             }
+            Rebuild_Row_Lines();
         }
 
         void Refresh_Mods() {
@@ -494,6 +516,7 @@ namespace SETTINGS_SCREEN {
             if (g_state.selected < 0) {
                 g_state.selected = 0;
             }
+            Rebuild_Row_Lines();
         }
 
         e_apply_result Apply_Row(const config::s_settings_row& row,
@@ -596,10 +619,12 @@ namespace SETTINGS_SCREEN {
             }
             Sync_Scroll();
             const int first = Scroll_Top();
-            const int count = std::min(ROWS_PER_PAGE, Visible_Count() - first);
+            const int count = Page_Count();
             for (int index = 0; index < count; ++index) {
+                // The field spans the row's slots: two for a
+                // wrapped label, one otherwise.
                 const SETTINGS_LAYOUT::s_rect row =
-                    SETTINGS_LAYOUT::Row_Rect(layout, index);
+                    Visible_Row_Rect(index);
                 // Row fields span the list area, stopping short of
                 // the scrollbar strip, so clicks on the bar reach
                 // the bar.
@@ -740,8 +765,7 @@ namespace SETTINGS_SCREEN {
             // same rect the placeholder draws, so the click that
             // opened the edit and the typing land in the same place.
             const SETTINGS_LAYOUT::s_rect value_rect =
-                SETTINGS_LAYOUT::Row_Value_Rect(Layout(),
-                    visible - Scroll_Top());
+                Visible_Value_Rect(visible - Scroll_Top());
             g_state.edit_field = fields::Add_Continuous_String_Input_Field(
                 value_rect.x, value_rect.y, value_rect.w, value_rect.h,
                 g_state.edit_buffer,
@@ -808,8 +832,7 @@ namespace SETTINGS_SCREEN {
                 fonts::Get_Font_Vertical_Spacing());
             const int16_t list_height =
                 (int16_t)((type->value_count + 1) * (size_t)y_step);
-            int16_t y = SETTINGS_LAYOUT::Row_Rect(layout,
-                visible - Scroll_Top()).y;
+            int16_t y = Visible_Row_Rect(visible - Scroll_Top()).y;
             const int16_t content_bottom =
                 SETTINGS_LAYOUT::Rect_Bottom(layout.content);
             if (y + list_height > content_bottom) {
@@ -914,8 +937,7 @@ namespace SETTINGS_SCREEN {
                 4 + 4 + chevron_w + 4);
             const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
             const SETTINGS_LAYOUT::s_rect value_rect =
-                SETTINGS_LAYOUT::Row_Value_Rect(layout,
-                    visible - Scroll_Top());
+                Visible_Value_Rect(visible - Scroll_Top());
             const int16_t button_right =
                 (int16_t)(value_rect.x + button_w - 1);
             int16_t x = (int16_t)(button_right + 1 - popup_w);
@@ -1165,101 +1187,356 @@ namespace SETTINGS_SCREEN {
                 ". Active mods: " + active + ".";
         }
 
-        // Step 3 of the hi-res rewrite: the background is the
-        // generated hi-res surface (settings_background): a smooth
-        // navy gradient with two soft glows, a deterministic
-        // starfield and a vignette, generated per pixel for the
-        // current game resolution -- no baked colony bitmap, no
-        // dither, no pixel art. On top of it sit the positioned
-        // placeholder elements (Draw_Layout_Placeholders): each
-        // element draws its OWN border/frame as part of itself, in
-        // hi-res. The background is just a background -- it
-        // controls no element part. The elements themselves are
-        // NOT yet rendered (no HD font text, no finished
-        // buttons/dropdowns/toggles/scrollbar -- step 4); what
-        // step 3 proves is the positions and proportions.
+        // Step 4 of the hi-res rewrite: the elements themselves,
+        // rendered in hi-res on the generated background. Every
+        // element draws its OWN border/frame as part of itself
+        // (multi-pixel industrial frames); panels are genuinely
+        // translucent -- a real per-pixel alpha blend over the
+        // background (settings_render), never a repaint of the
+        // background onto the panel. Text is the HD font: the
+        // engine font's own glyphs, decoded into coverage grids
+        // and rendered upscaled with bilinear smoothing, so the
+        // letterforms stay the game's own and the edges come out
+        // antialiased instead of doubled square pixels.
         //
-        // Placeholder palette (menu palette; the background's
-        // transient ramp occupies 160-223, so these stay clear
-        // of it): 230 dark panel interior, 232 dark control fill,
-        // 234 dim frame, 244 light frame, 138 blue for the active
-        // tab.
-        constexpr uint8_t kPlaceholder_Panel = 230;
-        constexpr uint8_t kPlaceholder_Control = 232;
-        constexpr uint8_t kPlaceholder_Dim_Frame = 234;
-        constexpr uint8_t kPlaceholder_Frame = 244;
-        constexpr uint8_t kPlaceholder_Active_Tab = 138;
+        // Draw order: the background, then the field system's own
+        // drawing (the edit field's pixel-font text, when editing),
+        // then the elements -- the edit overpaint below erases
+        // that pixel text with an opaque fill and draws the HD
+        // text over it, so no pixel-font text ever shows.
+        //
+        // The VALUE header cell keeps its own frame: it is the
+        // VALUE column header, and step 4 labels it "Value" (with
+        // "Setting" over the name column) instead of leaving it
+        // the bare square step 3 showed. That is the top-right
+        // corner square, resolved by labelling it, not by
+        // removing it: the header row labels the two columns,
+        // and the value column needs its header cell.
 
-        void Draw_Placeholder_Frame(const SETTINGS_LAYOUT::s_rect& rect,
-            uint8_t fill, uint8_t border, int16_t thickness) {
-            graphics::Fill(rect.x, rect.y,
-                (int16_t)(rect.x + rect.w - 1),
-                (int16_t)(rect.y + rect.h - 1), fill);
-            graphics::Box(rect.x, rect.y, rect.w, rect.h, thickness,
-                border);
+        // Glyph-cell height for text in a rect of the given height.
+        int Text_Cell_For(int rect_h, int percent) {
+            return std::max(8, rect_h * percent / 100);
         }
 
-        void Draw_Layout_Placeholders() {
-            const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
-            // The frame scales with the screen: 1 px at 640 wide,
-            // 2 px at 1280, 3 px at 1920.
-            const int16_t thickness =
-                (int16_t)std::max<int32_t>(1, layout.width / 640);
-            // SETTING / VALUE header row at the top: one frame,
-            // with the VALUE zone's own frame inside it.
-            Draw_Placeholder_Frame(layout.header, kPlaceholder_Panel,
-                kPlaceholder_Frame, thickness);
-            Draw_Placeholder_Frame(layout.header_value,
-                kPlaceholder_Control, kPlaceholder_Dim_Frame, thickness);
-            // List area: each row its own frame, with the value
-            // control's own frame nested inside it.
-            for (int index = 0; index < ROWS_PER_PAGE; ++index) {
-                Draw_Placeholder_Frame(
-                    SETTINGS_LAYOUT::Row_Rect(layout, index),
-                    kPlaceholder_Panel, kPlaceholder_Dim_Frame, thickness);
-                Draw_Placeholder_Frame(
-                    SETTINGS_LAYOUT::Row_Value_Rect(layout, index),
-                    kPlaceholder_Control, kPlaceholder_Frame, thickness);
+        // Horizontal text padding inside a rect, scaled with the screen.
+        int16_t Text_Pad(int16_t screen_width) {
+            return (int16_t)std::max<int32_t>(4, screen_width / 100);
+        }
+
+        // The value text of a settings row, for the rows that show
+        // one (dropdowns and edits; info rows show none, toggles
+        // show the star in step 4e). Empty when the value cannot
+        // be read.
+        std::string Row_Value_Text(const config::s_settings_row& row) {
+            if (Is_Resolution_Row(row)) {
+                int width = 0;
+                int height = 0;
+                if (!config::Get_Current_Resolution(&width, &height)) {
+                    return std::string();
+                }
+                return config::Format_Resolution(width, height);
             }
-            // Scrollbar on the right of the list: the strip's own
-            // frame, with the thumb inside it when the list scrolls.
-            Draw_Placeholder_Frame(layout.scrollbar, kPlaceholder_Panel,
-                kPlaceholder_Dim_Frame, thickness);
+            config::s_typed_value value;
+            if (!config::Get_Settings_Row_Value(row, &value)) {
+                return std::string();
+            }
+            return config::Format_Leaf_Value(row.variable_id, value);
+        }
+
+        // The name shown for a visible row: a setting's title, or
+        // a mod's name (its id when the manifest names nothing).
+        std::string Visible_Row_Name(int visible) {
+            if (Is_Mod_Row(visible)) {
+                const config::s_mod_catalogue_entry& entry =
+                    g_state.mods[(size_t)Mod_Index(visible)];
+                return entry.name.empty() ? entry.id : entry.name;
+            }
+            return g_state.rows[(size_t)Visible_Row_Index(visible)].title;
+        }
+
+        // Lines each visible row takes (1, or 2 for a row whose
+        // label wraps onto a second line). Rebuilt with the
+        // visible rows: the wrap is measured at the full row
+        // cell, the same measure the draw uses, so the cache and
+        // the draw always agree.
+        void Rebuild_Row_Lines() {
+            const int total = Visible_Count();
+            g_state.row_lines.assign((size_t)total, 1);
+            if (total <= 0) {
+                return;
+            }
+            const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
+            if (layout.width <= 0) {
+                return;
+            }
+            const int16_t pad = Text_Pad(layout.width);
+            const int row_cell = Text_Cell_For(
+                SETTINGS_LAYOUT::Row_Rect(layout, 0).h, 62);
+            const SETTINGS_LAYOUT::s_rect name_rect =
+                SETTINGS_LAYOUT::Row_Name_Rect(layout, 0);
+            auto measure = [&](const std::string& text) {
+                return SETTINGS_RENDER::Text_Width(text.c_str(), row_cell);
+            };
+            for (int visible = 0; visible < total; ++visible) {
+                const std::vector<std::string> lines =
+                    SETTINGS_HD_FONT::Wrap_Text(
+                        Visible_Row_Name(visible),
+                        name_rect.w - 2 * pad, measure, 2);
+                g_state.row_lines[(size_t)visible] =
+                    lines.size() > 1 ? 2 : 1;
+            }
+        }
+
+        // Cached lines for a visible index (1 when unknown).
+        int Row_Lines(int visible) {
+            if (visible < 0 ||
+                visible >= (int)g_state.row_lines.size()) {
+                return 1;
+            }
+            return g_state.row_lines[(size_t)visible];
+        }
+
+        // Settings visible on the current page: the page is
+        // ROWS_PER_PAGE slots, and a wrapped row takes two.
+        int Page_Count() {
+            return SETTINGS_LAYOUT::Settings_On_Page(
+                g_state.row_lines.data(), Visible_Count(),
+                Scroll_Top(), ROWS_PER_PAGE);
+        }
+
+        // First slot of the setting at visible offset `offset`
+        // on the current page: the slots the earlier settings
+        // on the page take.
+        int Visible_Slot(int offset) {
+            const int first = Scroll_Top();
+            int slot = 0;
+            for (int i = 0; i < offset; ++i) {
+                slot += Row_Lines(first + i);
+            }
+            return slot;
+        }
+
+        // The row rect for the setting at visible offset
+        // `offset` on the current page: its slots merged, so a
+        // wrapped label's row is two slots tall.
+        SETTINGS_LAYOUT::s_rect Visible_Row_Rect(int offset) {
+            const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
+            const int first = Scroll_Top();
+            return SETTINGS_LAYOUT::Row_Rect_For_Span(layout,
+                Visible_Slot(offset), Row_Lines(first + offset));
+        }
+
+        // The value-control rect for the setting at visible
+        // offset `offset`: vertically centred in its (possibly
+        // two-slot) row.
+        SETTINGS_LAYOUT::s_rect Visible_Value_Rect(int offset) {
+            const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
+            return SETTINGS_LAYOUT::Row_Value_Rect_For_Row(layout,
+                Visible_Row_Rect(offset));
+        }
+
+        // Total lines in the list, first visible line, and lines
+        // on the current page (for the scrollbar thumb).
+        int Total_Lines() {
+            return SETTINGS_LAYOUT::Lines_Before(
+                g_state.row_lines.data(), Visible_Count(),
+                Visible_Count());
+        }
+
+        int First_Line() {
+            return SETTINGS_LAYOUT::Lines_Before(
+                g_state.row_lines.data(), Visible_Count(),
+                Scroll_Top());
+        }
+
+        int Visible_Lines() {
+            return SETTINGS_LAYOUT::Lines_On_Page(
+                g_state.row_lines.data(), Visible_Count(),
+                Scroll_Top(), ROWS_PER_PAGE);
+        }
+
+        void Draw_Elements() {
+            const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
+            const int16_t pad = Text_Pad(layout.width);
+            const int16_t thickness =
+                SETTINGS_RENDER::Frame_Thickness(layout.width);
+            using namespace SETTINGS_RENDER;
+
+            // Header: the panel, with the VALUE column's own
+            // framed cell inside it, both labelled.
+            Panel(layout.header, kPanel_Fill, kPanel_Alpha);
+            Blend_Fill(layout.header_value, kControl_Fill, kControl_Alpha);
+            Frame(layout.header_value, thickness);
+            const int header_cell = Text_Cell_For(layout.header.h, 62);
+            const int16_t header_y =
+                (int16_t)(layout.header.y + (layout.header.h - header_cell) / 2);
+            Draw_Text(
+                (int16_t)(layout.header_setting.x +
+                    layout.header_setting.w / 2),
+                header_y, "SETTING", kText_Header, header_cell, 1);
+            Draw_Text(
+                (int16_t)(layout.header_value.x + layout.header_value.w / 2),
+                header_y, "VALUE", kText_Header, header_cell, 1);
+
+            // List rows: each its own translucent panel; the
+            // selected row a brighter fill with a bright left bar.
+            // A row whose label wraps takes two slots, so the
+            // label renders at full size on two lines.
+            const int first = Scroll_Top();
+            const int count = Page_Count();
+            const int row_cell = Text_Cell_For(
+                SETTINGS_LAYOUT::Row_Rect(layout, 0).h, 62);
+            const int value_cell = Text_Cell_For(
+                SETTINGS_LAYOUT::Row_Value_Rect(layout, 0).h, 80);
+            for (int index = 0; index < count; ++index) {
+                // The row spans its slots: two for a wrapped
+                // label, one otherwise.
+                const SETTINGS_LAYOUT::s_rect row =
+                    Visible_Row_Rect(index);
+                const bool is_selected =
+                    first + index == g_state.selected;
+                Panel(row, is_selected ? s_rgb{30, 38, 70} : kPanel_Fill,
+                    is_selected ? 185 : kPanel_Alpha);
+                if (is_selected) {
+                    // Bright left bar inside the frame.
+                    const SETTINGS_LAYOUT::s_rect bar{
+                        (int16_t)(row.x + thickness),
+                        (int16_t)(row.y + thickness), 3,
+                        (int16_t)(row.h - 2 * thickness)};
+                    Solid_Fill(bar, s_rgb{180, 200, 230});
+                }
+                const int visible = first + index;
+                const std::string name = Visible_Row_Name(visible);
+                const SETTINGS_LAYOUT::s_rect name_rect =
+                    SETTINGS_LAYOUT::Row_Name_Rect_For_Row(layout, row);
+                auto measure = [&](const std::string& text) {
+                    return Text_Width(text.c_str(), row_cell);
+                };
+                // The label colour matches the game: cyan, orange
+                // on the hovered row. A long label wraps onto a
+                // second line at full size: the row grew to two
+                // slots for it, so it never truncates with "..."
+                // and never shrinks.
+                const s_rgb label_color =
+                    Is_Hover(row) ? kText_Hover : kText_Label;
+                const std::vector<std::string> name_lines =
+                    SETTINGS_HD_FONT::Wrap_Text(name,
+                        name_rect.w - 2 * pad, measure, 2);
+                if (name_lines.size() <= 1) {
+                    Draw_Text((int16_t)(name_rect.x + pad),
+                        (int16_t)(row.y + (row.h - row_cell) / 2),
+                        name_lines.empty() ? "" : name_lines[0].c_str(),
+                        label_color, row_cell, 0);
+                } else {
+                    const int16_t two_y = (int16_t)(row.y +
+                        (row.h - (row_cell + Line_Height(row_cell))) / 2);
+                    Draw_Text((int16_t)(name_rect.x + pad), two_y,
+                        name_lines[0].c_str(), label_color, row_cell, 0);
+                    Draw_Text((int16_t)(name_rect.x + pad),
+                        (int16_t)(two_y + Line_Height(row_cell)),
+                        name_lines[1].c_str(), label_color, row_cell, 0);
+                }
+                const SETTINGS_LAYOUT::s_rect value_rect =
+                    Visible_Value_Rect(index);
+                Blend_Fill(value_rect, kControl_Fill, kControl_Alpha);
+                Frame(value_rect, thickness);
+                // The value: toggles and mods show the star (4e);
+                // dropdowns and edits show their text (dropdowns
+                // become framed buttons with a chevron in 4d).
+                std::string value_text;
+                if (!Is_Mod_Row(visible)) {
+                    const config::s_settings_row& row_data =
+                        g_state.rows[(size_t)Visible_Row_Index(visible)];
+                    if (row_data.widget == config::SETTINGS_WIDGET_DROPDOWN ||
+                        row_data.widget == config::SETTINGS_WIDGET_EDIT) {
+                        value_text = Row_Value_Text(row_data);
+                    }
+                }
+                if (!value_text.empty()) {
+                    auto value_measure = [&](const std::string& text) {
+                        return Text_Width(text.c_str(), value_cell);
+                    };
+                    Draw_Text((int16_t)(value_rect.x + pad),
+                        (int16_t)(value_rect.y +
+                            (value_rect.h - value_cell) / 2),
+                        SETTINGS_HD_FONT::Truncate_To_Width(value_text,
+                            value_rect.w - 2 * pad, value_measure).c_str(),
+                        kText_Bright, value_cell, 0);
+                }
+            }
+            // Slots past the last visible row keep their empty
+            // panels, so the list area stays fully panelled.
+            for (int slot = Visible_Slot(count); slot < ROWS_PER_PAGE;
+                ++slot) {
+                Panel(SETTINGS_LAYOUT::Row_Rect(layout, slot),
+                    kPanel_Fill, kPanel_Alpha);
+            }
+
+            // Scrollbar: the strip's own panel, with the thumb
+            // inside it when the list scrolls (4f adds the arrows
+            // and insets the thumb between them).
+            Panel(layout.scrollbar, kPanel_Fill, kPanel_Alpha);
             const SETTINGS_LAYOUT::s_rect thumb =
                 SETTINGS_LAYOUT::Scrollbar_Thumb_Rect(layout,
-                    Visible_Count(), Scroll_Top());
+                    Total_Lines(), First_Line(), Visible_Lines());
             if (thumb.w > 0) {
-                graphics::Fill(thumb.x, thumb.y,
-                    (int16_t)(thumb.x + thumb.w - 1),
-                    (int16_t)(thumb.y + thumb.h - 1),
-                    kPlaceholder_Frame);
+                Blend_Fill(thumb, kThumb_Fill, kThumb_Alpha);
             }
-            // Description box: one frame across the full width.
-            Draw_Placeholder_Frame(layout.description, kPlaceholder_Panel,
-                kPlaceholder_Frame, thickness);
-            // Bottom bar: one frame, with the tabs on the left
-            // and MORE and RETURN at the right end, each with its
-            // own frame inside it; the active tab reads blue.
-            Draw_Placeholder_Frame(layout.bottom_bar, kPlaceholder_Panel,
-                kPlaceholder_Frame, thickness);
+
+            // Description box: the panel only in 4a (4b adds the
+            // wrapped description and the status line).
+            Panel(layout.description, kPanel_Fill, kPanel_Alpha);
+
+            // Bottom bar: the panel, with the tabs on the left and
+            // MORE and RETURN at the right end. 4a draws the labels
+            // (the active tab blue); 4c wires the hover / pressed
+            // states.
+            Panel(layout.bottom_bar, kPanel_Fill, kPanel_Alpha);
+            const int button_cell =
+                Text_Cell_For(layout.show_more.h, 60);
             for (int category = 0; category < CATEGORY_COUNT; ++category) {
-                Draw_Placeholder_Frame(layout.tabs[category],
-                    category == g_state.category
-                        ? kPlaceholder_Active_Tab
-                        : kPlaceholder_Control,
-                    kPlaceholder_Frame, thickness);
+                Button(layout.tabs[category], CATEGORY_LABELS[category],
+                    category == g_state.category ? BUTTON_ACTIVE : BUTTON_NORMAL,
+                    button_cell);
             }
-            Draw_Placeholder_Frame(layout.show_more, kPlaceholder_Control,
-                kPlaceholder_Frame, thickness);
-            Draw_Placeholder_Frame(layout.done, kPlaceholder_Control,
-                kPlaceholder_Frame, thickness);
+            Button(layout.show_more, "MORE", BUTTON_NORMAL, button_cell);
+            Button(layout.done, "RETURN", BUTTON_NORMAL, button_cell);
+
+            // The edit overpaint: while a row is being edited, the
+            // field system has drawn the edit text in the engine
+            // pixel font over the value rect. Erase it with an
+            // opaque fill and draw the live text (the field
+            // system's continuous string, cursor "_" included) in
+            // the HD font, showing the tail when the text is wider
+            // than the rect so the cursor stays visible.
+            if (g_state.editing_row >= 0) {
+                const int edit_index = g_state.editing_row - Scroll_Top();
+                if (edit_index >= 0 && edit_index < Page_Count()) {
+                    const SETTINGS_LAYOUT::s_rect edit_rect =
+                        Visible_Value_Rect(edit_index);
+                    Solid_Fill(edit_rect, kEdit_Fill);
+                    Frame(edit_rect, thickness);
+                    std::string text = fields::continuous_string;
+                    auto edit_measure = [&](const std::string& s) {
+                        return Text_Width(s.c_str(), value_cell);
+                    };
+                    while (!text.empty() &&
+                        edit_measure(text) > edit_rect.w - 2 * pad) {
+                        text.erase(text.begin());
+                    }
+                    Draw_Text((int16_t)(edit_rect.x + pad),
+                        (int16_t)(edit_rect.y +
+                            (edit_rect.h - value_cell) / 2),
+                        text.c_str(), kText_Bright, value_cell, 0);
+                }
+            }
         }
 
         void Draw_Settings_Screen() {
             video::Set_Page_Off();
             SETTINGS_BACKGROUND::Draw_Background();
-            Draw_Layout_Placeholders();
             fields::Draw_Visible_Fields();
+            Draw_Elements();
         }
 
     } // namespace
@@ -1280,6 +1557,9 @@ namespace SETTINGS_SCREEN {
 
         video::Set_Refresh_Full();
         SETTINGS_BACKGROUND::Install_Background();
+        // The render caches (blend tables, scaled glyphs) are built
+        // against the palette the background just installed.
+        SETTINGS_RENDER::Reset();
         fields::Clear_Fields();
         RUSS::Mox_Update();
         fonts::Set_Font_Style(4, &g_normal_colors);
@@ -1344,8 +1624,7 @@ namespace SETTINGS_SCREEN {
                     }
                     if (!handled) {
                         const int first = Scroll_Top();
-                        const int count = std::min(ROWS_PER_PAGE,
-                            Visible_Count() - first);
+                        const int count = Page_Count();
                         for (int index = 0; index < count; ++index) {
                             if (input == g_state.row_fields[index]) {
                                 const int visible = first + index;
