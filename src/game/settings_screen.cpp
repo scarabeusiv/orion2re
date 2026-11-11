@@ -1516,7 +1516,21 @@ namespace SETTINGS_SCREEN {
                 // marks a dropdown, never a write-input field.
                 std::string value_text;
                 bool is_dropdown = false;
-                if (!Is_Mod_Row(visible)) {
+                // The star: toggles and mods show it (4e); dropdowns
+                // and edits show their text instead. The star is a
+                // toggle for bool values only -- never on a dropdown
+                // or a write-input field.
+                bool show_star = false;
+                bool star_on = false;
+                if (Is_Mod_Row(visible)) {
+                    // A mod row is a toggle: the star shows whether
+                    // the mod is enabled (a broken mod is never
+                    // enabled, so its star is always off).
+                    const config::s_mod_catalogue_entry& entry =
+                        g_state.mods[(size_t)Mod_Index(visible)];
+                    show_star = true;
+                    star_on = entry.enabled && !entry.broken;
+                } else {
                     const config::s_settings_row& row_data =
                         g_state.rows[(size_t)Visible_Row_Index(visible)];
                     is_dropdown = row_data.widget ==
@@ -1524,6 +1538,16 @@ namespace SETTINGS_SCREEN {
                     if (is_dropdown ||
                         row_data.widget == config::SETTINGS_WIDGET_EDIT) {
                         value_text = Row_Value_Text(row_data);
+                    } else if (row_data.widget ==
+                        config::SETTINGS_WIDGET_TOGGLE) {
+                        // A bool row is a toggle: the star shows its
+                        // value.
+                        config::s_typed_value value;
+                        if (config::Get_Settings_Row_Value(row_data,
+                            &value)) {
+                            show_star = true;
+                            star_on = value.bool_value;
+                        }
                     }
                 }
                 if (!value_text.empty()) {
@@ -1572,6 +1596,16 @@ namespace SETTINGS_SCREEN {
                                 value_measure).c_str(),
                             kText_Bright, value_cell, 2);
                     }
+                }
+                if (show_star) {
+                    // The star sits centred in the value box: filled
+                    // gold when on, a grey outline when off -- the
+                    // state reads at a glance.
+                    const int16_t radius = (int16_t)std::max(3,
+                        (value_rect.h - 2 * thickness) / 2);
+                    Star((int16_t)(value_rect.x + value_rect.w / 2),
+                        (int16_t)(value_rect.y + value_rect.h / 2),
+                        radius, star_on ? kStar_On : kStar_Off, star_on);
                 }
             }
             // Slots past the last visible row keep their empty
