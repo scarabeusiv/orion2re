@@ -65,21 +65,13 @@ namespace SETTINGS_SCREEN {
         int Page_Count();
         SETTINGS_LAYOUT::s_rect Visible_Row_Rect(int offset);
         SETTINGS_LAYOUT::s_rect Visible_Value_Rect(int offset);
+        int Text_Cell_For(int rect_h, int percent);
+        int16_t Text_Pad(int16_t screen_width);
 
         constexpr int ROWS_PER_PAGE = 10;
 
         // The standard UI text palette, as used by the council screen.
         s_colors g_normal_colors = {{150, 154, 155, 151, 152, 153, 154, 155}};
-
-        // Colony-list palette, as rendered on the settings screen.
-        // The colony screen loads palette 1 (colony.cpp), the
-        // settings screen the menu palette, so the colony's own
-        // indices do NOT map to its blue here -- the restyle uses
-        // the menu palette's own bright cyan (150-155) as the
-        // colony-blue equivalent, with a bright white for
-        // secondary info.
-        s_colors g_colony_colors = {{150, 154, 155, 151, 152, 153, 154, 155}};
-        s_colors g_colony_dim_colors = {{244, 249, 248, 249, 248, 249, 248, 249}};
 
         enum e_apply_result {
             APPLY_LIVE,
@@ -171,19 +163,32 @@ namespace SETTINGS_SCREEN {
             bool show_all = false;
             int16_t tab_fields[CATEGORY_COUNT];
             int16_t row_fields[ROWS_PER_PAGE];
-            // Resolution dropdown popup (fleet-popup shape): a small
-            // window over the screen, the values as rows, a blue bar
-            // on the selected one. Open while the popup is up.
-            bool resolution_popup_open = false;
+            // The open dropdown popup (a generic dropdown, or
+            // Resolution): a settings-owned hi-res list -- framed,
+            // a blue bar on the selected row, HD labels. Open
+            // while the popup is up. The shared
+            // fields::Get_List_Field picker is not used: it draws
+            // its own unframed pixel-font list, and its unmeasured
+            // title row ran past the frame's right edge (the 4a
+            // clipping: the row title at the popup's x reached
+            // x=639). Both dropdowns share this state; the opener
+            // maps the chosen index back to its own options.
+            bool popup_open = false;
+            // The visible offset of the row whose popup is open
+            // (-1 when none): its chevron paints the open blue
+            // while the popup is up, the closed black otherwise.
+            int popup_visible = -1;
             std::vector<config::s_resolution_option> resolution_options;
-            int resolution_popup_selected = 0;
-            int16_t resolution_popup_x = 0;
-            int16_t resolution_popup_y = 0;
-            int16_t resolution_popup_w = 0;
-            int16_t resolution_popup_h = 0;
-            int16_t resolution_popup_first_row_y = 0;
-            int16_t resolution_popup_row_step = 0;
-            std::vector<int16_t> resolution_popup_fields;
+            std::vector<std::string> popup_labels;
+            int popup_selected = 0;
+            int16_t popup_x = 0;
+            int16_t popup_y = 0;
+            int16_t popup_w = 0;
+            int16_t popup_h = 0;
+            int16_t popup_first_row_y = 0;
+            int16_t popup_row_step = 0;
+            int popup_cell = 0;
+            std::vector<int16_t> popup_fields;
         };
 
         s_settings_screen_state g_state;
@@ -789,200 +794,93 @@ namespace SETTINGS_SCREEN {
             fields::active_input_field_number = g_state.edit_field;
         }
 
-        void Open_Dropdown(int visible) {
-            const int row_index = Visible_Row_Index(visible);
-            const config::s_settings_row& row = g_state.rows[row_index];
-            const config::s_type_descriptor* type =
-                config::Get_Variable_Type(row.variable_id);
-            if (type == nullptr || type->values == nullptr || type->value_count == 0) {
-                g_state.status = "'" + row.title + "' has no list of values.";
-                return;
-            }
-            config::s_typed_value value;
-            size_t current_index = 0;
-            if (config::Get_Settings_Row_Value(row, &value)) {
-                for (size_t index = 0; index < type->value_count; ++index) {
-                    if (type->values[index].value == value.integer_value) {
-                        current_index = index;
-                    }
-                }
-            }
-            size_t stride = 1;
-            for (size_t index = 0; index < type->value_count; ++index) {
-                stride = std::max(stride, strlen(type->values[index].name) + 1);
-            }
-            // One extra slot: Get_List_Field reads items until an
-            // empty entry, so the list needs a terminator.
-            std::vector<char> items((type->value_count + 1) * stride, '\0');
-            std::vector<uint8_t> flags(type->value_count, 1);
-            int16_t width = 16;
-            for (size_t index = 0; index < type->value_count; ++index) {
-                strlcpy(&items[index * stride], type->values[index].name, stride);
-                width = (int16_t)std::max<int32_t>(width,
-                    fonts::Get_String_Width(type->values[index].name) + 16);
-            }
+        // The popup's glyph-cell height: the same size as the
+        // closed value text, so the open list reads as the same
+        // control opened up.
+        int Popup_Cell() {
             const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
-            int16_t x = layout.header_value.x;
-            const int16_t content_right =
-                SETTINGS_LAYOUT::Rect_Right(layout.content);
-            if (x + width > content_right) {
-                x = (int16_t)(content_right - width);
-            }
-            const int16_t y_step = (int16_t)(fonts::Get_Font_Height() +
-                fonts::Get_Font_Vertical_Spacing());
-            const int16_t list_height =
-                (int16_t)((type->value_count + 1) * (size_t)y_step);
-            int16_t y = Visible_Row_Rect(visible - Scroll_Top()).y;
-            const int16_t content_bottom =
-                SETTINGS_LAYOUT::Rect_Bottom(layout.content);
-            if (y + list_height > content_bottom) {
-                y = (int16_t)(content_bottom - list_height);
-            }
-            if (y < layout.content.y) {
-                y = layout.content.y;
-            }
-            int8_t selected_index = (int8_t)current_index;
-            // The list items render in the colony-list color, so the
-            // dropdown reads as part of the same list. The list
-            // itself is the shared fields::Get_List_Field picker; its
-            // frame is that picker's, not the settings screen's.
-            fonts::Set_Font_Style(4, &g_colony_colors);
-            fonts::Set_Font_LF(4);
-            // The selection list clears the field set while it runs, so
-            // the screen's fields are stashed and restored around it.
-            fields::Mark_Fields();
-            const int16_t choice = fields::Get_List_Field(x, y, width,
-                row.title.c_str(), items.data(), (int32_t)stride, &selected_index,
-                flags.data(), 17, nullptr, 0, nullptr, 0, 0);
-            fields::Release_Fields();
-            Rebuild_Fields();
-            if (choice < 0) {
-                return;
-            }
-            config::s_typed_value chosen;
-            chosen.type = type->value_type;
-            chosen.integer_value = type->values[choice].value;
-            Apply_Row(row,
-                config::Format_Leaf_Value_For_Config(row.variable_id, chosen),
-                type->values[choice].name);
+            return Text_Cell_For(
+                SETTINGS_LAYOUT::Row_Value_Rect(layout, 0).h, 80);
         }
 
-        // The Resolution dropdown opens as a small popup window, in
-        // the shape of the fleet-selection popup (fleetpop.cpp): a
-        // small window over the screen, the values as rows, a blue
-        // bar on the selected one. The fleet box's own frame cannot
-        // be reused as-is -- it is fixed-width BUFFER0.LBX bitmap
-        // art (top/middle/bottom caps sized to the fleet box), and
-        // its selection is a ship-icon sprite -- so the popup uses
-        // the settings screen's own colony chrome (thin border,
-        // dark interior) for the frame and a filled blue bar for the
-        // selection, the same blue as the active category and RETURN button.
-        // The shared fields::Get_List_Field picker is not used here:
-        // it draws its own unframed list and cannot render this shape.
-        void Open_Resolution_Popup(int visible) {
-            int current_width = 0;
-            int current_height = 0;
-            if (!config::Get_Current_Resolution(&current_width, &current_height)) {
-                g_state.status = "Could not read the current window size.";
-                return;
-            }
-            g_state.resolution_options =
-                config::Resolution_Options(current_width, current_height);
-            int selected = 0;
-            for (size_t index = 0; index < g_state.resolution_options.size(); ++index) {
-                if (g_state.resolution_options[index].width == current_width &&
-                    g_state.resolution_options[index].height == current_height) {
-                    selected = (int)index;
-                }
-            }
-            g_state.resolution_popup_selected = selected;
-
-            // Geometry: the list is sized to the longest label, in
-            // the font it prints in (style 4 -- measuring in the
-            // font active at open time, style 1 for a row click,
-            // under-measures: style 4's "3840x2880" is ~111 px
-            // against style 1's ~63, so the text ran past the
-            // popup's border and the panel's edge, into the frame).
-            // The list is right-aligned to the dropdown button's
-            // right edge (the closed control's right edge, sized
-            // to the current value in style 1 like the row draw),
-            // and clamped to the frame's content bounds, so the
-            // widest item always fits on screen.
-            fonts::Set_Font_Style(4, &g_colony_colors);
-            const int16_t y_step = (int16_t)(fonts::Get_Font_Height() +
-                fonts::Get_Font_Vertical_Spacing());
-            int16_t content_w = 16;
-            for (const config::s_resolution_option& option :
-                g_state.resolution_options) {
-                content_w = (int16_t)std::max<int32_t>(content_w,
-                    fonts::Get_String_Width(option.label.c_str()));
-            }
-            const int16_t pad_x = 8;
-            const int16_t pad_top = 6;
-            const int16_t pad_bottom = 6;
-            const int16_t popup_w = (int16_t)(content_w + pad_x * 2 + 2);
-            const int16_t popup_h = (int16_t)(
-                (int16_t)g_state.resolution_options.size() * y_step +
-                pad_top + pad_bottom + 2);
-            // The dropdown button's right edge, like the row draw:
-            // the current value in style 1, plus the button chrome
-            // (padding, chevron, padding), inside the row's
-            // value-control rect.
-            fonts::Set_Font_Style(1, &g_colony_dim_colors);
-            const std::string current_label =
-                config::Format_Resolution(current_width, current_height);
-            const int16_t chevron_w = fonts::Get_String_Width("v");
-            const int16_t button_w = (int16_t)(
-                fonts::Get_String_Width(current_label.c_str()) +
-                4 + 4 + chevron_w + 4);
+        // Size, place and open the popup for `labels`, with
+        // `selected` the initially selected row, dropped below
+        // the row at visible offset `visible`: the popup opens
+        // under the row, not over it, so the opener row -- and
+        // its chevron, which paints the open blue while the
+        // popup is up -- stays visible.
+        // Sized to the widest label in the font it prints in (the
+        // HD font -- measuring in the pixel font under-measures,
+        // so the text ran past the popup's border and the panel's
+        // edge, into the frame); right-aligned to the closed
+        // control's right edge; clamped inside the frame by
+        // Popup_Rect, so the widest item always fits on screen.
+        // No title row: the row's title is already the row label
+        // and the description, and the field picker's unmeasured
+        // title row is what ran past the frame (4a clipping).
+        void Show_Popup(const std::vector<std::string>& labels,
+            int selected, int visible) {
+            using namespace SETTINGS_RENDER;
             const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
+            const int cell = Popup_Cell();
+            const int row_step = Line_Height(cell);
+            const int16_t pad = Text_Pad(layout.width);
+            const int16_t thickness = Frame_Thickness(layout.width);
+            int16_t content_w = 16;
+            for (const std::string& label : labels) {
+                content_w = (int16_t)std::max<int32_t>(content_w,
+                    Text_Width(label.c_str(), cell));
+            }
+            const int16_t popup_w =
+                (int16_t)(content_w + 2 * pad + 2 * thickness);
+            const int16_t popup_h = (int16_t)(
+                (int16_t)labels.size() * row_step + 2 * pad + 2 * thickness);
             const SETTINGS_LAYOUT::s_rect value_rect =
                 Visible_Value_Rect(visible - Scroll_Top());
-            const int16_t button_right =
-                (int16_t)(value_rect.x + button_w - 1);
-            int16_t x = (int16_t)(button_right + 1 - popup_w);
-            if (x < layout.content.x) {
-                x = layout.content.x;
-            }
-            if (x + popup_w > SETTINGS_LAYOUT::Rect_Right(layout.content)) {
-                x = (int16_t)(SETTINGS_LAYOUT::Rect_Right(layout.content) -
-                    popup_w);
-            }
-            int16_t y = value_rect.y;
-            const int16_t content_bottom =
-                SETTINGS_LAYOUT::Rect_Bottom(layout.content);
-            if (y + popup_h > content_bottom) {
-                y = (int16_t)(content_bottom - popup_h);
-            }
-            if (y < layout.content.y) {
-                y = layout.content.y;
-            }
-            g_state.resolution_popup_x = x;
-            g_state.resolution_popup_y = y;
-            g_state.resolution_popup_w = popup_w;
-            g_state.resolution_popup_h = popup_h;
-            g_state.resolution_popup_first_row_y = (int16_t)(y + 1 + pad_top);
-            g_state.resolution_popup_row_step = y_step;
-
-            // One hidden field per option row, so clicks land on rows
-            // and hover moves the blue bar. The screen's fields are
-            // stashed and restored around the popup, as in Open_Dropdown.
+            const SETTINGS_LAYOUT::s_rect row_rect =
+                Visible_Row_Rect(visible - Scroll_Top());
+            const SETTINGS_LAYOUT::s_rect popup =
+                SETTINGS_LAYOUT::Popup_Rect(layout.content,
+                    SETTINGS_LAYOUT::Rect_Right(value_rect),
+                    SETTINGS_LAYOUT::Rect_Bottom(row_rect),
+                    popup_w, popup_h);
+            g_state.popup_labels = labels;
+            g_state.popup_selected = selected;
+            g_state.popup_x = popup.x;
+            g_state.popup_y = popup.y;
+            g_state.popup_w = popup.w;
+            g_state.popup_h = popup.h;
+            g_state.popup_first_row_y =
+                (int16_t)(popup.y + thickness + pad);
+            g_state.popup_row_step = (int16_t)row_step;
+            g_state.popup_cell = cell;
+            // One hidden field per option row, inside the frame,
+            // so clicks land on rows and hover moves the blue bar.
+            // The screen's fields are stashed and restored around
+            // the popup, as in the old Get_List_Field call.
             fields::Mark_Fields();
             fields::Clear_Fields();
-            g_state.resolution_popup_fields.clear();
-            for (size_t index = 0; index < g_state.resolution_options.size(); ++index) {
+            g_state.popup_fields.clear();
+            for (size_t index = 0; index < labels.size(); ++index) {
                 const int16_t row_y = (int16_t)(
-                    g_state.resolution_popup_first_row_y + (int16_t)index * y_step);
-                g_state.resolution_popup_fields.push_back(
-                    fields::Add_Hidden_Field(x + 1, row_y,
-                        (int16_t)(x + popup_w - 2),
-                        (int16_t)(row_y + y_step - 1), "", 0));
+                    g_state.popup_first_row_y +
+                    (int16_t)index * g_state.popup_row_step);
+                g_state.popup_fields.push_back(
+                    fields::Add_Hidden_Field(
+                        (int16_t)(popup.x + thickness), row_y,
+                        (int16_t)(popup.x + popup.w - thickness - 1),
+                        (int16_t)(row_y + g_state.popup_row_step - 1),
+                        "", 0));
             }
-            g_state.resolution_popup_open = true;
+            g_state.popup_visible = visible;
+            g_state.popup_open = true;
+        }
 
-            // Modal loop, modelled on fields::Get_List_Field: hover
-            // moves the blue bar, a click chooses, Esc cancels, and
-            // a click outside the popup dismisses it too.
+        // Modal loop for the open popup, modelled on
+        // fields::Get_List_Field: hover moves the blue bar, a
+        // click chooses, Esc cancels, and a click outside the
+        // popup dismisses it too. Returns the chosen index, or -1.
+        int Run_Popup() {
             bool popup_armed = false;
             int choice = -1;
             while (true) {
@@ -995,8 +893,8 @@ namespace SETTINGS_SCREEN {
                 }
                 if (input != 0) {
                     for (size_t index = 0;
-                        index < g_state.resolution_popup_fields.size(); ++index) {
-                        if (input == g_state.resolution_popup_fields[index]) {
+                        index < g_state.popup_fields.size(); ++index) {
+                        if (input == g_state.popup_fields[index]) {
                             choice = (int)index;
                             break;
                         }
@@ -1019,10 +917,10 @@ namespace SETTINGS_SCREEN {
                 } else if (mouse::Mouse_Button() != 0) {
                     const int16_t px = mouse::Pointer_X();
                     const int16_t py = mouse::Pointer_Y();
-                    if (px < g_state.resolution_popup_x
-                        || px >= g_state.resolution_popup_x + g_state.resolution_popup_w
-                        || py < g_state.resolution_popup_y
-                        || py >= g_state.resolution_popup_y + g_state.resolution_popup_h) {
+                    if (px < g_state.popup_x ||
+                        px >= g_state.popup_x + g_state.popup_w ||
+                        py < g_state.popup_y ||
+                        py >= g_state.popup_y + g_state.popup_h) {
                         choice = -1;
                         break;
                     }
@@ -1030,9 +928,9 @@ namespace SETTINGS_SCREEN {
                 const int16_t scan = fields::Scan_Input();
                 if (scan > 0) {
                     for (size_t index = 0;
-                        index < g_state.resolution_popup_fields.size(); ++index) {
-                        if (scan == g_state.resolution_popup_fields[index]) {
-                            g_state.resolution_popup_selected = (int)index;
+                        index < g_state.popup_fields.size(); ++index) {
+                        if (scan == g_state.popup_fields[index]) {
+                            g_state.popup_selected = (int)index;
                             break;
                         }
                     }
@@ -1043,10 +941,89 @@ namespace SETTINGS_SCREEN {
                 platform::Toggle_Pages_Stub();
                 timer::Release_Time(3);
             }
+            return choice;
+        }
+
+        // Close the popup and restore the screen's fields.
+        void Close_Popup() {
             fields::Release_Fields();
-            g_state.resolution_popup_open = false;
-            g_state.resolution_popup_fields.clear();
+            g_state.popup_open = false;
+            g_state.popup_visible = -1;
+            g_state.popup_fields.clear();
             Rebuild_Fields();
+        }
+
+        void Open_Dropdown(int visible) {
+            const int row_index = Visible_Row_Index(visible);
+            const config::s_settings_row& row = g_state.rows[row_index];
+            const config::s_type_descriptor* type =
+                config::Get_Variable_Type(row.variable_id);
+            if (type == nullptr || type->values == nullptr || type->value_count == 0) {
+                g_state.status = "'" + row.title + "' has no list of values.";
+                return;
+            }
+            config::s_typed_value value;
+            size_t current_index = 0;
+            if (config::Get_Settings_Row_Value(row, &value)) {
+                for (size_t index = 0; index < type->value_count; ++index) {
+                    if (type->values[index].value == value.integer_value) {
+                        current_index = index;
+                    }
+                }
+            }
+            std::vector<std::string> labels;
+            labels.reserve(type->value_count);
+            for (size_t index = 0; index < type->value_count; ++index) {
+                labels.emplace_back(type->values[index].name);
+            }
+            Show_Popup(labels, (int)current_index, visible);
+            const int choice = Run_Popup();
+            Close_Popup();
+            if (choice < 0) {
+                return;
+            }
+            config::s_typed_value chosen;
+            chosen.type = type->value_type;
+            chosen.integer_value = type->values[choice].value;
+            Apply_Row(row,
+                config::Format_Leaf_Value_For_Config(row.variable_id, chosen),
+                type->values[choice].name);
+        }
+
+        // The Resolution dropdown opens as a small popup window, in
+        // the shape of the fleet-selection popup (fleetpop.cpp): a
+        // small window over the screen, the values as rows, a blue
+        // bar on the selected one. The fleet box's own frame cannot
+        // be reused as-is -- it is fixed-width BUFFER0.LBX bitmap
+        // art (top/middle/bottom caps sized to the fleet box), and
+        // its selection is a ship-icon sprite -- so the popup uses
+        // the settings screen's own industrial frame and a filled
+        // vivid-blue bar for the selection, the same blue as the
+        // active tab. The shared fields::Get_List_Field picker is
+        // not used here: it draws its own unframed list and cannot
+        // render this shape.
+        void Open_Resolution_Popup(int visible) {
+            int current_width = 0;
+            int current_height = 0;
+            if (!config::Get_Current_Resolution(&current_width, &current_height)) {
+                g_state.status = "Could not read the current window size.";
+                return;
+            }
+            g_state.resolution_options =
+                config::Resolution_Options(current_width, current_height);
+            int selected = 0;
+            std::vector<std::string> labels;
+            labels.reserve(g_state.resolution_options.size());
+            for (size_t index = 0; index < g_state.resolution_options.size(); ++index) {
+                if (g_state.resolution_options[index].width == current_width &&
+                    g_state.resolution_options[index].height == current_height) {
+                    selected = (int)index;
+                }
+                labels.push_back(g_state.resolution_options[index].label);
+            }
+            Show_Popup(labels, selected, visible);
+            const int choice = Run_Popup();
+            Close_Popup();
             if (choice < 0) {
                 return;
             }
@@ -1384,6 +1361,67 @@ namespace SETTINGS_SCREEN {
                 Scroll_Top(), ROWS_PER_PAGE);
         }
 
+        // The open dropdown popup (a generic dropdown, or
+        // Resolution): the list over the screen, in the shape of
+        // the fleet-selection popup -- a small window, the values
+        // as rows, a blue bar on the selected one. The draw was
+        // lost in the step-1 strip (the pixel-era
+        // Draw_Resolution_Popup went with ui_kit) and never
+        // restored, so the Resolution popup opened invisible;
+        // this restores it in hi-res, for both dropdowns.
+        void Draw_Popup() {
+            if (!g_state.popup_open) {
+                return;
+            }
+            using namespace SETTINGS_RENDER;
+            const int16_t x = g_state.popup_x;
+            const int16_t y = g_state.popup_y;
+            const int16_t w = g_state.popup_w;
+            const int16_t h = g_state.popup_h;
+            const int16_t thickness = Frame_Thickness(Layout().width);
+            const int16_t pad = Text_Pad(Layout().width);
+            const SETTINGS_LAYOUT::s_rect popup{x, y, w, h};
+            // Opaque interior: the popup floats over the list rows,
+            // and their labels must not show through it (the edit
+            // overpaint is opaque for the same reason).
+            Solid_Fill(popup, kPanel_Fill);
+            // The border around the open list is a bevelled frame,
+            // like the original GAME SETTINGS dialog's list box
+            // (GAME.LBX entry 29, measured): a bright ridge with a
+            // darker line inside it -- not a flat 1 px line (the
+            // pixel-era point 14). The industrial frame draws it:
+            // the light outer border, the dark inner line, on all
+            // four sides.
+            Frame(popup, thickness);
+            const int16_t text_x = (int16_t)(x + thickness + pad);
+            for (size_t index = 0; index < g_state.popup_labels.size();
+                ++index) {
+                const int16_t row_y = (int16_t)(
+                    g_state.popup_first_row_y +
+                    (int16_t)index * g_state.popup_row_step);
+                const int16_t text_y = (int16_t)(row_y +
+                    (g_state.popup_row_step - g_state.popup_cell) / 2);
+                if ((int)index == g_state.popup_selected) {
+                    // Blue bar on the selected value, the same vivid
+                    // blue as the active tab. It stays inside the
+                    // frame, so it never paints over the frame's
+                    // inner dark line.
+                    Solid_Fill(
+                        SETTINGS_LAYOUT::s_rect{(int16_t)(x + thickness),
+                            row_y, (int16_t)(w - 2 * thickness),
+                            g_state.popup_row_step},
+                        kActive_Fill);
+                    Draw_Text(text_x, text_y,
+                        g_state.popup_labels[index].c_str(),
+                        kText_Bright, g_state.popup_cell, 0);
+                } else {
+                    Draw_Text(text_x, text_y,
+                        g_state.popup_labels[index].c_str(),
+                        kText_Normal, g_state.popup_cell, 0);
+                }
+            }
+        }
+
         void Draw_Elements() {
             const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
             const int16_t pad = Text_Pad(layout.width);
@@ -1470,13 +1508,20 @@ namespace SETTINGS_SCREEN {
                 Blend_Fill(value_rect, kControl_Fill, kControl_Alpha);
                 Frame(value_rect, thickness);
                 // The value: toggles and mods show the star (4e);
-                // dropdowns and edits show their text (dropdowns
-                // become framed buttons with a chevron in 4d).
+                // dropdowns and edits show their text. A dropdown
+                // is a hardened display: like the colony's value
+                // cells, its value is right-aligned with a down
+                // chevron at the right edge. An edit keeps
+                // left-aligned text with no marker: the chevron
+                // marks a dropdown, never a write-input field.
                 std::string value_text;
+                bool is_dropdown = false;
                 if (!Is_Mod_Row(visible)) {
                     const config::s_settings_row& row_data =
                         g_state.rows[(size_t)Visible_Row_Index(visible)];
-                    if (row_data.widget == config::SETTINGS_WIDGET_DROPDOWN ||
+                    is_dropdown = row_data.widget ==
+                        config::SETTINGS_WIDGET_DROPDOWN;
+                    if (is_dropdown ||
                         row_data.widget == config::SETTINGS_WIDGET_EDIT) {
                         value_text = Row_Value_Text(row_data);
                     }
@@ -1485,12 +1530,48 @@ namespace SETTINGS_SCREEN {
                     auto value_measure = [&](const std::string& text) {
                         return Text_Width(text.c_str(), value_cell);
                     };
-                    Draw_Text((int16_t)(value_rect.x + pad),
-                        (int16_t)(value_rect.y +
-                            (value_rect.h - value_cell) / 2),
-                        SETTINGS_HD_FONT::Truncate_To_Width(value_text,
-                            value_rect.w - 2 * pad, value_measure).c_str(),
-                        kText_Bright, value_cell, 0);
+                    const int16_t text_y = (int16_t)(value_rect.y +
+                        (value_rect.h - value_cell) / 2);
+                    if (!is_dropdown) {
+                        Draw_Text((int16_t)(value_rect.x + pad),
+                            text_y,
+                            SETTINGS_HD_FONT::Truncate_To_Width(value_text,
+                                value_rect.w - 2 * pad, value_measure).c_str(),
+                            kText_Bright, value_cell, 0);
+                    } else {
+                        // The chevron sits at the right edge,
+                        // inside the frame; the value ends one pad
+                        // before it. A value too wide for the box
+                        // keeps its tail (the distinctive part) with
+                        // a leading ellipsis -- the open popup shows
+                        // the value in full.
+                        const int16_t chevron_w =
+                            (int16_t)std::max(4, value_cell * 2 / 3);
+                        const int16_t chevron_h = chevron_w;
+                        const int16_t chevron_right = (int16_t)(
+                            value_rect.x + value_rect.w - pad);
+                        const int16_t chevron_cx = (int16_t)(
+                            chevron_right - chevron_w / 2);
+                        const int16_t chevron_y = (int16_t)(value_rect.y +
+                            (value_rect.h - chevron_h) / 2);
+                        // The chevron is the knob: white while the
+                        // dropdown is closed, the open blue while
+                        // its popup is up -- the colour shift is
+                        // the state signal.
+                        const bool chevron_open = g_state.popup_open &&
+                            visible == g_state.popup_visible;
+                        Triangle_Down(chevron_cx, chevron_y, chevron_w,
+                            chevron_h,
+                            chevron_open ? kChevron_Open : kChevron_Closed);
+                        const int16_t text_right = (int16_t)(
+                            chevron_right - chevron_w - pad);
+                        Draw_Text(text_right, text_y,
+                            SETTINGS_HD_FONT::Truncate_Tail_To_Width(
+                                value_text,
+                                text_right - (value_rect.x + pad),
+                                value_measure).c_str(),
+                            kText_Bright, value_cell, 2);
+                    }
                 }
             }
             // Slots past the last visible row keep their empty
@@ -1614,6 +1695,11 @@ namespace SETTINGS_SCREEN {
                 button_state(layout.show_more, false), button_cell);
             Button(layout.done, "RETURN",
                 button_state(layout.done, false), button_cell);
+
+            // The open dropdown popup floats over the list: drawn
+            // after the rows and the bottom bar, so it paints over
+            // them.
+            Draw_Popup();
 
             // The edit overpaint: while a row is being edited, the
             // field system has drawn the edit text in the engine

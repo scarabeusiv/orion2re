@@ -136,6 +136,35 @@ namespace SETTINGS_HD_FONT {
             return RTrim(text.substr(0, (size_t)lo)) + "...";
         }
 
+        // Longest suffix of text whose width plus a leading "..."
+        // still fits; the ellipsis is always prepended (the caller
+        // already knows text is being cut). Returns "" when not
+        // even "..." fits.
+        std::string Truncate_Tail_With_Ellipsis(const std::string& text,
+            int max_width,
+            const std::function<int(const std::string&)>& measure) {
+            if (measure("...") > max_width) {
+                return std::string();
+            }
+            // Smallest start index whose suffix still fits after
+            // the ellipsis: keeping more means a smaller start.
+            int lo = 0;
+            int hi = (int)text.size();
+            while (lo < hi) {
+                const int mid = (lo + hi) / 2;
+                if (measure("..." + text.substr((size_t)mid)) <= max_width) {
+                    hi = mid;
+                } else {
+                    lo = mid + 1;
+                }
+            }
+            const std::string tail = text.substr((size_t)lo);
+            const size_t start = tail.find_first_not_of(' ');
+            return std::string("...") +
+                (start == std::string::npos ? std::string()
+                                            : tail.substr(start));
+        }
+
         // Split one over-wide word into chunks that fit, by measure.
         std::vector<std::string> Split_Word(const std::string& word, int max_width,
             const std::function<int(const std::string&)>& measure) {
@@ -163,6 +192,14 @@ namespace SETTINGS_HD_FONT {
             return text;
         }
         return Truncate_With_Ellipsis(text, max_width, measure);
+    }
+
+    std::string Truncate_Tail_To_Width(const std::string& text, int max_width,
+        const std::function<int(const std::string&)>& measure) {
+        if (measure(text) <= max_width) {
+            return text;
+        }
+        return Truncate_Tail_With_Ellipsis(text, max_width, measure);
     }
 
     std::vector<std::string> Wrap_Text(const std::string& text, int max_width,

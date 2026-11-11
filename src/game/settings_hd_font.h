@@ -52,4 +52,11 @@ namespace SETTINGS_HD_FONT {
     std::string Truncate_To_Width(const std::string& text, int max_width,
         const std::function<int(const std::string&)>& measure);
 
+    // Truncate to max_width, keeping the TAIL and prefixing "..."
+    // (the dots count toward the width). Returns "" when not even
+    // "..." fits. For right-aligned values, where the tail is the
+    // distinctive part.
+    std::string Truncate_Tail_To_Width(const std::string& text, int max_width,
+        const std::function<int(const std::string&)>& measure);
+
 } // namespace SETTINGS_HD_FONT
