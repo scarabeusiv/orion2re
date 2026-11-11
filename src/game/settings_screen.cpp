@@ -275,6 +275,19 @@ namespace SETTINGS_SCREEN {
             // COLSUM's inverted slider: the top row is the
             // maximum minus the slider.
             g_state.scroll_top[g_state.category] = max_scroll - slider;
+            // Focus follows the topmost item: if scrolling
+            // (arrow, wheel, or drag -- all of them land here
+            // through the slider) moved the selected row out
+            // of view, the selection moves to the topmost
+            // visible row, so the description shows the row
+            // in view instead of one that scrolled away.
+            if (Visible_Count() > 0) {
+                const int first = g_state.scroll_top[g_state.category];
+                if (g_state.selected < first ||
+                    g_state.selected >= first + Page_Count()) {
+                    g_state.selected = first;
+                }
+            }
         }
 
         // First visible row on the current tab (after Sync_Scroll).
