@@ -19,26 +19,25 @@ namespace SETTINGS_LAYOUT {
     // allocation (fractions of the height, top to bottom):
     //
     //   top margin      0.020
-    //   tab bar         0.055  (the 3 category tabs)
-    //   gap             0.012
     //   header row      0.055  (SETTING / VALUE column labels)
     //   gap             0.012
-    //   list            0.598  (10 rows, tiled exactly)
+    //   list            0.665  (10 rows, tiled exactly)
     //   gap             0.012
     //   description     0.140  (selected row's description + status)
     //   gap             0.012
-    //   bottom bar      0.064  (MORE + RETURN, right-aligned)
+    //   bottom bar      0.064  (tabs + MORE + RETURN)
     //   bottom margin   0.020
     //
     // Horizontal allocation (fractions of the width): the content
-    // spans 0.020..0.980. The tab bar's tabs divide its width in
-    // proportion to their label lengths (plus padding), with a
-    // 0.008 gap between tabs. The list's rows span the content
-    // width minus the scrollbar strip (0.008 wide, at the content's
-    // right edge, with a 0.006 gap). The VALUE zone starts at
-    // 0.790 of the width, in the header and in every row alike.
-    // MORE (0.108 wide) and RETURN (0.133 wide) sit at the bottom
-    // bar's right end with a 0.012 gap between them.
+    // spans 0.020..0.980. The bottom bar holds the three category
+    // tabs on the left (dividing the bar's left width in proportion
+    // to their label lengths, plus padding, with a 0.008 gap between
+    // tabs) and MORE and RETURN at the right end, the SAME width
+    // (0.133, sized for the longer label) with a 0.012 gap between
+    // them. The list's rows span the content width minus the
+    // scrollbar strip (0.008 wide, at the content's right edge, with
+    // a 0.006 gap). The VALUE zone starts at 0.790 of the width, in
+    // the header and in every row alike.
     //
     // The layout is pure: it takes the screen size and the tab
     // label lengths and returns rectangles. No video, font or
@@ -50,6 +49,8 @@ namespace SETTINGS_LAYOUT {
         // The content rect: the outer box the screen's elements
         // live in (content margins on all four sides).
         s_rect content;
+        // The tab strip: the rect spanning the three tabs, inside
+        // the bottom bar.
         s_rect tab_bar;
         s_rect tabs[3];
         s_rect header;

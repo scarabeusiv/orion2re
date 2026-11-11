@@ -19,10 +19,9 @@ namespace SETTINGS_LAYOUT {
 
         // Vertical allocation, permille of the height.
         constexpr int32_t kMargin_Y = 20;
-        constexpr int32_t kTab_Bar_H = 55;
         constexpr int32_t kGap_Y = 12;
         constexpr int32_t kHeader_H = 55;
-        constexpr int32_t kList_H = 598;
+        constexpr int32_t kList_H = 665;
         constexpr int32_t kDescription_H = 140;
         constexpr int32_t kBottom_Bar_H = 64;
 
@@ -33,10 +32,12 @@ namespace SETTINGS_LAYOUT {
         constexpr int32_t kScrollbar_Gap = 6;
         constexpr int32_t kValue_X = 790;
         constexpr int32_t kValue_Gap = 10;
-        constexpr int32_t kMore_W = 108;
-        constexpr int32_t kDone_W = 133;
         constexpr int32_t kBottom_Gap = 12;
-        // MORE / RETURN button height, permille of the height.
+        // MORE and RETURN are the SAME width: one button width,
+        // sized for the longer label (RETURN), so the two buttons
+        // at the bottom bar's right end do not differ.
+        constexpr int32_t kBottom_Button_W = 133;
+        // MORE / RETURN / tab button height, permille of the height.
         constexpr int32_t kButton_H = 52;
 
         // A tab's width weight is its label length plus this
@@ -67,17 +68,16 @@ namespace SETTINGS_LAYOUT {
         // Vertical bands, stacked from the top margin. Each band's
         // position is the sum of the bands above it, so the bands
         // tile the height exactly (top margin + bands + bottom
-        // margin = 1000 permille).
+        // margin = 1000 permille). The tabs live in the bottom bar,
+        // not at the top: the header is the first band, and the
+        // list takes the space the old top tab bar used.
         const int16_t margin_y = Scale(height, kMargin_Y);
-        const int16_t tab_bar_h = Scale(height, kTab_Bar_H);
         const int16_t gap_y = Scale(height, kGap_Y);
         const int16_t header_h = Scale(height, kHeader_H);
         const int16_t list_h = Scale(height, kList_H);
         const int16_t description_h = Scale(height, kDescription_H);
         const int16_t bottom_bar_h = Scale(height, kBottom_Bar_H);
         int16_t y = margin_y;
-        const int16_t tab_bar_y = y;
-        y = (int16_t)(y + tab_bar_h + gap_y);
         const int16_t header_y = y;
         y = (int16_t)(y + header_h + gap_y);
         const int16_t list_y = y;
@@ -93,18 +93,34 @@ namespace SETTINGS_LAYOUT {
         const int16_t content_right = (int16_t)(width - margin_x);
         const int16_t content_w = (int16_t)(content_right - content_x);
 
-        layout.content = s_rect{content_x, tab_bar_y, content_w,
-            (int16_t)(bottom_bar_bottom - tab_bar_y)};
-        layout.tab_bar = s_rect{content_x, tab_bar_y, content_w, tab_bar_h};
+        layout.content = s_rect{content_x, header_y, content_w,
+            (int16_t)(bottom_bar_bottom - header_y)};
+        layout.bottom_bar = s_rect{content_x, bottom_bar_y,
+            content_w, bottom_bar_h};
 
-        // Tabs: divide the tab bar in proportion to the label
-        // lengths (plus padding), with a gap between tabs. Each
-        // tab's width is its share of the available width; the
-        // last tab absorbs the rounding remainder, so the tabs
-        // tile the bar exactly.
+        // MORE and RETURN sit at the bottom bar's right end, the
+        // same width, on one line, vertically centred in the bar.
+        // The tabs share that line, on the left.
+        const int16_t button_w = Scale(width, kBottom_Button_W);
+        const int16_t bottom_gap = Scale(width, kBottom_Gap);
+        const int16_t button_h = Scale(height, kButton_H);
+        const int16_t button_y =
+            (int16_t)(bottom_bar_y + (bottom_bar_h - button_h) / 2);
+        const int16_t done_x = (int16_t)(content_right - button_w);
+        const int16_t more_x = (int16_t)(done_x - bottom_gap - button_w);
+        layout.show_more = s_rect{more_x, button_y, button_w, button_h};
+        layout.done = s_rect{done_x, button_y, button_w, button_h};
+
+        // Tabs: divide the bottom bar's left width (up to the MORE
+        // button, with a gap) in proportion to the label lengths
+        // (plus padding), with a gap between tabs. Each tab's width
+        // is its share of the available width; the last tab absorbs
+        // the rounding remainder, so the tabs tile their strip
+        // exactly.
         const int16_t tab_gap = Scale(width, kTab_Gap);
+        const int16_t tab_area_right = (int16_t)(more_x - bottom_gap);
         const int16_t tab_available =
-            (int16_t)(content_w - 2 * tab_gap);
+            (int16_t)(tab_area_right - content_x - 2 * tab_gap);
         int32_t total_weight = 0;
         int32_t weights[3] = {};
         for (int tab = 0; tab < 3; ++tab) {
@@ -124,9 +140,11 @@ namespace SETTINGS_LAYOUT {
             if (tab_w < 1) {
                 tab_w = 1;
             }
-            layout.tabs[tab] = s_rect{tab_x, tab_bar_y, tab_w, tab_bar_h};
+            layout.tabs[tab] = s_rect{tab_x, button_y, tab_w, button_h};
             tab_x = (int16_t)(tab_x + tab_w + tab_gap);
         }
+        layout.tab_bar = s_rect{content_x, button_y,
+            (int16_t)(tab_area_right - content_x), button_h};
 
         // The scrollbar strip sits at the content's right edge;
         // the list rows span the content width minus the strip
@@ -152,21 +170,6 @@ namespace SETTINGS_LAYOUT {
 
         layout.description = s_rect{content_x, description_y,
             content_w, description_h};
-        layout.bottom_bar = s_rect{content_x, bottom_bar_y,
-            content_w, bottom_bar_h};
-
-        // MORE and RETURN sit at the bottom bar's right end, on
-        // one line, vertically centred in the bar.
-        const int16_t more_w = Scale(width, kMore_W);
-        const int16_t done_w = Scale(width, kDone_W);
-        const int16_t bottom_gap = Scale(width, kBottom_Gap);
-        const int16_t button_h = Scale(height, kButton_H);
-        const int16_t button_y =
-            (int16_t)(bottom_bar_y + (bottom_bar_h - button_h) / 2);
-        const int16_t done_x = (int16_t)(content_right - done_w);
-        const int16_t more_x = (int16_t)(done_x - bottom_gap - more_w);
-        layout.show_more = s_rect{more_x, button_y, more_w, button_h};
-        layout.done = s_rect{done_x, button_y, done_w, button_h};
         return layout;
     }
 

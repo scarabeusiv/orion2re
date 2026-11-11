@@ -170,8 +170,9 @@ namespace SETTINGS_SCREEN {
         // (settings_layout), computed for the current game
         // resolution. The same rects draw the placeholder frames
         // and take the clicks, so drawing and hit-testing agree.
-        // The tabs moved to the top of the screen (modern gaming
-        // design): the bottom bar keeps only MORE and RETURN.
+        // The tabs sit in the bottom bar with MORE and RETURN:
+        // the header is the first band, and the list takes the
+        // space the old top tab bar used.
         SETTINGS_LAYOUT::s_settings_layout Layout() {
             int lengths[CATEGORY_COUNT];
             for (int c = 0; c < CATEGORY_COUNT; ++c) {
@@ -509,9 +510,9 @@ namespace SETTINGS_SCREEN {
             fields::Clear_Fields();
             fonts::Set_Font_Style(4, &g_normal_colors);
             const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
-            // Category tabs at the top of the screen: one hidden
-            // field per category, left to right, each keeping its
-            // own scroll position.
+            // Category tabs in the bottom bar: one hidden field
+            // per category, left to right, each keeping its own
+            // scroll position.
             for (int category = 0; category < CATEGORY_COUNT; ++category) {
                 const SETTINGS_LAYOUT::s_rect tab = layout.tabs[category];
                 g_state.tab_fields[category] = fields::Add_Hidden_Field(
@@ -1122,18 +1123,7 @@ namespace SETTINGS_SCREEN {
             // 2 px at 1280, 3 px at 1920.
             const int16_t thickness =
                 (int16_t)std::max<int32_t>(1, layout.width / 640);
-            // Tab bar at the top: one frame for the strip, then
-            // each tab's own frame; the active tab reads blue.
-            Draw_Placeholder_Frame(layout.tab_bar, kPlaceholder_Panel,
-                kPlaceholder_Frame, thickness);
-            for (int category = 0; category < CATEGORY_COUNT; ++category) {
-                Draw_Placeholder_Frame(layout.tabs[category],
-                    category == g_state.category
-                        ? kPlaceholder_Active_Tab
-                        : kPlaceholder_Control,
-                    kPlaceholder_Frame, thickness);
-            }
-            // SETTING / VALUE header row under the tabs: one frame,
+            // SETTING / VALUE header row at the top: one frame,
             // with the VALUE zone's own frame inside it.
             Draw_Placeholder_Frame(layout.header, kPlaceholder_Panel,
                 kPlaceholder_Frame, thickness);
@@ -1165,10 +1155,18 @@ namespace SETTINGS_SCREEN {
             // Description box: one frame across the full width.
             Draw_Placeholder_Frame(layout.description, kPlaceholder_Panel,
                 kPlaceholder_Frame, thickness);
-            // Bottom bar: one frame, with MORE and RETURN's own
-            // frames inside it at the right end.
+            // Bottom bar: one frame, with the tabs on the left
+            // and MORE and RETURN at the right end, each with its
+            // own frame inside it; the active tab reads blue.
             Draw_Placeholder_Frame(layout.bottom_bar, kPlaceholder_Panel,
                 kPlaceholder_Frame, thickness);
+            for (int category = 0; category < CATEGORY_COUNT; ++category) {
+                Draw_Placeholder_Frame(layout.tabs[category],
+                    category == g_state.category
+                        ? kPlaceholder_Active_Tab
+                        : kPlaceholder_Control,
+                    kPlaceholder_Frame, thickness);
+            }
             Draw_Placeholder_Frame(layout.show_more, kPlaceholder_Control,
                 kPlaceholder_Frame, thickness);
             Draw_Placeholder_Frame(layout.done, kPlaceholder_Control,
