@@ -112,6 +112,22 @@ Contents:
   colony palette -> installed palette, index 0 preserved, fail
   over distance 64).
 
+- `settings-background` — AUTHORED, not extracted from an LBX:
+  the settings screen's 640x480 background, drawn from the
+  colony frame verbatim (dark interior, row dividers at the
+  settings row boundaries, blank header plates, navy
+  description band); the SETTING/VALUE text is rendered by
+  code on the blank plates. No entry in `sprites.json` (that
+  manifest is for LBX-extracted sprites only). Source PNG and
+  converter live in `settings-background/` here; reproduce
+  with `settings-background/png_to_bin.py settings-bg-v3.png
+  MAINMENU.LBX data/base/sprites/settings-background/normal.bin`
+  (remaps to the menu palette, excluding the transient navy
+  ramp 160-223 and vivid blue 253 that Install_Background
+  overwrites at runtime). The settings screen draws it at
+  640x480 and falls back to its generated background at other
+  resolutions or when the file is missing.
+
 - `scroll-arrow-up`, `scroll-arrow-down` — COLSUM.LBX entries 2
   (10x20) and 3 (11x22), the scrollbar's up/down arrow buttons,
   colony palette -> menu palette. Only the rest state (frame 0)
@@ -131,14 +147,15 @@ Contents:
 
 ## What cannot be derived from game art
 
-- Border, list panel, header plates, description box, toggle
-  squares, scrollbar thumb: the colony's are baked into the
-  640x480 colony background art (COLSUM.LBX entry 0), so no
-  separable sprite exists for them -- and the settings screen no
-  longer renders on that background (see `colony-background`
-  above), so they are engine-drawn Fill/Box in theme colours,
-  in the colony's style. The scrollbar thumb is dynamic (it
-  moves with the scroll position), so it stays kit-drawn.
+- Border, list panel, header plates, description box: the
+  colony's are baked into the 640x480 colony background art
+  (COLSUM.LBX entry 0), so no separable sprite exists for
+  them -- and the settings screen no longer renders on that
+  background (see `colony-background` above). They now come
+  from the authored `settings-background` bitmap instead (see
+  above); the toggle squares and the scrollbar thumb stay
+  kit-drawn. The thumb is dynamic (it moves with the scroll
+  position), so it stays kit-drawn.
 - Dropdown popup: no popup-window sprite exists; the game's own
   modal lists are engine-drawn. The resolution popup stays
   engine-drawn.
@@ -154,6 +171,9 @@ Reproduce everything with `tools/extract_sprite.py --lbx COLSUM.LBX
 --fonts-lbx FONTS.LBX --mainmenu-lbx MAINMENU.LBX`, and verify with
 the same command plus `--check`. The tool needs the user's original
 game data; the committed .bin files are the checked-in result. The
+settings background reproduces with
+`settings-background/png_to_bin.py` from the PNG beside it (see
+`settings-background` above). The
 sort tabs reproduce with `tools/derive_sort_tabs.py --game <game
 data> --grabs <colony screenshots> --out data/base/sprites`, which
 needs the colony-screen screengrabs (not committed) and the same
