@@ -80,6 +80,17 @@ namespace SETTINGS_SCREEN {
         // The standard UI text palette, as used by the council screen.
         s_colors g_normal_colors = {{150, 154, 155, 151, 152, 153, 154, 155}};
 
+        // The header-label white: the menu palette's near-white
+        // grey ramp, measured from MAINMENU.LBX entry 2 (the
+        // palette installed while this screen is up): 250 is
+        // (220,220,228), the brightest near-white, 249 is
+        // (204,204,212) for the outline. SETTING/VALUE draw in
+        // this, not in the teal g_normal_colors (whose face,
+        // 154, is cyan (120,180,184)). Slot 0 is the outline,
+        // the rest the face, like g_list_green_colors.
+        s_colors g_header_white_colors =
+            {{249, 250, 250, 250, 250, 250, 250, 250}};
+
         // The row-label green, as in Tom's settings sample: the
         // setting names are bright green, while the button labels
         // and header/description stay the council grey. The
@@ -219,6 +230,13 @@ namespace SETTINGS_SCREEN {
             s_animation_header* tab_sprite_small_normal = nullptr;
             s_animation_header* tab_sprite_small_active = nullptr;
             s_animation_header* return_sprite = nullptr;
+            // The blank RETURN frame (the colony RETURN frame
+            // with its baked "RETURN" label blanked): the
+            // dropdown/edit value buttons draw on it, so the
+            // baked label cannot bleed through the value text
+            // ("Rhalf", "RETURN" for the value 1). The
+            // bottom-bar RETURN keeps the labelled frame.
+            s_animation_header* value_box_sprite = nullptr;
             s_animation_header* toggle_off = nullptr;
             s_animation_header* toggle_on = nullptr;
             s_animation_header* arrow_up = nullptr;
@@ -698,12 +716,13 @@ namespace SETTINGS_SCREEN {
         // The derived sprites this screen renders with
         // (sprite_art): the colony sort-tab frames (blanked
         // labels) for the category tabs and MORE, the colony
-        // RETURN frame for RETURN and for the dropdown/edit
-        // value buttons, the colony buy-button toggle frames
-        // for bool values and mods, and the colony scroll
-        // arrows. Loaded once into MOX::screen_seg; a missing
-        // frame leaves its element on a hidden field (the
-        // screen stays usable), never a null sprite.
+        // RETURN frame for RETURN, the blank RETURN frame
+        // (value-box) for the dropdown/edit value buttons,
+        // the colony buy-button toggle frames for bool values
+        // and mods, and the colony scroll arrows. Loaded once
+        // into MOX::screen_seg; a missing frame leaves its
+        // element on a hidden field (the screen stays usable),
+        // never a null sprite.
         void Ensure_Sprites() {
             if (g_state.sprites_loaded) {
                 return;
@@ -721,6 +740,8 @@ namespace SETTINGS_SCREEN {
                     "sort-food", "active", MOX::screen_seg);
             g_state.return_sprite = sprite_art::Load_Sprite_Frame(
                 "return", "normal", MOX::screen_seg);
+            g_state.value_box_sprite = sprite_art::Load_Sprite_Frame(
+                "value-box", "normal", MOX::screen_seg);
             sprite_art::Buy_Button_Frames toggle =
                 sprite_art::Load_Buy_Button_Frames(MOX::screen_seg);
             g_state.toggle_off = toggle.off;
@@ -922,7 +943,7 @@ namespace SETTINGS_SCREEN {
                             config::SETTINGS_WIDGET_DROPDOWN ||
                         row_data.widget ==
                             config::SETTINGS_WIDGET_EDIT) {
-                        value_pic = g_state.return_sprite;
+                        value_pic = g_state.value_box_sprite;
                         value_text = Row_Value_Text(row_data);
                         show_value = true;
                     }
@@ -1671,9 +1692,10 @@ namespace SETTINGS_SCREEN {
 
         void Draw_Text_Elements() {
             const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
-            fonts::Set_Font_Style(4, &g_normal_colors);
+            fonts::Set_Font_Style(4, &g_header_white_colors);
             Draw_Centred_Text("SETTING", layout.header_setting);
             Draw_Centred_Text("VALUE", layout.header_value);
+            fonts::Set_Font_Style(4, &g_normal_colors);
             Draw_Description();
             Draw_Scroll_Thumb();
         }

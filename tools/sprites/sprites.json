@@ -28,6 +28,26 @@
    "target_palette": "menu"
   },
   {
+   "blank": {
+    "fill": 93,
+    "x0": 17,
+    "x1": 56,
+    "y0": 8,
+    "y1": 16
+   },
+   "entry": 1,
+   "id": "value-box",
+   "size": [
+    85,
+    26
+   ],
+   "source_palette": "colony",
+   "states": {
+    "normal": 0
+   },
+   "target_palette": "menu"
+  },
+  {
    "grab": {
     "tab": "Name",
     "x": 89,
