@@ -122,15 +122,15 @@ namespace {
         CHECK(Rect_Right(layout.tabs[2]) == Rect_Right(layout.tab_bar));
         CHECK(layout.tabs[0].w > layout.tabs[1].w);
         CHECK(layout.tabs[1].w > layout.tabs[2].w);
-        // VALUE zone at 77.8% of the width, in the header and rows.
-        // It moved left with the (wider) scrollbar strip, so the
-        // value boxes keep their exact width -- the strip's extra
-        // width comes out of the name zone instead. The strip now
-        // touches the list (no gap), so the value zone is 4 px
-        // wider than before.
-        CHECK(layout.header_value.x == 498);
-        CHECK(layout.header_value.w == 116);
-        CHECK(layout.header_setting.w == 479);
+        // VALUE zone at 82.0% of the width, in the header and rows.
+        // The zone is 89 px at 640x480, so the 85 px colony RETURN
+        // frame the dropdown/edit values sit on nearly fills it
+        // (2 px of margin each side), like the sample's wide value
+        // boxes filling their column; the freed width goes to the
+        // name zone, so long labels truncate less.
+        CHECK(layout.header_value.x == 525);
+        CHECK(layout.header_value.w == 89);
+        CHECK(layout.header_setting.w == 506);
         // Scrollbar strip at the content's right edge: chunky, like
         // the colony's, so the arrows read as buttons. It runs the
         // header band as well as the list.

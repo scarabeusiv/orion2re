@@ -47,12 +47,13 @@ namespace SETTINGS_SCREEN {
         // stays, and the rendering is field types, not custom
         // drawing. Row labels are STRING_LIST fields (the
         // field system draws the text and the selection
-        // highlight); values are BUTTON fields on derived
+        // highlight) in the sample's bright green; values are BUTTON fields on derived
         // sprites (the colony RETURN frame for a dropdown/edit
         // value, the colony buy-button toggle frames for a
         // bool/mod); the category tabs are BUTTON fields on
         // the colony sort-tab frames (active for the current
-        // category); MORE and RETURN are BUTTON fields; the
+        // category, sized to the label like the colony's
+        // switcher); MORE and RETURN are BUTTON fields; the
         // scroll arrows are BUTTON fields on the colony
         // scroll-arrow frames; the scrollbar is the field
         // system's SCROLL field; dropdowns open through the
@@ -78,6 +79,21 @@ namespace SETTINGS_SCREEN {
 
         // The standard UI text palette, as used by the council screen.
         s_colors g_normal_colors = {{150, 154, 155, 151, 152, 153, 154, 155}};
+
+        // The row-label green, as in Tom's settings sample: the
+        // setting names are bright green, while the button labels
+        // and header/description stay the council grey. The
+        // indices are the menu palette's green ramp, measured
+        // from fonts.lbx palette 0 (MOX::combat_green's 0x81/0x89
+        // are RED in this palette -- 0x81 is r=49,g=0 -- so they
+        // must not be used here): 0x79 is the darker green
+        // outline (g=45), 0x78 the bright pure-green face (g=63).
+        // Applied to the string-list colours only
+        // (list_normal_color / list_highlight_colors), so the
+        // BUTTON fields keep g_normal_colors -- they capture the
+        // current font colour at creation, and the string list
+        // reads the globals.
+        s_colors g_list_green_colors = {{0x79, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78, 0x78}};
 
         enum e_apply_result {
             APPLY_LIVE,
@@ -194,6 +210,14 @@ namespace SETTINGS_SCREEN {
             bool sprites_loaded = false;
             s_animation_header* tab_sprite_normal = nullptr;
             s_animation_header* tab_sprite_active = nullptr;
+            // The narrow sort-tab frames (42 px, the colony's
+            // sort-food frame) for the short tabs: the colony's
+            // switcher sizes each tab to its label (Name 50 px,
+            // Food 42 px, Population 78 px), so a short tab gets
+            // the narrow frame and the tabs read as a switcher
+            // instead of three identical wide buttons.
+            s_animation_header* tab_sprite_small_normal = nullptr;
+            s_animation_header* tab_sprite_small_active = nullptr;
             s_animation_header* return_sprite = nullptr;
             s_animation_header* toggle_off = nullptr;
             s_animation_header* toggle_on = nullptr;
@@ -689,6 +713,12 @@ namespace SETTINGS_SCREEN {
                 "sort-population", "normal", MOX::screen_seg);
             g_state.tab_sprite_active = sprite_art::Load_Sprite_Frame(
                 "sort-population", "active", MOX::screen_seg);
+            g_state.tab_sprite_small_normal =
+                sprite_art::Load_Sprite_Frame(
+                    "sort-food", "normal", MOX::screen_seg);
+            g_state.tab_sprite_small_active =
+                sprite_art::Load_Sprite_Frame(
+                    "sort-food", "active", MOX::screen_seg);
             g_state.return_sprite = sprite_art::Load_Sprite_Frame(
                 "return", "normal", MOX::screen_seg);
             sprite_art::Buy_Button_Frames toggle =
@@ -748,28 +778,47 @@ namespace SETTINGS_SCREEN {
             Ensure_Sprites();
             fields::Clear_Fields();
             fonts::Set_Font_Style(4, &g_normal_colors);
-            // The string-list colours come from the current font
-            // colours (Get_List_Field sets these globals the same
-            // way before it builds its rows).
+            // The string-list colours: the row labels are the
+            // sample's bright green (g_list_green_colors), both
+            // unselected (list_normal_color) and selected
+            // (list_highlight_colors, so the selected label stays
+            // green on the blue selection bar). The gradient
+            // colours (list_special_colors) still come from the
+            // current special colour, so the selection bar itself
+            // is unchanged. Get_List_Field sets these globals the
+            // same way before it builds its rows. The BUTTON
+            // fields keep g_normal_colors: they capture the
+            // current font colour at creation, below.
             {
-                s_colors* cur_font_color =
-                    fonts::Get_Current_Font_Color();
-                s_colors* cur_highlight =
-                    fonts::Get_Current_Highlight_Color();
                 s_colors* cur_special =
                     fonts::Get_Current_Special_Color();
                 for (int i = 0; i < 8; i++) {
                     fields::list_normal_color.colors[i] =
-                        cur_font_color->colors[i];
+                        g_list_green_colors.colors[i];
                     fields::list_special_colors.colors[i] =
                         cur_special->colors[i];
                     fields::list_highlight_colors.colors[i] =
-                        cur_highlight->colors[i];
+                        g_list_green_colors.colors[i];
                 }
             }
             const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
             const int16_t pad = Text_Pad(layout.width);
             const int16_t font_height = fonts::Get_Font_Height();
+            // A button field's font colour is a pointer to the
+            // shared current-font-colour global (Add_Button_Field
+            // captures Get_Current_Font_Color()), so its text
+            // renders in whatever the previously drawn field left
+            // there -- the selected row's string list leaves the
+            // green highlight colour, and the selected row's value
+            // button would render green. Pin a button's colour to
+            // the council grey after creating it, so the button
+            // labels stay grey whatever the string list did.
+            auto pin_button_color = [](int16_t field_id) {
+                if (field_id >= 0) {
+                    fields::fields[field_id].font_color =
+                        &g_normal_colors;
+                }
+            };
             Sync_Scroll();
             // The selection follows the selected row, clamped
             // into the visible range.
@@ -779,13 +828,24 @@ namespace SETTINGS_SCREEN {
             // Category tabs in the bottom bar: one button per
             // category on the sort-tab frame, the active tab on
             // its "active" frame. The label is the short
-            // category name, centred by the field system.
+            // category name, centred by the field system. The
+            // frame is sized to the label, like the colony's
+            // switcher: the short "Mods" tab gets the narrow
+            // 42 px sort-food frame, "Internals" and "Gameplay"
+            // the wide 78 px sort-population frame. A missing
+            // narrow frame falls back to the wide one.
             for (int category = 0; category < CATEGORY_COUNT; ++category) {
                 const SETTINGS_LAYOUT::s_rect tab = layout.tabs[category];
+                const bool small_tab =
+                    category == CATEGORY_MODS &&
+                    g_state.tab_sprite_small_normal != nullptr &&
+                    g_state.tab_sprite_small_active != nullptr;
                 s_animation_header* pic =
                     category == g_state.category
-                        ? g_state.tab_sprite_active
-                        : g_state.tab_sprite_normal;
+                        ? (small_tab ? g_state.tab_sprite_small_active
+                                     : g_state.tab_sprite_active)
+                        : (small_tab ? g_state.tab_sprite_small_normal
+                                     : g_state.tab_sprite_normal);
                 if (pic != nullptr) {
                     const int16_t w = animate::Get_Width(pic);
                     const int16_t h = animate::Get_Height(pic);
@@ -794,6 +854,7 @@ namespace SETTINGS_SCREEN {
                             (int16_t)(tab.x + (tab.w - w) / 2),
                             (int16_t)(tab.y + (tab.h - h) / 2),
                             CATEGORY_SHORT_LABELS[category], pic, "", 0);
+                    pin_button_color(g_state.tab_fields[category]);
                 } else {
                     g_state.tab_fields[category] =
                         fields::Add_Hidden_Field(tab.x, tab.y,
@@ -884,6 +945,7 @@ namespace SETTINGS_SCREEN {
                             (int16_t)(value_rect.y +
                                 (value_rect.h - h) / 2),
                             value_help, value_pic, "", 0);
+                    pin_button_color(g_state.value_fields[index]);
                 } else if (show_value) {
                     // No sprite: the value zone stays clickable
                     // through a hidden field, like the row.
@@ -926,10 +988,12 @@ namespace SETTINGS_SCREEN {
                 }
                 const int16_t w = animate::Get_Width(pic);
                 const int16_t h = animate::Get_Height(pic);
-                return fields::Add_Button_Field(
+                const int16_t field_id = fields::Add_Button_Field(
                     (int16_t)(zone.x + (zone.w - w) / 2),
                     (int16_t)(zone.y + (zone.h - h) / 2),
                     "", pic, "", 0);
+                pin_button_color(field_id);
+                return field_id;
             };
             g_state.scroll_up_field =
                 add_arrow(layout.scrollbar_arrow_up, g_state.arrow_up);
@@ -946,10 +1010,12 @@ namespace SETTINGS_SCREEN {
                 }
                 const int16_t w = animate::Get_Width(pic);
                 const int16_t h = animate::Get_Height(pic);
-                return fields::Add_Button_Field(
+                const int16_t field_id = fields::Add_Button_Field(
                     (int16_t)(zone.x + (zone.w - w) / 2),
                     (int16_t)(zone.y + (zone.h - h) / 2),
                     label, pic, "", 0);
+                pin_button_color(field_id);
+                return field_id;
             };
             g_state.show_all_field = add_bar_button(layout.show_more,
                 "MORE", g_state.tab_sprite_normal);

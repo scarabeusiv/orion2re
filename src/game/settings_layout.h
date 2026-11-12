@@ -63,11 +63,12 @@ namespace SETTINGS_LAYOUT {
     // colony's indicator bar: 6 px wide in the colony's 13 px
     // strip, and it spans the whole track when the list fits
     // (the colony's rule -- the arrows stay visible and do
-    // nothing on a short list). The VALUE zone starts at 0.778
-    // of the width, in the header and in every row alike -- it
-    // moved left with the strip, so the value boxes keep their
-    // exact width and the strip's extra width comes out of the
-    // (wide) name zone.
+    // nothing on a short list). The VALUE zone starts at 0.820
+    // of the width, in the header and in every row alike -- the
+    // zone is 89 px at 640x480, so the 85 px colony RETURN frame
+    // the dropdown/edit values sit on nearly fills it, like the
+    // sample's wide value boxes filling their column; the freed
+    // width goes to the name zone.
     //
     // The layout is pure: it takes the screen size and the tab
     // label lengths and returns rectangles. No video, font or

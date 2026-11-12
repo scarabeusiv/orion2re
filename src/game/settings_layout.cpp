@@ -57,7 +57,15 @@ namespace SETTINGS_LAYOUT {
         // corner with the header plates, like the colony's
         // (whose up arrow is at the header's height).
         constexpr int32_t kScrollbar_Gap = 0;
-        constexpr int32_t kValue_X = 778;
+        // The VALUE zone starts at 82.0% of the width: the zone
+        // is 89 px at 640x480, so the 85 px colony RETURN frame
+        // the dropdown/edit values sit on nearly fills it (2 px
+        // of margin each side), like the sample's wide value
+        // boxes filling their column -- the frame is the widest
+        // the fields system has, so the zone is sized to it
+        // instead. The freed width goes to the name zone, so
+        // long labels truncate less.
+        constexpr int32_t kValue_X = 820;
         constexpr int32_t kValue_Gap = 10;
         constexpr int32_t kBottom_Gap = 12;
         // MORE and RETURN are the SAME width: one button width,
