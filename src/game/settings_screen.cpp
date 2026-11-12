@@ -1692,7 +1692,13 @@ namespace SETTINGS_SCREEN {
 
         void Draw_Text_Elements() {
             const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
-            fonts::Set_Font_Style(4, &g_header_white_colors);
+            // The header labels are the colonies header font
+            // (style 3: bold, chunky, compact -- the colonies
+            // NAME/FARMERS plates are baked in that font, and
+            // style 4 is taller and more elegant). The white
+            // colour stays: the header is white on the dark
+            // plates, like the colonies.
+            fonts::Set_Font_Style(3, &g_header_white_colors);
             Draw_Centred_Text("SETTING", layout.header_setting);
             Draw_Centred_Text("VALUE", layout.header_value);
             fonts::Set_Font_Style(4, &g_normal_colors);

@@ -104,23 +104,28 @@ namespace {
         CHECK(layout.bottom_bar.y == 439);
         CHECK(layout.bottom_bar.h == 31);
         CHECK(Rect_Bottom(layout.bottom_bar) == 470);
-        // Tabs tile the bottom bar's left width in proportion to
-        // their label lengths, with no gap between them (one
-        // continuous band, like the colony's SORT band) and
-        // spanning the bar's full height, so their borders are
-        // the bar's borders.
-        CHECK(layout.tab_bar.x == 13);
+        // Tabs tile adjacently right after the "Options" label
+        // (the bar's left ~55 px), with no gap between them (one
+        // continuous band, like the colony's SORT band): the tab
+        // rects ARE the colony sort-tab frame rects (78 px for
+        // Internals/Gameplay, 42 px for Mods), spanning the
+        // bar's full height, so their borders are the bar's
+        // borders. The strip ends after Mods; the rest of the
+        // bar up to MORE is bare.
+        CHECK(layout.tab_bar.x == 68);
         CHECK(layout.tab_bar.y == 439);
-        CHECK(layout.tab_bar.w == 400);
+        CHECK(layout.tab_bar.w == 198);
         CHECK(layout.tab_bar.h == 31);
-        CHECK(layout.tabs[0].x == 13);
-        CHECK(layout.tabs[0].w == 189);
-        CHECK(layout.tabs[1].x == 202);
-        CHECK(layout.tabs[1].w == 126);
-        CHECK(layout.tabs[2].x == 328);
-        CHECK(layout.tabs[2].w == 85);
+        CHECK(layout.tabs[0].x == 68);
+        CHECK(layout.tabs[0].w == 78);
+        CHECK(layout.tabs[1].x == 146);
+        CHECK(layout.tabs[1].w == 78);
+        CHECK(layout.tabs[2].x == 224);
+        CHECK(layout.tabs[2].w == 42);
         CHECK(Rect_Right(layout.tabs[2]) == Rect_Right(layout.tab_bar));
-        CHECK(layout.tabs[0].w > layout.tabs[1].w);
+        CHECK(layout.tabs[1].x == Rect_Right(layout.tabs[0]));
+        CHECK(layout.tabs[2].x == Rect_Right(layout.tabs[1]));
+        CHECK(layout.tabs[0].w == layout.tabs[1].w);
         CHECK(layout.tabs[1].w > layout.tabs[2].w);
         // VALUE zone at 82.0% of the width, in the header and rows.
         // The zone is 89 px at 640x480, so the 85 px colony RETURN

@@ -48,7 +48,6 @@ namespace SETTINGS_LAYOUT {
 
         // Horizontal allocation, permille of the width.
         constexpr int32_t kMargin_X = 20;
-        constexpr int32_t kTab_Gap = 0;
         constexpr int32_t kScrollbar_W = 20;
         // The scrollbar strip touches the list (no gap): its
         // left frame edge is the divider between the list and
@@ -85,10 +84,18 @@ namespace SETTINGS_LAYOUT {
         // Draw_Elements -- so the divider stays visible above them.
         constexpr int32_t kButton_H = 64;
 
-        // A tab's width weight is its label length plus this
-        // padding (in characters), so a long label gets a
-        // proportionally wider tab and no tab is mostly empty.
-        constexpr int32_t kTab_Padding = 4;
+        // The "Options" background label reserves the bottom
+        // bar's left ~55 px (86 permille of the width); the
+        // tabs start after it, so no tab overlaps the label.
+        constexpr int32_t kOptions_Reserve = 86;
+        // The tabs ARE the colony sort-tab frames: 78 px for
+        // Internals/Gameplay (the sort-population frame) and
+        // 42 px for Mods (the sort-food frame) at 640x480, as
+        // permille of the width, so the tiling scales with the
+        // resolution. The tab rects are the frame rects, so the
+        // fields built from them match the visible frames.
+        constexpr int32_t kTab_Wide_W = 122;
+        constexpr int32_t kTab_Narrow_W = 66;
 
         // The value control's height, as a fraction of the row
         // height (percent): the control is vertically centred in
@@ -158,42 +165,30 @@ namespace SETTINGS_LAYOUT {
         layout.show_more = s_rect{more_x, button_y, button_w, button_h};
         layout.done = s_rect{done_x, button_y, button_w, button_h};
 
-        // Tabs: divide the bottom bar's left width (up to the MORE
-        // button, with a gap) in proportion to the label lengths
-        // (plus padding), with NO gap between tabs: the tabs tile
-        // their strip exactly, one continuous band like the
-        // colony's SORT band, their shared borders one line.
-        // Each tab's width is its share of the available width;
-        // the last tab absorbs the rounding remainder, so the tabs
-        // tile their strip exactly.
-        const int16_t tab_gap = Scale(width, kTab_Gap);
-        const int16_t tab_area_right = (int16_t)(more_x - bottom_gap);
-        const int16_t tab_available =
-            (int16_t)(tab_area_right - content_x - 2 * tab_gap);
-        int32_t total_weight = 0;
-        int32_t weights[3] = {};
+        // Tabs: the colony sort-tab frames, tiled adjacently
+        // right after the "Options" label, with NO gap between
+        // them: one continuous band like the colony's SORT band,
+        // their shared borders one line. The tab rects ARE the
+        // frame rects (the fields built from them match the
+        // visible frames exactly); the strip ends after Mods,
+        // leaving the rest of the bar -- up to MORE -- bare.
+        // The label lengths no longer size the tabs: the frames
+        // do. (tab_label_lengths stays in the signature so the
+        // layout stays a pure function of the screen and the tab
+        // labels, and the call sites do not change.)
+        (void)tab_label_lengths;
+        const int16_t tab_x0 =
+            (int16_t)(content_x + Scale(width, kOptions_Reserve));
+        const int16_t tab_widths[3] = {Scale(width, kTab_Wide_W),
+            Scale(width, kTab_Wide_W), Scale(width, kTab_Narrow_W)};
+        int16_t tab_x = tab_x0;
         for (int tab = 0; tab < 3; ++tab) {
-            weights[tab] = tab_label_lengths[tab] + kTab_Padding;
-            total_weight += weights[tab];
+            layout.tabs[tab] = s_rect{tab_x, button_y,
+                tab_widths[tab], button_h};
+            tab_x = (int16_t)(tab_x + tab_widths[tab]);
         }
-        int16_t tab_x = content_x;
-        int32_t used = 0;
-        for (int tab = 0; tab < 3; ++tab) {
-            int16_t tab_w;
-            if (tab + 1 < 3 && total_weight > 0) {
-                tab_w = (int16_t)(tab_available * weights[tab] / total_weight);
-                used += tab_w;
-            } else {
-                tab_w = (int16_t)(tab_available - used);
-            }
-            if (tab_w < 1) {
-                tab_w = 1;
-            }
-            layout.tabs[tab] = s_rect{tab_x, button_y, tab_w, button_h};
-            tab_x = (int16_t)(tab_x + tab_w + tab_gap);
-        }
-        layout.tab_bar = s_rect{content_x, button_y,
-            (int16_t)(tab_area_right - content_x), button_h};
+        layout.tab_bar = s_rect{tab_x0, button_y,
+            (int16_t)(tab_x - tab_x0), button_h};
 
         // The scrollbar strip sits at the content's right edge,
         // running the header band as well as the list: the list

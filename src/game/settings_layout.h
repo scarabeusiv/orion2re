@@ -40,11 +40,13 @@ namespace SETTINGS_LAYOUT {
     //   the interfaces are done.
     //
     // Horizontal allocation (fractions of the width): the content
-    // spans 0.020..0.980. The bottom bar holds the three category
-    // tabs on the left (dividing the bar's left width in proportion
-    // to their label lengths, plus padding, with NO gap between
-    // tabs -- one continuous band, like the colony's SORT band)
-    // and MORE and RETURN at the right end, the SAME width
+    // spans 0.020..0.980. The bottom bar holds the "Options"
+    // background label at the far left, then the three category
+    // tabs tiled adjacently right after it (the colony sort-tab
+    // frames: 78 px for Internals/Gameplay, 42 px for Mods at
+    // 640x480 -- the tab rects ARE the frame rects, with NO gap
+    // between tabs, one continuous band like the colony's SORT
+    // band), and MORE and RETURN at the right end, the SAME width
     // (0.133, sized for the longer label) with a 0.012 gap between
     // them. The button rects span the bar's full height (the hit
     // area); the drawn buttons sit below the bar's top divider, so
@@ -109,7 +111,9 @@ namespace SETTINGS_LAYOUT {
     // Computes the layout for a screen of the given size.
     // `row_count` is the number of visible list rows (the screen's
     // ROWS_PER_PAGE); `tab_label_lengths` holds the character
-    // length of each of the 3 category labels, in tab order.
+    // length of each of the 3 category labels, in tab order
+    // (accepted for the call sites; the tab widths are the colony
+    // sort-tab frame widths, not the label lengths).
     s_settings_layout Compute_Layout(int32_t width, int32_t height,
         int row_count, const int tab_label_lengths[3]);
 
