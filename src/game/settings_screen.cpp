@@ -2,6 +2,7 @@
 #include "string_overrides.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -22,11 +23,11 @@
 #include "game/palette.h"
 #include "game/platform.h"
 #include "game/russ.h"
+#include "game/animate.h"
+#include "game/line.h"
 #include "game/settings_background.h"
-#include "game/settings_bitmaps.h"
-#include "game/settings_hd_font.h"
+#include "game/sprite_art.h"
 #include "game/settings_layout.h"
-#include "game/settings_render.h"
 #include "game/settings_screen.h"
 #include "game/timer.h"
 #include "game/user_paths.h"
@@ -37,50 +38,40 @@ namespace SETTINGS_SCREEN {
 
     namespace {
 
-        // Hi-res rewrite, steps 1-3: the pixel rendering is stripped.
-        // What stays is the settings LOGIC -- the config writer,
-        // the mod catalogue + staging/reload, the metadata rows,
-        // the categories, the XDG fallback, the wheel forwarding
-        // (via the field system), the screen's data flow (which
-        // settings are shown, primary/secondary, the Show all
-        // toggle). What is gone: the wireframe/kit rendering
-        // (ui_kit: Frame/Tab_Bar/Scroll_Bar/Button, the dithered
-        // fills and boxes, the Bayer/hash speckle, the vivid-blue
-        // palette-253 patch, the Moo2 pixel fonts as rendered, the
-        // verbatim COLSUM arrow sprites and the code-drawn
-        // triangles/bevels). The rendering text helpers
-        // (Truncate_To_Width, Wrap_Text, Mod_Help_Text) go with
-        // it; step 3/4 re-adds the ones the hi-res layout needs.
-        // Step 3: the field rects come from the percentage-based
-        // layout (settings_layout), computed for the current game
-        // resolution -- the same rects draw the placeholder frames
-        // and take the clicks, so drawing and hit-testing agree.
-        // The screen renders the background plus placeholders
-        // until step 4 renders the elements themselves.
-        // Element-by-element redo (Tom, 2026-11-11): every element
-        // is the original game's element in hi-res, code-drawn
-        // from the colony / main menu / GAME SETTINGS dialog
-        // reference -- not a reinvented design. The tie-together's
-        // hi-res PNG sprites (dithered faces, bloom/glow halos,
-        // blue arrow buttons) are deleted. Bitmap pass (Tom,
-        // 2026-11-11): the elements render as HOME-MADE BITMAPS
-        // (settings_bitmaps: hand-drawn pixel art, drawn by
-        // observation from the colonies screen, stored as data
-        // and blitted -- the HD font's pattern), not code-drawn
-        // vector primitives. Vectors look too smooth and
-        // polished; bitmaps have the pixel-art texture that
-        // matches the game. Their borders still blend into one
-        // continuous mechanical frame, interiors clean.
-        // Slot geometry for wrapped rows (defined with the draw
-        // helpers, after the font helpers): a row whose label
-        // wraps takes two slots, so the label renders at full
-        // size. Declared here because Rebuild_Fields and the
-        // popups use them before their definitions.
+        // Fields-rendered settings screen: the screen
+        // renders through the game's fields system, following
+        // the fields design principle (moo2mod fields doc) --
+        // the background logic (config writer, mod catalogue +
+        // staging/reload, metadata rows, categories, XDG
+        // fallback, wheel forwarding via the field system)
+        // stays, and the rendering is field types, not custom
+        // drawing. Row labels are STRING_LIST fields (the
+        // field system draws the text and the selection
+        // highlight); values are BUTTON fields on derived
+        // sprites (the colony RETURN frame for a dropdown/edit
+        // value, the colony buy-button toggle frames for a
+        // bool/mod); the category tabs are BUTTON fields on
+        // the colony sort-tab frames (active for the current
+        // category); MORE and RETURN are BUTTON fields; the
+        // scroll arrows are BUTTON fields on the colony
+        // scroll-arrow frames; the scrollbar is the field
+        // system's SCROLL field; dropdowns open through the
+        // shared Get_List_Field picker; edits use the
+        // continuous-input field. The only drawing the screen
+        // does itself is the text the fields system does not
+        // draw (header labels, description, status) in the
+        // game's own font, and the scrollbar thumb (the
+        // colony's indicator bar, drawn with the game's line
+        // and fill primitives). A field's sprite is chosen at
+        // build time for the element's current state, so a
+        // single-frame derived sprite carries the state.
         void Rebuild_Row_Lines();
         int Page_Count();
         SETTINGS_LAYOUT::s_rect Visible_Row_Rect(int offset);
         SETTINGS_LAYOUT::s_rect Visible_Value_Rect(int offset);
-        int Text_Cell_For(int rect_h, int percent);
+        std::string Visible_Row_Name(int visible);
+        std::string Row_Value_Text(const config::s_settings_row& row);
+
         int16_t Text_Pad(int16_t screen_width);
 
         constexpr int ROWS_PER_PAGE = 10;
@@ -109,6 +100,17 @@ namespace SETTINGS_SCREEN {
 
         const char* CATEGORY_LABELS[CATEGORY_COUNT] = {
             "Game Internals",
+            "Gameplay",
+            "Mods",
+        };
+
+        // Short tab labels for the fields-rendered tabs: the
+        // tab sprite is a fixed-size derived frame (78 px), so
+        // the label must fit it -- the full category names do
+        // not. The full name stays the category's description;
+        // the tab shows the short name.
+        const char* CATEGORY_SHORT_LABELS[CATEGORY_COUNT] = {
+            "Internals",
             "Gameplay",
             "Mods",
         };
@@ -184,32 +186,39 @@ namespace SETTINGS_SCREEN {
             bool show_all = false;
             int16_t tab_fields[CATEGORY_COUNT];
             int16_t row_fields[ROWS_PER_PAGE];
-            // The open dropdown popup (a generic dropdown, or
-            // Resolution): a settings-owned hi-res list -- framed,
-            // a blue bar on the selected row, HD labels. Open
-            // while the popup is up. The shared
-            // fields::Get_List_Field picker is not used: it draws
-            // its own unframed pixel-font list, and its unmeasured
-            // title row ran past the frame's right edge (the 4a
-            // clipping: the row title at the popup's x reached
-            // x=639). Both dropdowns share this state; the opener
-            // maps the chosen index back to its own options.
-            bool popup_open = false;
-            // The visible offset of the row whose popup is open
-            // (-1 when none): its chevron paints the open blue
-            // while the popup is up, the closed black otherwise.
-            int popup_visible = -1;
+            // The derived sprites this screen renders with
+            // (sprite_art), loaded once by Ensure_Sprites into
+            // MOX::screen_seg. Null when the frame is missing;
+            // the element falls back to a hidden field, so the
+            // screen stays usable.
+            bool sprites_loaded = false;
+            s_animation_header* tab_sprite_normal = nullptr;
+            s_animation_header* tab_sprite_active = nullptr;
+            s_animation_header* return_sprite = nullptr;
+            s_animation_header* toggle_off = nullptr;
+            s_animation_header* toggle_on = nullptr;
+            s_animation_header* arrow_up = nullptr;
+            s_animation_header* arrow_down = nullptr;
+            // Per visible row: the value button field (a
+            // dropdown/edit value, or a bool/mod toggle), or -1
+            // when the row shows no value. The row's label is
+            // row_fields (a string list); row_hit_fields is the
+            // hidden field over the whole row, so the row stays
+            // clickable outside the label and the value button.
+            int16_t value_fields[ROWS_PER_PAGE];
+            int16_t row_hit_fields[ROWS_PER_PAGE];
+            // The row labels and value texts, kept alive for the
+            // fields (which store pointers, not copies).
+            std::vector<std::string> row_labels;
+            std::vector<std::string> row_value_texts;
+            // The string-list selection, shared by the page's row
+            // fields: the visible index of the highlighted row.
+            // Synced with `selected` (the description follows the
+            // highlighted row, like the game's lists). The field
+            // system's string-list value is int8_t; the settings
+            // list is far below 127 rows.
+            int8_t list_selection = 0;
             std::vector<config::s_resolution_option> resolution_options;
-            std::vector<std::string> popup_labels;
-            int popup_selected = 0;
-            int16_t popup_x = 0;
-            int16_t popup_y = 0;
-            int16_t popup_w = 0;
-            int16_t popup_h = 0;
-            int16_t popup_first_row_y = 0;
-            int16_t popup_row_step = 0;
-            int popup_cell = 0;
-            std::vector<int16_t> popup_fields;
         };
 
         s_settings_screen_state g_state;
@@ -662,54 +671,240 @@ namespace SETTINGS_SCREEN {
         // current page. Only call when no edit field is open: the edit
         // field is added separately by Open_Edit and removed by
         // Commit/Cancel_Edit.
+        // The derived sprites this screen renders with
+        // (sprite_art): the colony sort-tab frames (blanked
+        // labels) for the category tabs and MORE, the colony
+        // RETURN frame for RETURN and for the dropdown/edit
+        // value buttons, the colony buy-button toggle frames
+        // for bool values and mods, and the colony scroll
+        // arrows. Loaded once into MOX::screen_seg; a missing
+        // frame leaves its element on a hidden field (the
+        // screen stays usable), never a null sprite.
+        void Ensure_Sprites() {
+            if (g_state.sprites_loaded) {
+                return;
+            }
+            g_state.sprites_loaded = true;
+            g_state.tab_sprite_normal = sprite_art::Load_Sprite_Frame(
+                "sort-population", "normal", MOX::screen_seg);
+            g_state.tab_sprite_active = sprite_art::Load_Sprite_Frame(
+                "sort-population", "active", MOX::screen_seg);
+            g_state.return_sprite = sprite_art::Load_Sprite_Frame(
+                "return", "normal", MOX::screen_seg);
+            sprite_art::Buy_Button_Frames toggle =
+                sprite_art::Load_Buy_Button_Frames(MOX::screen_seg);
+            g_state.toggle_off = toggle.off;
+            g_state.toggle_on = toggle.on;
+            sprite_art::Scroll_Arrow_Frames arrows =
+                sprite_art::Load_Scroll_Arrow_Frames(MOX::screen_seg);
+            g_state.arrow_up = arrows.up;
+            g_state.arrow_down = arrows.down;
+        }
+
+        // Truncates `text` to fit `max_width` in the current
+        // font, with a trailing "..." when it does not fit.
+        std::string Truncate_To_Width(const std::string& text,
+            int16_t max_width) {
+            if (max_width <= 0) {
+                return std::string();
+            }
+            if (fonts::Get_String_Width(text.c_str()) <= max_width) {
+                return text;
+            }
+            const int16_t ellipsis =
+                fonts::Get_String_Width("...");
+            std::string out;
+            for (size_t i = 0; i < text.size(); ++i) {
+                std::string next = out + text[i];
+                if (fonts::Get_String_Width(next.c_str()) + ellipsis >
+                    max_width) {
+                    break;
+                }
+                out = next;
+            }
+            return out + "...";
+        }
+
         void Rebuild_Fields() {
+            // Fields-rendered screen: every interactive element
+            // is a visible field type, drawn by
+            // Draw_Visible_Fields -- the screen draws no button
+            // frames, toggles, or list rows itself. The row's
+            // label is a STRING_LIST field (the field system
+            // draws the text and the selection highlight); the
+            // value is a BUTTON field on a derived sprite (the
+            // RETURN frame for a dropdown/edit value, the
+            // buy-button toggle frames for a bool/mod); the tabs
+            // are BUTTON fields on the sort-tab frames (active
+            // for the current category); MORE and RETURN are
+            // BUTTON fields; the scroll arrows are BUTTON fields
+            // on the scroll-arrow frames; the scrollbar is the
+            // field system's SCROLL field, as before. A field's
+            // sprite is chosen at build time for the element's
+            // current state, so a single-frame sprite carries
+            // the state. Each row also keeps a hidden field over
+            // its whole rect, so the row stays clickable outside
+            // the label and the value button.
+            Ensure_Sprites();
             fields::Clear_Fields();
             fonts::Set_Font_Style(4, &g_normal_colors);
+            // The string-list colours come from the current font
+            // colours (Get_List_Field sets these globals the same
+            // way before it builds its rows).
+            {
+                s_colors* cur_font_color =
+                    fonts::Get_Current_Font_Color();
+                s_colors* cur_highlight =
+                    fonts::Get_Current_Highlight_Color();
+                s_colors* cur_special =
+                    fonts::Get_Current_Special_Color();
+                for (int i = 0; i < 8; i++) {
+                    fields::list_normal_color.colors[i] =
+                        cur_font_color->colors[i];
+                    fields::list_special_colors.colors[i] =
+                        cur_special->colors[i];
+                    fields::list_highlight_colors.colors[i] =
+                        cur_highlight->colors[i];
+                }
+            }
             const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
-            // Category tabs in the bottom bar: one hidden field
-            // per category, left to right, each keeping its own
-            // scroll position.
+            const int16_t pad = Text_Pad(layout.width);
+            const int16_t font_height = fonts::Get_Font_Height();
+            Sync_Scroll();
+            // The selection follows the selected row, clamped
+            // into the visible range.
+            g_state.list_selection = (int8_t)std::clamp(
+                g_state.selected, 0,
+                std::max(0, Visible_Count() - 1));
+            // Category tabs in the bottom bar: one button per
+            // category on the sort-tab frame, the active tab on
+            // its "active" frame. The label is the short
+            // category name, centred by the field system.
             for (int category = 0; category < CATEGORY_COUNT; ++category) {
                 const SETTINGS_LAYOUT::s_rect tab = layout.tabs[category];
-                g_state.tab_fields[category] = fields::Add_Hidden_Field(
-                    tab.x, tab.y, (int16_t)(tab.x + tab.w - 1),
-                    (int16_t)(tab.y + tab.h - 1), "", 0);
+                s_animation_header* pic =
+                    category == g_state.category
+                        ? g_state.tab_sprite_active
+                        : g_state.tab_sprite_normal;
+                if (pic != nullptr) {
+                    const int16_t w = animate::Get_Width(pic);
+                    const int16_t h = animate::Get_Height(pic);
+                    g_state.tab_fields[category] =
+                        fields::Add_Button_Field(
+                            (int16_t)(tab.x + (tab.w - w) / 2),
+                            (int16_t)(tab.y + (tab.h - h) / 2),
+                            CATEGORY_SHORT_LABELS[category], pic, "", 0);
+                } else {
+                    g_state.tab_fields[category] =
+                        fields::Add_Hidden_Field(tab.x, tab.y,
+                            (int16_t)(tab.x + tab.w - 1),
+                            (int16_t)(tab.y + tab.h - 1), "", 0);
+                }
             }
-            Sync_Scroll();
             const int first = Scroll_Top();
             const int count = Page_Count();
+            g_state.row_labels.assign((size_t)count, std::string());
+            g_state.row_value_texts.assign((size_t)count, std::string());
             for (int index = 0; index < count; ++index) {
-                // The field spans the row's slots: two for a
-                // wrapped label, one otherwise.
+                const int visible = first + index;
                 const SETTINGS_LAYOUT::s_rect row =
                     Visible_Row_Rect(index);
-                // Row fields span the list area, stopping short of
-                // the scrollbar strip, so clicks on the bar reach
-                // the bar.
-                g_state.row_fields[index] = fields::Add_Hidden_Field(
-                    row.x, row.y, (int16_t)(row.x + row.w - 1),
-                    (int16_t)(row.y + row.h - 1), "", 0);
+                const SETTINGS_LAYOUT::s_rect name_rect =
+                    SETTINGS_LAYOUT::Row_Name_Rect_For_Row(layout, row);
+                const SETTINGS_LAYOUT::s_rect value_rect =
+                    Visible_Value_Rect(index);
+                // The label: a string-list field, its text
+                // centred vertically in the row. Truncated to
+                // the name zone (one line; the fields system
+                // does not wrap).
+                g_state.row_labels[(size_t)index] =
+                    Truncate_To_Width(Visible_Row_Name(visible),
+                        (int16_t)(name_rect.w - 2 * pad));
+                g_state.row_fields[index] =
+                    fields::Add_String_List_Field(
+                        (int16_t)(name_rect.x + pad),
+                        (int16_t)(row.y + (row.h - font_height) / 2),
+                        (int16_t)(name_rect.w - 2 * pad),
+                        g_state.row_labels[(size_t)index].c_str(),
+                        1, &g_state.list_selection, (int16_t)visible,
+                        17, nullptr, 0, nullptr, 0, "", nullptr);
+                // The whole row stays clickable, outside the
+                // label and the value button.
+                g_state.row_hit_fields[index] =
+                    fields::Add_Hidden_Field(row.x, row.y,
+                        (int16_t)(row.x + row.w - 1),
+                        (int16_t)(row.y + row.h - 1), "", 0);
+                // The value: a button on a derived sprite.
+                g_state.value_fields[index] = -1;
+                s_animation_header* value_pic = nullptr;
+                std::string value_text;
+                bool show_value = false;
+                if (Is_Mod_Row(visible)) {
+                    const config::s_mod_catalogue_entry& entry =
+                        g_state.mods[(size_t)Mod_Index(visible)];
+                    value_pic = (entry.enabled && !entry.broken)
+                        ? g_state.toggle_on : g_state.toggle_off;
+                    show_value = true;
+                } else {
+                    const config::s_settings_row& row_data =
+                        g_state.rows[(size_t)Visible_Row_Index(visible)];
+                    if (row_data.widget ==
+                        config::SETTINGS_WIDGET_TOGGLE) {
+                        config::s_typed_value value;
+                        if (config::Get_Settings_Row_Value(row_data,
+                            &value)) {
+                            value_pic = value.bool_value
+                                ? g_state.toggle_on : g_state.toggle_off;
+                            show_value = true;
+                        }
+                    } else if (row_data.widget ==
+                            config::SETTINGS_WIDGET_DROPDOWN ||
+                        row_data.widget ==
+                            config::SETTINGS_WIDGET_EDIT) {
+                        value_pic = g_state.return_sprite;
+                        value_text = Row_Value_Text(row_data);
+                        show_value = true;
+                    }
+                }
+                if (show_value && value_pic != nullptr) {
+                    const int16_t w = animate::Get_Width(value_pic);
+                    const int16_t h = animate::Get_Height(value_pic);
+                    const char* value_help = "";
+                    if (!value_text.empty()) {
+                        g_state.row_value_texts[(size_t)index] =
+                            Truncate_To_Width(value_text,
+                                (int16_t)(w - 2 * pad));
+                        value_help =
+                            g_state.row_value_texts[(size_t)index].c_str();
+                    }
+                    g_state.value_fields[index] =
+                        fields::Add_Button_Field(
+                            (int16_t)(value_rect.x +
+                                (value_rect.w - w) / 2),
+                            (int16_t)(value_rect.y +
+                                (value_rect.h - h) / 2),
+                            value_help, value_pic, "", 0);
+                } else if (show_value) {
+                    // No sprite: the value zone stays clickable
+                    // through a hidden field, like the row.
+                    g_state.value_fields[index] =
+                        fields::Add_Hidden_Field(value_rect.x,
+                            value_rect.y,
+                            (int16_t)(value_rect.x + value_rect.w - 1),
+                            (int16_t)(value_rect.y + value_rect.h - 1),
+                            "", 0);
+                }
             }
             for (int index = count; index < ROWS_PER_PAGE; ++index) {
                 g_state.row_fields[index] = -1;
+                g_state.row_hit_fields[index] = -1;
+                g_state.value_fields[index] = -1;
             }
             // Scrollbar drag field, bound to this tab's slider
             // position, like COLSUM's Add_Scroll_Field. Only when
-            // the list actually scrolls (Max_Scroll() > 0): the
-            // count alone does not say it -- a wrapped row takes
-            // two slots, so a list of exactly ROWS_PER_PAGE rows
-            // can still scroll. The field system's
-            // lone-scrollbar rule makes the wheel scroll it from
-            // anywhere over the list. The arrow buttons are
-            // ALWAYS there (the colony shows its arrows even when
-            // there is nothing to scroll); clicking one when the
-            // list does not scroll is a clamped no-op.
+            // the list actually scrolls.
             const int total = Visible_Count();
             if (Max_Scroll() > 0) {
-                // The scroll field covers the track only (between
-                // the arrows), like COLSUM's: the arrow buttons
-                // take the strip's ends, so the zones are disjoint
-                // and no hit-test ordering is needed.
                 g_state.scroll_field = fields::Add_Scroll_Field(
                     layout.scrollbar_track.x, layout.scrollbar_track.y, 0,
                     (int16_t)total, 0, (int16_t)Max_Scroll(),
@@ -718,33 +913,112 @@ namespace SETTINGS_SCREEN {
             } else {
                 g_state.scroll_field = -1;
             }
-            g_state.scroll_up_field = fields::Add_Hidden_Field(
-                layout.scrollbar_arrow_up.x, layout.scrollbar_arrow_up.y,
-                (int16_t)(layout.scrollbar_arrow_up.x +
-                    layout.scrollbar_arrow_up.w - 1),
-                (int16_t)(layout.scrollbar_arrow_up.y +
-                    layout.scrollbar_arrow_up.h - 1),
-                "", 0);
-            g_state.scroll_down_field = fields::Add_Hidden_Field(
-                layout.scrollbar_arrow_down.x,
-                layout.scrollbar_arrow_down.y,
-                (int16_t)(layout.scrollbar_arrow_down.x +
-                    layout.scrollbar_arrow_down.w - 1),
-                (int16_t)(layout.scrollbar_arrow_down.y +
-                    layout.scrollbar_arrow_down.h - 1),
-                "", 0);
+            // The scroll arrows are always there (the colony
+            // shows its arrows even when there is nothing to
+            // scroll); clicking one when the list does not scroll
+            // is a clamped no-op.
+            auto add_arrow = [&](const SETTINGS_LAYOUT::s_rect& zone,
+                s_animation_header* pic) {
+                if (pic == nullptr) {
+                    return fields::Add_Hidden_Field(zone.x, zone.y,
+                        (int16_t)(zone.x + zone.w - 1),
+                        (int16_t)(zone.y + zone.h - 1), "", 0);
+                }
+                const int16_t w = animate::Get_Width(pic);
+                const int16_t h = animate::Get_Height(pic);
+                return fields::Add_Button_Field(
+                    (int16_t)(zone.x + (zone.w - w) / 2),
+                    (int16_t)(zone.y + (zone.h - h) / 2),
+                    "", pic, "", 0);
+            };
+            g_state.scroll_up_field =
+                add_arrow(layout.scrollbar_arrow_up, g_state.arrow_up);
+            g_state.scroll_down_field =
+                add_arrow(layout.scrollbar_arrow_down, g_state.arrow_down);
             // MORE and RETURN sit side by side in the bottom
-            // bar at the right end. They share the bar's single
-            // line and never wrap.
-            g_state.show_all_field = fields::Add_Hidden_Field(
-                layout.show_more.x, layout.show_more.y,
-                (int16_t)(layout.show_more.x + layout.show_more.w - 1),
-                (int16_t)(layout.show_more.y + layout.show_more.h - 1),
-                "", 0);
-            g_state.done_field = fields::Add_Hidden_Field(
-                layout.done.x, layout.done.y,
-                (int16_t)(layout.done.x + layout.done.w - 1),
-                (int16_t)(layout.done.y + layout.done.h - 1), "", 0);
+            // bar at the right end.
+            auto add_bar_button = [&](const SETTINGS_LAYOUT::s_rect& zone,
+                const char* label, s_animation_header* pic) {
+                if (pic == nullptr) {
+                    return fields::Add_Hidden_Field(zone.x, zone.y,
+                        (int16_t)(zone.x + zone.w - 1),
+                        (int16_t)(zone.y + zone.h - 1), "", 0);
+                }
+                const int16_t w = animate::Get_Width(pic);
+                const int16_t h = animate::Get_Height(pic);
+                return fields::Add_Button_Field(
+                    (int16_t)(zone.x + (zone.w - w) / 2),
+                    (int16_t)(zone.y + (zone.h - h) / 2),
+                    label, pic, "", 0);
+            };
+            g_state.show_all_field = add_bar_button(layout.show_more,
+                "MORE", g_state.tab_sprite_normal);
+            g_state.done_field = add_bar_button(layout.done,
+                "RETURN", g_state.return_sprite);
+        }
+
+        // The field system's modal list picker for a dropdown:
+        // `records` holds one 64-byte record per option (the
+        // label as a C string at the record start), `selected`
+        // the initially selected option. Sizes and places the
+        // list under the row (or above it when there is no room
+        // below), clamped inside the content rect. Returns the
+        // chosen index, or -1. The picker clears the screen's
+        // fields, so the fields are rebuilt after it returns.
+        int16_t Pick_From_List(const std::string& title,
+            const std::vector<std::array<char, 64>>& records,
+            int8_t* selected, int visible) {
+            const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
+            const SETTINGS_LAYOUT::s_rect value_rect =
+                Visible_Value_Rect(visible - Scroll_Top());
+            const SETTINGS_LAYOUT::s_rect row_rect =
+                Visible_Row_Rect(visible - Scroll_Top());
+            fonts::Set_Font_Style(4, &g_normal_colors);
+            const int16_t pad = Text_Pad(layout.width);
+            int16_t list_w =
+                (int16_t)fonts::Get_String_Width(title.c_str());
+            for (const std::array<char, 64>& record : records) {
+                list_w = (int16_t)std::max<int32_t>(list_w,
+                    fonts::Get_String_Width(record.data()));
+            }
+            list_w = (int16_t)(list_w + 2 * pad);
+            const int16_t content_right =
+                SETTINGS_LAYOUT::Rect_Right(layout.content);
+            const int16_t content_bottom =
+                SETTINGS_LAYOUT::Rect_Bottom(layout.content);
+            // The list sits under the value; when it would run
+            // past the content's right edge it shifts left so
+            // its right edge meets the content edge (right
+            // aligned), keeping its full width -- shrinking it
+            // would clip the title and the longest option. Only
+            // when the list is wider than the content itself
+            // does it fall back to the content's full width.
+            int16_t list_x = value_rect.x;
+            if (list_x + list_w > content_right) {
+                list_x = (int16_t)(content_right - list_w);
+            }
+            if (list_x < layout.content.x) {
+                list_x = layout.content.x;
+                list_w = (int16_t)(content_right - list_x);
+            }
+            const int16_t step = (int16_t)(
+                fonts::Get_Font_Height() +
+                fonts::Get_Font_Vertical_Spacing());
+            const int16_t list_h =
+                (int16_t)((records.size() + 1) * step);
+            int16_t list_y = SETTINGS_LAYOUT::Rect_Bottom(row_rect);
+            if (list_y + list_h > content_bottom) {
+                list_y = (int16_t)(row_rect.y - list_h);
+            }
+            if (list_y < layout.content.y) {
+                list_y = layout.content.y;
+            }
+            const int16_t choice = fields::Get_List_Field(list_x,
+                list_y, list_w, title.c_str(),
+                (const char*)records.data(), 64, selected,
+                nullptr, 17, nullptr, 0, nullptr, 0, nullptr);
+            Rebuild_Fields();
+            return choice;
         }
 
         void Toggle_Show_All() {
@@ -875,161 +1149,6 @@ namespace SETTINGS_SCREEN {
         // The popup's glyph-cell height: the same size as the
         // closed value text, so the open list reads as the same
         // control opened up.
-        int Popup_Cell() {
-            const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
-            return Text_Cell_For(
-                SETTINGS_LAYOUT::Row_Value_Rect(layout, 0).h, 80);
-        }
-
-        // Size, place and open the popup for `labels`, with
-        // `selected` the initially selected row, dropped below
-        // the row at visible offset `visible`: the popup opens
-        // under the row, not over it, so the opener row -- and
-        // its chevron, which paints the open blue while the
-        // popup is up -- stays visible.
-        // Sized to the widest label in the font it prints in (the
-        // HD font -- measuring in the pixel font under-measures,
-        // so the text ran past the popup's border and the panel's
-        // edge, into the frame); right-aligned to the closed
-        // control's right edge; clamped inside the frame by
-        // Popup_Rect, so the widest item always fits on screen.
-        // No title row: the row's title is already the row label
-        // and the description, and the field picker's unmeasured
-        // title row is what ran past the frame (4a clipping).
-        void Show_Popup(const std::vector<std::string>& labels,
-            int selected, int visible) {
-            using namespace SETTINGS_RENDER;
-            const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
-            const int cell = Popup_Cell();
-            const int row_step = Line_Height(cell);
-            const int16_t pad = Text_Pad(layout.width);
-            const int16_t thickness = Frame_Thickness(layout.width);
-            int16_t content_w = 16;
-            for (const std::string& label : labels) {
-                content_w = (int16_t)std::max<int32_t>(content_w,
-                    Text_Width(label.c_str(), cell));
-            }
-            const int16_t popup_w =
-                (int16_t)(content_w + 2 * pad + 2 * thickness);
-            const int16_t popup_h = (int16_t)(
-                (int16_t)labels.size() * row_step + 2 * pad + 2 * thickness);
-            const SETTINGS_LAYOUT::s_rect value_rect =
-                Visible_Value_Rect(visible - Scroll_Top());
-            const SETTINGS_LAYOUT::s_rect row_rect =
-                Visible_Row_Rect(visible - Scroll_Top());
-            const SETTINGS_LAYOUT::s_rect popup =
-                SETTINGS_LAYOUT::Popup_Rect(layout.content,
-                    SETTINGS_LAYOUT::Rect_Right(value_rect),
-                    SETTINGS_LAYOUT::Rect_Bottom(row_rect),
-                    popup_w, popup_h);
-            g_state.popup_labels = labels;
-            g_state.popup_selected = selected;
-            g_state.popup_x = popup.x;
-            g_state.popup_y = popup.y;
-            g_state.popup_w = popup.w;
-            g_state.popup_h = popup.h;
-            g_state.popup_first_row_y =
-                (int16_t)(popup.y + thickness + pad);
-            g_state.popup_row_step = (int16_t)row_step;
-            g_state.popup_cell = cell;
-            // One hidden field per option row, inside the frame,
-            // so clicks land on rows and hover moves the blue bar.
-            // The screen's fields are stashed and restored around
-            // the popup, as in the old Get_List_Field call.
-            fields::Mark_Fields();
-            fields::Clear_Fields();
-            g_state.popup_fields.clear();
-            for (size_t index = 0; index < labels.size(); ++index) {
-                const int16_t row_y = (int16_t)(
-                    g_state.popup_first_row_y +
-                    (int16_t)index * g_state.popup_row_step);
-                g_state.popup_fields.push_back(
-                    fields::Add_Hidden_Field(
-                        (int16_t)(popup.x + thickness), row_y,
-                        (int16_t)(popup.x + popup.w - thickness - 1),
-                        (int16_t)(row_y + g_state.popup_row_step - 1),
-                        "", 0));
-            }
-            g_state.popup_visible = visible;
-            g_state.popup_open = true;
-        }
-
-        // Modal loop for the open popup, modelled on
-        // fields::Get_List_Field: hover moves the blue bar, a
-        // click chooses, Esc cancels, and a click outside the
-        // popup dismisses it too. Returns the chosen index, or -1.
-        int Run_Popup() {
-            bool popup_armed = false;
-            int choice = -1;
-            while (true) {
-                platform::Check_Exit();
-                timer::Mark_Time();
-                const int16_t input = fields::Get_Input();
-                if (input == -1) {
-                    choice = -1;
-                    break;
-                }
-                if (input != 0) {
-                    for (size_t index = 0;
-                        index < g_state.popup_fields.size(); ++index) {
-                        if (input == g_state.popup_fields[index]) {
-                            choice = (int)index;
-                            break;
-                        }
-                    }
-                    if (choice >= 0) {
-                        break;
-                    }
-                }
-                // A click outside the popup dismisses it, like Esc.
-                // Arm once the opening click is released, so the
-                // click that opened the popup does not dismiss it.
-                // (The loop samples the live button state every
-                // iteration, so a held press is seen while it is
-                // still down; Get_Input above has already consumed
-                // any click that landed on a popup field.)
-                if (!popup_armed) {
-                    if (mouse::Mouse_Button() == 0) {
-                        popup_armed = true;
-                    }
-                } else if (mouse::Mouse_Button() != 0) {
-                    const int16_t px = mouse::Pointer_X();
-                    const int16_t py = mouse::Pointer_Y();
-                    if (px < g_state.popup_x ||
-                        px >= g_state.popup_x + g_state.popup_w ||
-                        py < g_state.popup_y ||
-                        py >= g_state.popup_y + g_state.popup_h) {
-                        choice = -1;
-                        break;
-                    }
-                }
-                const int16_t scan = fields::Scan_Input();
-                if (scan > 0) {
-                    for (size_t index = 0;
-                        index < g_state.popup_fields.size(); ++index) {
-                        if (scan == g_state.popup_fields[index]) {
-                            g_state.popup_selected = (int)index;
-                            break;
-                        }
-                    }
-                }
-                video::Set_Page_Off();
-                fields::Invoke_Auto_Function();
-                palette::Refresh_Palette();
-                platform::Toggle_Pages_Stub();
-                timer::Release_Time(3);
-            }
-            return choice;
-        }
-
-        // Close the popup and restore the screen's fields.
-        void Close_Popup() {
-            fields::Release_Fields();
-            g_state.popup_open = false;
-            g_state.popup_visible = -1;
-            g_state.popup_fields.clear();
-            Rebuild_Fields();
-        }
 
         void Open_Dropdown(int visible) {
             const int row_index = Visible_Row_Index(visible);
@@ -1041,22 +1160,25 @@ namespace SETTINGS_SCREEN {
                 return;
             }
             config::s_typed_value value;
-            size_t current_index = 0;
+            int8_t current_index = 0;
             if (config::Get_Settings_Row_Value(row, &value)) {
                 for (size_t index = 0; index < type->value_count; ++index) {
                     if (type->values[index].value == value.integer_value) {
-                        current_index = index;
+                        current_index = (int8_t)index;
                     }
                 }
             }
-            std::vector<std::string> labels;
-            labels.reserve(type->value_count);
+            // Fixed-size records for the field system's list
+            // picker: one 64-byte record per option, the label
+            // as a C string at the record start.
+            std::vector<std::array<char, 64>> records(
+                type->value_count);
             for (size_t index = 0; index < type->value_count; ++index) {
-                labels.emplace_back(type->values[index].name);
+                strlcpy(records[index].data(),
+                    type->values[index].name, 64);
             }
-            Show_Popup(labels, (int)current_index, visible);
-            const int choice = Run_Popup();
-            Close_Popup();
+            const int16_t choice = Pick_From_List(row.title, records,
+                &current_index, visible);
             if (choice < 0) {
                 return;
             }
@@ -1068,18 +1190,9 @@ namespace SETTINGS_SCREEN {
                 type->values[choice].name);
         }
 
-        // The Resolution dropdown opens as a small popup window, in
-        // the shape of the fleet-selection popup (fleetpop.cpp): a
-        // small window over the screen, the values as rows, a blue
-        // bar on the selected one. The fleet box's own frame cannot
-        // be reused as-is -- it is fixed-width BUFFER0.LBX bitmap
-        // art (top/middle/bottom caps sized to the fleet box), and
-        // its selection is a ship-icon sprite -- so the popup uses
-        // the settings screen's own industrial frame and a filled
-        // vivid-blue bar for the selection, the same blue as the
-        // active tab. The shared fields::Get_List_Field picker is
-        // not used here: it draws its own unframed list and cannot
-        // render this shape.
+        // The Resolution dropdown opens as the field system's
+        // own modal list (Get_List_Field): the values as rows,
+        // the field system drawing the selection highlight.
         void Open_Resolution_Popup(int visible) {
             int current_width = 0;
             int current_height = 0;
@@ -1089,19 +1202,22 @@ namespace SETTINGS_SCREEN {
             }
             g_state.resolution_options =
                 config::Resolution_Options(current_width, current_height);
-            int selected = 0;
-            std::vector<std::string> labels;
-            labels.reserve(g_state.resolution_options.size());
-            for (size_t index = 0; index < g_state.resolution_options.size(); ++index) {
+            int8_t selected = 0;
+            std::vector<std::array<char, 64>> records(
+                g_state.resolution_options.size());
+            for (size_t index = 0;
+                index < g_state.resolution_options.size(); ++index) {
                 if (g_state.resolution_options[index].width == current_width &&
                     g_state.resolution_options[index].height == current_height) {
-                    selected = (int)index;
+                    selected = (int8_t)index;
                 }
-                labels.push_back(g_state.resolution_options[index].label);
+                strlcpy(records[index].data(),
+                    g_state.resolution_options[index].label.c_str(), 64);
             }
-            Show_Popup(labels, selected, visible);
-            const int choice = Run_Popup();
-            Close_Popup();
+            const config::s_settings_row& row =
+                g_state.rows[(size_t)Visible_Row_Index(visible)];
+            const int16_t choice = Pick_From_List(row.title, records,
+                &selected, visible);
             if (choice < 0) {
                 return;
             }
@@ -1242,48 +1358,6 @@ namespace SETTINGS_SCREEN {
                 ". Active mods: " + active + ".";
         }
 
-        // Step 4 of the hi-res rewrite: the elements themselves,
-        // rendered in hi-res on the generated background. Every
-        // element draws its OWN border/frame as part of itself
-        // (multi-pixel industrial frames); panels are genuinely
-        // translucent -- a real per-pixel alpha blend over the
-        // background (settings_render), never a repaint of the
-        // background onto the panel. Text is the HD font: the
-        // engine font's own glyphs, decoded into coverage grids
-        // and rendered upscaled with bilinear smoothing, so the
-        // letterforms stay the game's own and the edges come out
-        // antialiased instead of doubled square pixels.
-        //
-        // Draw order: the background, then the field system's own
-        // drawing (the edit field's pixel-font text, when editing),
-        // then the elements -- the edit overpaint below erases
-        // that pixel text with an opaque fill and draws the HD
-        // text over it, so no pixel-font text ever shows.
-        //
-        // The VALUE header cell keeps its own frame: it is the
-        // VALUE column header, and step 4 labels it "Value" (with
-        // "Setting" over the name column) instead of leaving it
-        // the bare square step 3 showed. That is the top-right
-        // corner square, resolved by labelling it, not by
-        // removing it: the header row labels the two columns,
-        // and the value column needs its header cell.
-
-        // Glyph-cell height for text in a rect of the given height.
-        int Text_Cell_For(int rect_h, int percent) {
-            return std::max(8, rect_h * percent / 100);
-        }
-
-        // Glyph-cell height for text sized as a permille of the
-        // screen height. The description text uses this, not a
-        // fraction of the description panel: the panel grows by a
-        // row so the longest description fits, and the text must
-        // stay the same size -- a fraction of the panel would grow
-        // the text with the panel, and the line count would never
-        // reach four (it asymptotes to 3.6 as the panel grows).
-        int Text_Cell_For_Permille(int height, int permille) {
-            return std::max(8, height * permille / 1000);
-        }
-
         // Horizontal text padding inside a rect, scaled with the screen.
         int16_t Text_Pad(int16_t screen_width) {
             return (int16_t)std::max<int32_t>(4, screen_width / 100);
@@ -1343,32 +1417,12 @@ namespace SETTINGS_SCREEN {
         // visible rows: the wrap is measured at the full row
         // cell, the same measure the draw uses, so the cache and
         // the draw always agree.
+        // Lines each visible row takes: 1. The fields system
+        // draws one line per row (STRING_LIST has no wrap), so
+        // a long label is truncated to the name zone, never
+        // wrapped onto a second slot.
         void Rebuild_Row_Lines() {
-            const int total = Visible_Count();
-            g_state.row_lines.assign((size_t)total, 1);
-            if (total <= 0) {
-                return;
-            }
-            const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
-            if (layout.width <= 0) {
-                return;
-            }
-            const int16_t pad = Text_Pad(layout.width);
-            const int row_cell = Text_Cell_For(
-                SETTINGS_LAYOUT::Row_Rect(layout, 0).h, 62);
-            const SETTINGS_LAYOUT::s_rect name_rect =
-                SETTINGS_LAYOUT::Row_Name_Rect(layout, 0);
-            auto measure = [&](const std::string& text) {
-                return SETTINGS_RENDER::Text_Width(text.c_str(), row_cell);
-            };
-            for (int visible = 0; visible < total; ++visible) {
-                const std::vector<std::string> lines =
-                    SETTINGS_HD_FONT::Wrap_Text(
-                        Visible_Row_Name(visible),
-                        name_rect.w - 2 * pad, measure, 2);
-                g_state.row_lines[(size_t)visible] =
-                    lines.size() > 1 ? 2 : 1;
-            }
+            g_state.row_lines.assign((size_t)Visible_Count(), 1);
         }
 
         // Cached lines for a visible index (1 when unknown).
@@ -1447,674 +1501,129 @@ namespace SETTINGS_SCREEN {
         // Draw_Resolution_Popup went with ui_kit) and never
         // restored, so the Resolution popup opened invisible;
         // this restores it in hi-res, for both dropdowns.
-        void Draw_Popup() {
-            if (!g_state.popup_open) {
-                return;
-            }
-            using namespace SETTINGS_RENDER;
-            const int16_t x = g_state.popup_x;
-            const int16_t y = g_state.popup_y;
-            const int16_t w = g_state.popup_w;
-            const int16_t h = g_state.popup_h;
-            const int16_t thickness = Frame_Thickness(Layout().width);
-            const int16_t pad = Text_Pad(Layout().width);
-            const SETTINGS_LAYOUT::s_rect popup{x, y, w, h};
-            // Opaque interior: the popup floats over the list rows,
-            // and their labels must not show through it (the edit
-            // overpaint is opaque for the same reason). The border
-            // around the open list is a bevelled frame, like the
-            // original GAME SETTINGS dialog's list box (GAME.LBX
-            // entry 29, measured): a bright ridge with a darker
-            // line inside it -- not a flat 1 px line (the
-            // pixel-era point 14). The industrial frame draws it:
-            // the dark outer border, the light inner line, on all
-            // four sides -- as a hand-drawn bitmap (the grey
-            // button's shape, the panel fill as its face), not a
-            // code-drawn frame. Its corners are cut like the value
-            // boxes (2 at 640) -- the popup is a list of values,
-            // so it takes their radius, not the plates'.
-            SETTINGS_BITMAPS::Draw_Frame(popup, kPanel_Fill);
-            const int16_t text_x = (int16_t)(x + thickness + pad);
-            for (size_t index = 0; index < g_state.popup_labels.size();
-                ++index) {
-                const int16_t row_y = (int16_t)(
-                    g_state.popup_first_row_y +
-                    (int16_t)index * g_state.popup_row_step);
-                const int16_t text_y = (int16_t)(row_y +
-                    (g_state.popup_row_step - g_state.popup_cell) / 2);
-                if ((int)index == g_state.popup_selected) {
-                    // Blue bar on the selected value, the same vivid
-                    // blue as the active tab. It stays inside the
-                    // frame, so it never paints over the frame's
-                    // inner dark line.
-                    Solid_Fill(
-                        SETTINGS_LAYOUT::s_rect{(int16_t)(x + thickness),
-                            row_y, (int16_t)(w - 2 * thickness),
-                            g_state.popup_row_step},
-                        kActive_Fill);
-                    Draw_Text(text_x, text_y,
-                        g_state.popup_labels[index].c_str(),
-                        kText_Bright, g_state.popup_cell, 0);
-                } else {
-                    Draw_Text(text_x, text_y,
-                        g_state.popup_labels[index].c_str(),
-                        kText_Normal, g_state.popup_cell, 0);
-                }
-            }
+
+
+        // The text the fields system does not draw: the header
+        // labels, the selected row's description and the status
+        // line, and the scrollbar thumb. All in the game's own
+        // font (fonts::Print), like the game's screens draw
+        // their text -- no HD-font rendering, no custom
+        // primitives. The button frames, toggles, list rows and
+        // the edit text come from Draw_Visible_Fields.
+        void Draw_Centred_Text(const char* text,
+            const SETTINGS_LAYOUT::s_rect& rect) {
+            const int16_t w = fonts::Get_String_Width(text);
+            const int16_t h = fonts::Get_Font_Height();
+            fonts::Print(
+                (int16_t)(rect.x + (rect.w - w) / 2),
+                (int16_t)(rect.y + (rect.h - h) / 2), text);
         }
 
-        void Draw_Elements() {
+        void Draw_Description() {
             const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
             const int16_t pad = Text_Pad(layout.width);
-            const int16_t thickness =
-                SETTINGS_RENDER::Frame_Thickness(layout.width);
-            // Corner radii (640-space, scaled): the bottom-bar
-            // buttons are clearly round (4) -- the tab bitmaps
-            // punch their outer corners to this radius.
-            const int16_t button_radius =
-                SETTINGS_RENDER::Scaled_Radius(layout.width, 4);
-            using namespace SETTINGS_RENDER;
-
-            // The elements' borders blend into one continuous
-            // mechanical frame (Tom, 2026-11-11): the content's
-            // own border, the band dividers, the scrollbar
-            // strip's divider and the buttons' borders are all
-            // the same frame lines -- not separate floating boxes
-            // with gaps, and not a border baked into the
-            // background (the background stays JUST a background;
-            // each element draws its own border as part of
-            // itself). Interiors are clean flat fills: no dither,
-            // no speckle inside an element.
-            //
-            // The outer border is the sample's THICK metal frame
-            // (Tom, 2026-11-11): four bevelled bands from the
-            // screen edge to the content rect, with rivets -- the
-            // content margins ARE the frame. The content rect's
-            // own edge is the frame's bright inner line, so the
-            // panel face fills the whole content rect, and every
-            // divider runs to the content rect and ties into the
-            // frame instead of stopping 2 px short of it.
-            const int16_t content_x = layout.content.x;
-            const int16_t content_right =
-                SETTINGS_LAYOUT::Rect_Right(layout.content);
-            // One continuous frame around the whole content, and
-            // the band dividers (header/list, list/description,
-            // description/bottom bar). The face is the panel's
-            // own clean fill: the screen reads as one machine
-            // panel, not as boxes on a background.
-            Blend_Fill(layout.content, kPanel_Fill, kPanel_Alpha);
-            SETTINGS_BITMAPS::Draw_Outer_Frame(layout.content,
-                layout.width, layout.height);
-            // A horizontal divider: a light line over a dark line
-            // (the colony's row-separator tones, measured), so the
-            // bands read as the colony's list rows do.
-            auto divider = [&](int16_t y, int16_t x0, int16_t x1) {
-                Solid_Fill(SETTINGS_LAYOUT::s_rect{x0, y,
-                    (int16_t)(x1 - x0), 1}, kDivider_Light);
-                Solid_Fill(SETTINGS_LAYOUT::s_rect{x0, (int16_t)(y + 1),
-                    (int16_t)(x1 - x0), 1}, kDivider_Dark);
-            };
-            divider(layout.list.y, content_x, content_right);
-            divider(layout.description.y, content_x, content_right);
-            divider(layout.bottom_bar.y, content_x, content_right);
-            // The scrollbar strip's left edge: the vertical
-            // divider between the list and the strip, running
-            // the strip's full height (header band to list
-            // bottom) -- from the frame's inner line at the top,
-            // so the strip plugs into the frame. Its right edge
-            // is the outer frame; its top and bottom edges are
-            // the frame and the list/description divider.
-            auto vdivider = [&](int16_t x, int16_t y0, int16_t y1) {
-                Solid_Fill(SETTINGS_LAYOUT::s_rect{x, y0, 1,
-                    (int16_t)(y1 - y0)}, kDivider_Light);
-                Solid_Fill(SETTINGS_LAYOUT::s_rect{(int16_t)(x + 1),
-                    y0, 1, (int16_t)(y1 - y0)}, kDivider_Dark);
-            };
-            vdivider(layout.scrollbar.x, layout.content.y,
-                SETTINGS_LAYOUT::Rect_Bottom(layout.list));
-            // The row separators run to the list's right edge
-            // (the strip's divider), not across the strip -- and
-            // from the frame's inner line on the left, so they
-            // tie into the frame.
-            const int16_t list_right = layout.list.x + layout.list.w;
-            const int page_rows = Page_Count();
-            for (int index = 1; index < page_rows; ++index) {
-                divider(Visible_Row_Rect(index).y, content_x,
-                    list_right);
+            const SETTINGS_LAYOUT::s_rect band = layout.description;
+            const int16_t x = (int16_t)(band.x + pad);
+            const int16_t max_w = (int16_t)(band.w - 2 * pad);
+            const int16_t line_h =
+                (int16_t)(fonts::Get_Font_Height() + 2);
+            bool restart_required = false;
+            std::string description;
+            if (Visible_Count() > 0 && g_state.selected >= 0 &&
+                g_state.selected < Visible_Count()) {
+                description = Visible_Row_Description(
+                    g_state.selected, &restart_required);
             }
-            // The EMPTY rows (below the last option, when the
-            // category is short) are separated too -- the colony
-            // fills its whole list with ruled rows.
-            for (int slot = Visible_Slot(page_rows);
-                slot < ROWS_PER_PAGE; ++slot) {
-                divider(SETTINGS_LAYOUT::Row_Rect(layout, slot).y,
-                    content_x, list_right);
-            }
-
-            // Header: two bevelled grey plates, SETTING and VALUE
-            // -- the colony's header plates (NAME/FARMERS/...) in
-            // hi-res, as hand-drawn bitmaps. The plates are their
-            // own elements, inset from the header band's edges and
-            // from the frame's inner lines, with their own
-            // borders; the up arrow fills the band's right end in
-            // the scrollbar strip. The inset is the frame
-            // thickness plus one: the plates sit tight under the
-            // frame's top inner line and clear of its side inner
-            // lines, like the colony's plates sit tight under its
-            // frame. Their corners are cut to the sample's
-            // clearly-round plates.
-            const int16_t plate_inset = (int16_t)(thickness + 1);
-            const SETTINGS_LAYOUT::s_rect setting_plate{
-                (int16_t)(layout.header_setting.x + plate_inset),
-                (int16_t)(layout.header.y + plate_inset),
-                (int16_t)(layout.header_setting.w - 2 * plate_inset),
-                (int16_t)(layout.header.h - 2 * plate_inset)};
-            const SETTINGS_LAYOUT::s_rect value_plate{
-                (int16_t)(layout.header_value.x + plate_inset),
-                (int16_t)(layout.header.y + plate_inset),
-                (int16_t)(layout.header_value.w - 2 * plate_inset),
-                (int16_t)(layout.header.h - 2 * plate_inset)};
-            SETTINGS_BITMAPS::Draw_Plate(setting_plate);
-            SETTINGS_BITMAPS::Draw_Plate(value_plate);
-            const int header_cell = Text_Cell_For(layout.header.h, 62);
-            const int16_t header_y =
-                (int16_t)(setting_plate.y +
-                    (setting_plate.h - header_cell) / 2);
-            Draw_Text(
-                (int16_t)(setting_plate.x + setting_plate.w / 2),
-                header_y, "SETTING", kText_Header, header_cell, 1);
-            Draw_Text(
-                (int16_t)(value_plate.x + value_plate.w / 2),
-                header_y, "VALUE", kText_Header, header_cell, 1);
-
-            // List rows: in the integrated frame the rows are bands
-            // of the one panel, divided by single bevel separators
-            // (not each its own framed box); the selected row is a
-            // brighter face with a bright left bar. A row whose
-            // label wraps takes two slots, so the label renders at
-            // full size on two lines.
-            const int first = Scroll_Top();
-            const int count = Page_Count();
-            const int row_cell = Text_Cell_For(
-                SETTINGS_LAYOUT::Row_Rect(layout, 0).h, 62);
-            const int value_cell = Text_Cell_For(
-                SETTINGS_LAYOUT::Row_Value_Rect(layout, 0).h, 80);
-            // The dropdown chevron stays one line tall: its size
-            // comes from a single-slot row, so a wrapped row's
-            // taller box does not grow it -- it is centred in
-            // the box instead. (It derives from value_cell,
-            // above.) The switch sizes itself to the box.
-            // (The row separators are drawn with the frame lines,
-            // above: the rows are bands of the one panel, divided
-            // by single bevel separators, not each its own framed
-            // box.) A wrapped row's interior gets no separator
-            // (its two slots are one row).
-            for (int index = 0; index < count; ++index) {
-                // The row spans its slots: two for a wrapped
-                // label, one otherwise.
-                const SETTINGS_LAYOUT::s_rect row =
-                    Visible_Row_Rect(index);
-                const bool is_selected =
-                    first + index == g_state.selected;
-                // The selected row is a brighter face over the
-                // panel face, with a bright left bar. The face
-                // starts below the row's top separator (2 px), so
-                // it never paints over the divider above it.
-                if (is_selected) {
-                    Blend_Fill(SETTINGS_LAYOUT::s_rect{row.x,
-                        (int16_t)(row.y + 2), row.w,
-                        (int16_t)(row.h - 2)}, s_rgb{30, 38, 70}, 185);
-                }
-                if (is_selected) {
-                    // Bright left bar inside the frame.
-                    const SETTINGS_LAYOUT::s_rect bar{
-                        (int16_t)(row.x + thickness),
-                        (int16_t)(row.y + thickness), 3,
-                        (int16_t)(row.h - 2 * thickness)};
-                    Solid_Fill(bar, s_rgb{180, 200, 230});
-                }
-                const int visible = first + index;
-                const std::string name = Visible_Row_Name(visible);
-                const SETTINGS_LAYOUT::s_rect name_rect =
-                    SETTINGS_LAYOUT::Row_Name_Rect_For_Row(layout, row);
-                auto measure = [&](const std::string& text) {
-                    return Text_Width(text.c_str(), row_cell);
-                };
-                // The label colour matches the game: cyan, orange
-                // on the hovered row. A long label wraps onto a
-                // second line at full size: the row grew to two
-                // slots for it, so it never truncates with "..."
-                // and never shrinks.
-                const s_rgb label_color =
-                    Is_Hover(row) ? kText_Hover : kText_Label;
-                const std::vector<std::string> name_lines =
-                    SETTINGS_HD_FONT::Wrap_Text(name,
-                        name_rect.w - 2 * pad, measure, 2);
-                if (name_lines.size() <= 1) {
-                    Draw_Text((int16_t)(name_rect.x + pad),
-                        (int16_t)(row.y + (row.h - row_cell) / 2),
-                        name_lines.empty() ? "" : name_lines[0].c_str(),
-                        label_color, row_cell, 0);
-                } else {
-                    const int16_t two_y = (int16_t)(row.y +
-                        (row.h - (row_cell + Line_Height(row_cell))) / 2);
-                    Draw_Text((int16_t)(name_rect.x + pad), two_y,
-                        name_lines[0].c_str(), label_color, row_cell, 0);
-                    Draw_Text((int16_t)(name_rect.x + pad),
-                        (int16_t)(two_y + Line_Height(row_cell)),
-                        name_lines[1].c_str(), label_color, row_cell, 0);
-                }
-                const SETTINGS_LAYOUT::s_rect value_rect =
-                    Visible_Value_Rect(index);
-                // The value box is a recessed slot in the panel:
-                // a dark control face with the sunken frame -- the
-                // sample's inset value boxes (Tom, 2026-11-11),
-                // embedded and flat, depressed into the surface
-                // rather than a raised button on top of it. The
-                // dropdowns sit inside the slot; the bool switch
-                // is free-standing (Tom, 2026-11-11), not forced
-                // into one. The slot is a hand-drawn bitmap now
-                // (a nicer bevel, a cleaner shadow/lit lip), not
-                // a code-drawn bevel. Its corners are cut to the
-                // sample's barely-round boxes.
-                SETTINGS_BITMAPS::Draw_Sunken_Box(value_rect);
-                // The value: toggles and mods show the switch;
-                // dropdowns and edits show their text. A dropdown
-                // is a hardened display: like the colony's value
-                // cells, its value is right-aligned with a down
-                // chevron at the right edge. An edit keeps
-                // left-aligned text with no marker: the chevron
-                // marks a dropdown, never a write-input field.
-                std::string value_text;
-                bool is_dropdown = false;
-                // The switch: toggles and mods show it; dropdowns
-                // and edits show their text instead. The switch is
-                // a toggle for bool values only -- never on a dropdown
-                // or a write-input field.
-                bool show_switch = false;
-                bool switch_on = false;
-                if (Is_Mod_Row(visible)) {
-                    // A mod row is a toggle: the switch shows whether
-                    // the mod is enabled (a broken mod is never
-                    // enabled, so its switch is always off).
-                    const config::s_mod_catalogue_entry& entry =
-                        g_state.mods[(size_t)Mod_Index(visible)];
-                    show_switch = true;
-                    switch_on = entry.enabled && !entry.broken;
-                } else {
-                    const config::s_settings_row& row_data =
-                        g_state.rows[(size_t)Visible_Row_Index(visible)];
-                    is_dropdown = row_data.widget ==
-                        config::SETTINGS_WIDGET_DROPDOWN;
-                    if (is_dropdown ||
-                        row_data.widget == config::SETTINGS_WIDGET_EDIT) {
-                        value_text = Row_Value_Text(row_data);
-                    } else if (row_data.widget ==
-                        config::SETTINGS_WIDGET_TOGGLE) {
-                        // A bool row is a toggle: the switch shows its
-                        // value.
-                        config::s_typed_value value;
-                        if (config::Get_Settings_Row_Value(row_data,
-                            &value)) {
-                            show_switch = true;
-                            switch_on = value.bool_value;
-                        }
+            // Word-wrap the description to the band width.
+            std::vector<std::string> wrapped;
+            {
+                std::string current;
+                size_t pos = 0;
+                while (pos <= description.size()) {
+                    size_t end = description.find(' ', pos);
+                    if (end == std::string::npos) {
+                        end = description.size();
                     }
-                }
-                if (!value_text.empty()) {
-                    auto value_measure = [&](const std::string& text) {
-                        return Text_Width(text.c_str(), value_cell);
-                    };
-                    const int16_t text_y = (int16_t)(value_rect.y +
-                        (value_rect.h - value_cell) / 2);
-                    if (!is_dropdown) {
-                        Draw_Text((int16_t)(value_rect.x + pad),
-                            text_y,
-                            SETTINGS_HD_FONT::Truncate_To_Width(value_text,
-                                value_rect.w - 2 * pad, value_measure).c_str(),
-                            kText_Bright, value_cell, 0);
+                    std::string word =
+                        description.substr(pos, end - pos);
+                    std::string next =
+                        current.empty() ? word : current + " " + word;
+                    if (!current.empty() &&
+                        fonts::Get_String_Width(next.c_str()) > max_w) {
+                        wrapped.push_back(current);
+                        current = word;
                     } else {
-                        // The chevron sits at the right edge,
-                        // inside the frame; the value ends one pad
-                        // before it. A value too wide for the box
-                        // keeps its tail (the distinctive part) with
-                        // a leading ellipsis -- the open popup shows
-                        // the value in full.
-                        const int16_t chevron_w =
-                            (int16_t)std::max(4, value_cell * 2 / 3);
-                        const int16_t chevron_h = chevron_w;
-                        const int16_t chevron_right = (int16_t)(
-                            value_rect.x + value_rect.w - pad);
-                        const int16_t chevron_cx = (int16_t)(
-                            chevron_right - chevron_w / 2);
-                        const int16_t chevron_y = (int16_t)(value_rect.y +
-                            (value_rect.h - chevron_h) / 2);
-                        // The chevron is the knob: white while the
-                        // dropdown is closed, the open blue while
-                        // its popup is up -- the colour shift is
-                        // the state signal. It is a hand-drawn
-                        // bitmap triangle now, like the colony's
-                        // dropdown chevron.
-                        const bool chevron_open = g_state.popup_open &&
-                            visible == g_state.popup_visible;
-                        SETTINGS_BITMAPS::Draw_Chevron(chevron_cx,
-                            chevron_y, chevron_w, chevron_h,
-                            chevron_open ? kChevron_Open :
-                                kChevron_Closed);
-                        const int16_t text_right = (int16_t)(
-                            chevron_right - chevron_w - pad);
-                        Draw_Text(text_right, text_y,
-                            SETTINGS_HD_FONT::Truncate_Tail_To_Width(
-                                value_text,
-                                text_right - (value_rect.x + pad),
-                                value_measure).c_str(),
-                            kText_Bright, value_cell, 2);
+                        current = next;
                     }
+                    if (end == description.size()) {
+                        break;
+                    }
+                    pos = end + 1;
                 }
-                if (show_switch) {
-                    // The flickable switch (Tom, 2026-11-11): the
-                    // star-in-a-sunken-box did not read as a
-                    // switch, so ALL star toggles are a proper
-                    // toggleable switch now -- a track + knob,
-                    // approximated from the colonies screen's
-                    // low-res buying switch (the BUILDING
-                    // column's small round recessed button). It
-                    // is free-standing in the value zone, not in
-                    // a sunken box, and it is a hand-drawn bitmap
-                    // in both states: ON has the knob right and
-                    // the track glowing vivid blue, OFF has the
-                    // knob left, the track dark, the knob dim.
-                    // Both states read at a glance. A wrapped
-                    // row's switch is the same size as the rest:
-                    // it sizes itself to the box, not the row.
-                    SETTINGS_BITMAPS::Draw_Switch(value_rect,
-                        switch_on);
+                if (!current.empty()) {
+                    wrapped.push_back(current);
                 }
             }
+            // Lines the description may take: the band, less the
+            // status line and the restart note (when one applies).
+            const int restart_lh = restart_required ? line_h : 0;
+            const int max_lines = std::max(1,
+                (band.h - line_h - restart_lh) / line_h);
+            int16_t y = band.y;
+            for (size_t i = 0; i < wrapped.size() &&
+                (int)i < max_lines; ++i) {
+                fonts::Print(x, y, wrapped[i].c_str());
+                y = (int16_t)(y + line_h);
+            }
+            if (restart_required) {
+                fonts::Print(x, y, "Requires restart.");
+                y = (int16_t)(y + line_h);
+            }
+            fonts::Print(x, (int16_t)(band.y + band.h - line_h),
+                Truncate_To_Width(g_state.status, max_w).c_str());
+        }
 
-            // Scrollbar: the colony's shape. The strip's left
-            // edge is the vertical divider (drawn with the frame
-            // lines, above) and its right edge is the outer frame,
-            // so the arrows plug into the mechanical frame: their
-            // borders are the shared frame lines, not their own
-            // boxes. The up arrow sits at the strip's top, in the
-            // header band; the down arrow at the list's bottom.
-            // The arrows are dark navy with light-grey triangles
-            // (the colony's arrows, measured) and are ALWAYS
-            // visible: the colony shows its arrows even when
-            // there is nothing to scroll. The arrow/track
-            // dividers are drawn here; the thumb travels the
-            // track between them, and spans the whole track when
-            // the list fits (the colony's rule).
+        void Draw_Scroll_Thumb() {
+            const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
             const SETTINGS_LAYOUT::s_rect thumb =
                 SETTINGS_LAYOUT::Scrollbar_Thumb_Rect(layout,
                     Total_Lines(), First_Line(), Visible_Lines());
-            // The arrow/track dividers, spanning the strip.
-            divider(layout.scrollbar_track.y, layout.scrollbar.x,
-                SETTINGS_LAYOUT::Rect_Right(layout.scrollbar));
-            divider((int16_t)SETTINGS_LAYOUT::Rect_Bottom(
-                layout.scrollbar_track), layout.scrollbar.x,
-                SETTINGS_LAYOUT::Rect_Right(layout.scrollbar));
-            // An arrow's face fills its zone inside the shared
-            // borders: inset from the strip's divider on the left
-            // and the frame's inner line on the right, below the
-            // frame's inner line on top (up) and above the
-            // list/description divider on the bottom (down). The
-            // faces run to the content rect's edges, so they plug
-            // into the thick outer frame and the band dividers.
-            // The arrow is one hand-drawn bitmap (face + triangle
-            // together); pressed darkens its face, like a button
-            // label dropping 1 px did.
-            auto draw_arrow = [&](const SETTINGS_LAYOUT::s_rect& zone,
-                bool up) {
-                const bool pressed = Is_Pressed(zone);
-                const bool hover = !pressed && Is_Hover(zone);
-                const int16_t face_x0 =
-                    (int16_t)(layout.scrollbar.x + 2);
-                const int16_t face_x1 = content_right;
-                const int16_t face_y0 = up
-                    ? layout.content.y
-                    : (int16_t)(SETTINGS_LAYOUT::Rect_Bottom(
-                        layout.scrollbar_track) + 2);
-                const int16_t face_y1 = up
-                    ? layout.scrollbar_track.y
-                    : SETTINGS_LAYOUT::Rect_Bottom(layout.list);
-                const int shift = pressed ? -12 : (hover ? 12 : 0);
-                SETTINGS_BITMAPS::Draw_Arrow(
-                    SETTINGS_LAYOUT::s_rect{face_x0, face_y0,
-                        (int16_t)(face_x1 - face_x0),
-                        (int16_t)(face_y1 - face_y0)},
-                    up, shift);
-            };
-            draw_arrow(layout.scrollbar_arrow_up, true);
-            draw_arrow(layout.scrollbar_arrow_down, false);
-            if (thumb.w > 0 && thumb.h > 0) {
-                // The thumb: the colony's indicator bar -- a
-                // bevelled handle, narrower than the strip, its
-                // light top/left and dark right/bottom edges the
-                // colony's border direction. A hand-drawn bitmap
-                // now, not four code-drawn edge fills.
-                SETTINGS_BITMAPS::Draw_Thumb(thumb);
+            if (thumb.w <= 0 || thumb.h <= 0) {
+                return;
             }
+            // The colony's indicator bar: a solid face with a
+            // light top edge, drawn with the game's own fill and
+            // line primitives (colsum.cpp draws its scroll bar
+            // the same way). The face is a mid-ramp navy, the
+            // edge the ramp's brightest index.
+            graphics::Fill(thumb.x, thumb.y,
+                (int16_t)(thumb.x + thumb.w - 1),
+                (int16_t)(thumb.y + thumb.h - 1), 200);
+            line::Line(thumb.x, thumb.y,
+                (int16_t)(thumb.x + thumb.w - 1), thumb.y, 223);
+        }
 
-            // Description box: the selected row's description,
-            // wrapped to fit the panel, with a "Requires restart."
-            // line for the settings it applies to and the status
-            // line below it -- the old screen's info box, in the
-            // hi-res font. The lines stack from the top, so no
-            // blank line opens up when the description is short.
-            // The description is the selected row's (not the
-            // hovered row's): hover only recolours the label.
-            // Its band is the content face.
-            {
-                const int16_t desc_x =
-                    (int16_t)(layout.description.x + thickness + pad);
-                const int desc_w = layout.description.w -
-                    2 * (thickness + pad);
-                // The description text is a fixed fraction of the
-                // screen height (25 permille, the status line 21):
-                // the sizes 4b used, when the panel was 140
-                // permille tall (18% / 15% of it). Fixed to the
-                // screen so growing the panel adds lines instead
-                // of growing the text.
-                const int desc_cell =
-                    Text_Cell_For_Permille(layout.height, 25);
-                const int status_cell =
-                    Text_Cell_For_Permille(layout.height, 21);
-                const int desc_lh = Line_Height(desc_cell);
-                const int status_lh = Line_Height(status_cell);
-                bool restart_required = false;
-                std::string description;
-                if (Visible_Count() > 0 && g_state.selected >= 0 &&
-                    g_state.selected < Visible_Count()) {
-                    description = Visible_Row_Description(
-                        g_state.selected, &restart_required);
-                }
-                // Lines the description may take: the panel's
-                // interior, less the status line and the restart
-                // note (when one applies). At least one, so a
-                // description always shows.
-                const int restart_lh = restart_required ? desc_lh : 0;
-                const int available = layout.description.h -
-                    2 * thickness - pad - status_lh - restart_lh;
-                const int max_lines =
-                    std::max(1, available / desc_lh);
-                auto desc_measure = [&](const std::string& text) {
-                    return Text_Width(text.c_str(), desc_cell);
-                };
-                std::vector<std::string> desc_lines;
-                if (!description.empty()) {
-                    desc_lines = SETTINGS_HD_FONT::Wrap_Text(
-                        description, desc_w, desc_measure, max_lines);
-                }
-                int16_t text_y = (int16_t)(layout.description.y +
-                    thickness + pad / 2);
-                for (const std::string& line : desc_lines) {
-                    Draw_Text(desc_x, text_y, line.c_str(),
-                        kText_Normal, desc_cell, 0);
-                    text_y = (int16_t)(text_y + desc_lh);
-                }
-                if (restart_required) {
-                    Draw_Text(desc_x, text_y, "Requires restart.",
-                        kText_Bright, desc_cell, 0);
-                    text_y = (int16_t)(text_y + desc_lh);
-                }
-                auto status_measure = [&](const std::string& text) {
-                    return Text_Width(text.c_str(), status_cell);
-                };
-                Draw_Text(desc_x, text_y,
-                    SETTINGS_HD_FONT::Truncate_To_Width(g_state.status,
-                        desc_w, status_measure).c_str(),
-                    kText_Dim, status_cell, 0);
-            }
-
-            // Bottom bar: the tabs on the left and MORE and RETURN
-            // at the right end. The tabs are the colony's SORT
-            // band: dark-navy inactive tabs, the active tab with
-            // a glow blooming from its CENTER (brightest in the
-            // middle, fading outward -- like the colonies
-            // screen's active sort band), all sharing one
-            // continuous band (no gaps between tabs). The buttons
-            // sit BELOW the bar's top divider -- their top
-            // borders meet the divider's bottom line, they do not
-            // paint over it, so the divider runs the full width
-            // above them (the sample's divider is continuous) --
-            // and their bottoms meet the outer frame. MORE and
-            // RETURN are the colony's RETURN / the main menu's
-            // grey bevelled buttons, with black labels, their
-            // corners cut to the sample's round buttons. The tabs
-            // and the buttons are hand-drawn bitmaps now, not
-            // code-drawn fills. No halos: a pressed button
-            // darkens and its label drops 1 px, like the
-            // original's pressed frame.
-            const int button_cell =
-                Text_Cell_For(layout.show_more.h, 60);
-            // The divider's height: its light line plus its dark
-            // line. The layout rect is the hit area; the draw
-            // rect is the visible button, below the divider.
-            const int16_t divider_h = 2;
-            auto draw_button = [&](const SETTINGS_LAYOUT::s_rect& rect,
-                const char* label, bool active, bool grey,
-                uint8_t corners) {
-                const bool pressed = Is_Pressed(rect);
-                const bool hover = !pressed && Is_Hover(rect);
-                const SETTINGS_LAYOUT::s_rect draw{
-                    rect.x, (int16_t)(rect.y + divider_h), rect.w,
-                    (int16_t)(rect.h - divider_h)};
-                const int16_t text_y = (int16_t)(draw.y +
-                    (draw.h - button_cell) / 2 + (pressed ? 1 : 0));
-                if (grey) {
-                    // A grey metal button: an opaque face, the
-                    // industrial frame, a 1 px top sheen, a black
-                    // label -- all rounded to the sample's round
-                    // buttons. A hand-drawn bitmap: the sheen is
-                    // baked into its top edge, and hover/pressed
-                    // shift only its face tone. The label drops
-                    // 1 px when pressed, like the original's
-                    // pressed frame.
-                    const int shift =
-                        pressed ? -24 : (hover ? 24 : 0);
-                    SETTINGS_BITMAPS::Draw_Grey_Button(draw, shift);
-                    Draw_Text((int16_t)(draw.x + draw.w / 2), text_y,
-                        label, kGreyButton_Text, button_cell, 1);
-                    return;
-                }
-                // A category tab: the colony's SORT band, as a
-                // hand-drawn bitmap -- the active tab's bloom
-                // baked into its face, the inactive tab flat
-                // dark navy. The tabs share one continuous band:
-                // their bitmaps tile it, the dividers between
-                // them are single shared lines (drawn after the
-                // fills, below), and only the band's outer
-                // corners are rounded -- the sample's SORT /
-                // Gameplay / Mods corners. The tab's own border
-                // is the bar's divider above and the outer frame
-                // below, not a frame of its own: the old per-tab
-                // frames doubled the borders between tabs.
-                // Pressed darkens the active tab's glow.
-                const int glow_shift = active && pressed ? -64 : 0;
-                SETTINGS_BITMAPS::Draw_Tab(draw, active, corners,
-                    button_radius, glow_shift);
-                Draw_Text((int16_t)(draw.x + draw.w / 2), text_y,
-                    label,
-                    active ? kText_Header : kText_Bright,
-                    button_cell, 1);
-            };
-            // The tabs' outer corners: the first tab rounds its
-            // left corners, the last its right corners, the middle
-            // none -- the band's corners are the outer ones.
-            const uint8_t tab_corners[3] = {0x9, 0x0, 0x6};
-            for (int category = 0; category < CATEGORY_COUNT; ++category) {
-                draw_button(layout.tabs[category],
-                    CATEGORY_LABELS[category],
-                    category == g_state.category, false,
-                    tab_corners[category]);
-            }
-            draw_button(layout.show_more, "MORE", false, true, 0xF);
-            draw_button(layout.done, "RETURN", false, true, 0xF);
-            // The shared dividers between the tabs and at the
-            // band's right end: single light-over-dark lines,
-            // spanning the buttons' height (below the bar's
-            // divider, down to the frame) -- the buttons connect
-            // to each other and to the frame.
-            const int16_t buttons_y0 =
-                (int16_t)(layout.bottom_bar.y + divider_h);
-            const int16_t buttons_y1 =
-                SETTINGS_LAYOUT::Rect_Bottom(layout.bottom_bar);
-            for (int category = 1; category < CATEGORY_COUNT;
-                ++category) {
-                vdivider(layout.tabs[category].x, buttons_y0,
-                    buttons_y1);
-            }
-            vdivider(SETTINGS_LAYOUT::Rect_Right(layout.tab_bar),
-                buttons_y0, buttons_y1);
-
-            // The open dropdown popup floats over the list: drawn
-            // after the rows and the bottom bar, so it paints over
-            // them. Its frame is the bitmap frame; its interior
-            // stays the opaque panel fill, so the rows behind it
-            // do not show through.
-            Draw_Popup();
-
-            // The edit overpaint: while a row is being edited, the
-            // field system has drawn the edit text in the engine
-            // pixel font over the value rect. Erase it with the
-            // sunken box itself -- its opaque edit-fill face
-            // covers the field text -- and draw the live text
-            // (the field system's continuous string, cursor "_"
-            // included) in the HD font, showing the tail when
-            // the text is wider than the rect so the cursor
-            // stays visible. The box's corners are cut like the
-            // value box: the field text is padded and centred,
-            // so no glyph pixel reaches the cut corners.
-            if (g_state.editing_row >= 0) {
-                const int edit_index = g_state.editing_row - Scroll_Top();
-                if (edit_index >= 0 && edit_index < Page_Count()) {
-                    const SETTINGS_LAYOUT::s_rect edit_rect =
-                        Visible_Value_Rect(edit_index);
-                    SETTINGS_BITMAPS::Draw_Sunken_Box(edit_rect,
-                        &kEdit_Fill);
-                    std::string text = fields::continuous_string;
-                    auto edit_measure = [&](const std::string& s) {
-                        return Text_Width(s.c_str(), value_cell);
-                    };
-                    while (!text.empty() &&
-                        edit_measure(text) > edit_rect.w - 2 * pad) {
-                        text.erase(text.begin());
-                    }
-                    Draw_Text((int16_t)(edit_rect.x + pad),
-                        (int16_t)(edit_rect.y +
-                            (edit_rect.h - value_cell) / 2),
-                        text.c_str(), kText_Bright, value_cell, 0);
-                }
-            }
+        void Draw_Text_Elements() {
+            const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
+            fonts::Set_Font_Style(4, &g_normal_colors);
+            Draw_Centred_Text("SETTING", layout.header_setting);
+            Draw_Centred_Text("VALUE", layout.header_value);
+            Draw_Description();
+            Draw_Scroll_Thumb();
         }
 
         void Draw_Settings_Screen() {
+            // Sync the scroll position from the slider at draw
+            // time, like COLSUM::Draw_Bar_Indicator calls
+            // Update_First: the field system moves the slider
+            // on a wheel/drag, and the top row derives from it
+            // here, so the list follows the slider without
+            // waiting for a rebuild.
+            Sync_Scroll();
             video::Set_Page_Off();
             SETTINGS_BACKGROUND::Draw_Background();
             fields::Draw_Visible_Fields();
-            Draw_Elements();
+            Draw_Text_Elements();
         }
 
     } // namespace
@@ -2135,9 +1644,6 @@ namespace SETTINGS_SCREEN {
 
         video::Set_Refresh_Full();
         SETTINGS_BACKGROUND::Install_Background();
-        // The render caches (blend tables, scaled glyphs) are built
-        // against the palette the background just installed.
-        SETTINGS_RENDER::Reset();
         fields::Clear_Fields();
         RUSS::Mox_Update();
         fonts::Set_Font_Style(4, &g_normal_colors);
@@ -2149,6 +1655,16 @@ namespace SETTINGS_SCREEN {
         while (!screen_exit) {
             timer::Mark_Time();
             const int16_t input = fields::Get_Input();
+            // The string-list highlight follows the hover (the
+            // field system sets list_selection in Scan_Input);
+            // the description follows the highlighted row, like
+            // the game's lists. Not while editing: the edit
+            // stays on its row.
+            if (g_state.editing_row < 0 &&
+                g_state.list_selection >= 0 &&
+                g_state.list_selection < Visible_Count()) {
+                g_state.selected = g_state.list_selection;
+            }
             if (input == -1) {
                 // Esc: cancel a pending edit, otherwise close the screen.
                 if (g_state.editing_row >= 0) {
@@ -2213,7 +1729,9 @@ namespace SETTINGS_SCREEN {
                         const int first = Scroll_Top();
                         const int count = Page_Count();
                         for (int index = 0; index < count; ++index) {
-                            if (input == g_state.row_fields[index]) {
+                            if (input == g_state.row_fields[index] ||
+                                input == g_state.row_hit_fields[index] ||
+                                input == g_state.value_fields[index]) {
                                 const int visible = first + index;
                                 if (Is_Mod_Row(visible)) {
                                     Handle_Mod_Click(Mod_Index(visible));
