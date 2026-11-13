@@ -203,12 +203,24 @@ namespace SETTINGS_LAYOUT {
     // screen, with no window around them. The settings screen
     // draws this window behind the list while the picker runs,
     // so the open dropdown reads as a window: an opaque fill
-    // (the rows behind must not show through), a chiseled border
-    // around it, and a separator between every two rows. The
-    // window encloses the picker's list (title + items) with a
-    // margin for the border and padding, clamped inside the
-    // content rect. `rows` is the title plus the item count,
-    // `step` the row height (font height + vertical spacing).
+    // (the rows behind must not show through), a bitmap border
+    // around it (the screen frame's border, thinner), and a
+    // separator between every two rows. The window encloses the
+    // picker's list (title + items) with a margin for the border
+    // and padding, clamped inside the content rect. `rows` is the
+    // title plus the item count, `step` the row height (font
+    // height + vertical spacing).
+    //
+    // The border thickness: a BITMAP like the one drawn on the
+    // background all around the screen (the outer frame: riveted,
+    // textured, chiseled), just thinner -- 5 px against the screen
+    // frame's ~8 px (Tom, 2026-11-13). The border strips
+    // (dropdown-border-h/v, built by
+    // tools/sprites/build_dropdown_border.py) are derived from the
+    // frame's own pixels, so the border reads as the same border
+    // family, only thinner. The window's margin is this border
+    // plus 3 px of padding.
+    constexpr int16_t kDropdown_Border = 5;
     struct s_dropdown_window {
         s_rect window;
         int16_t step = 0;

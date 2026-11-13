@@ -271,6 +271,17 @@ namespace SETTINGS_SCREEN {
             // face. An edit row draws on the plain wide box: it is
             // not a dropdown.
             s_animation_header* dropdown_closed_sprite = nullptr;
+            // The open dropdown window's border: two bitmap strips
+            // derived from the screen frame's own border (the
+            // riveted, textured, chiseled outer frame), thinner
+            // (5 px) than the screen border (~8 px) -- the same
+            // border family, not a code-drawn chisel (Tom,
+            // 2026-11-13). dropdown-border-h (256x10) carries the
+            // top strip (rows 0..4) and the bottom strip (rows
+            // 5..9); dropdown-border-v (10x256) the left strip
+            // (cols 0..4) and the right strip (cols 5..9).
+            s_animation_header* dropdown_border_h_sprite = nullptr;
+            s_animation_header* dropdown_border_v_sprite = nullptr;
             s_animation_header* toggle_off = nullptr;
             s_animation_header* toggle_on = nullptr;
             s_animation_header* arrow_up = nullptr;
@@ -800,6 +811,12 @@ namespace SETTINGS_SCREEN {
             g_state.dropdown_closed_sprite =
                 sprite_art::Load_Sprite_Frame(
                     "dropdown-closed", "normal", MOX::screen_seg);
+            g_state.dropdown_border_h_sprite =
+                sprite_art::Load_Sprite_Frame(
+                    "dropdown-border-h", "normal", MOX::screen_seg);
+            g_state.dropdown_border_v_sprite =
+                sprite_art::Load_Sprite_Frame(
+                    "dropdown-border-v", "normal", MOX::screen_seg);
             sprite_art::Buy_Button_Frames toggle =
                 sprite_art::Load_Buy_Button_Frames(MOX::screen_seg);
             g_state.toggle_off = toggle.off;
@@ -1909,15 +1926,50 @@ namespace SETTINGS_SCREEN {
             // Opaque fill: the rows behind the list must not
             // show through.
             graphics::Fill(x0, y0, x1, y1, 0);
-            // Thin chiseled border, 1 px: light top/left, dark
-            // bottom/right, like the whole screen border (the
-            // riveted outer frame) -- the same chisel, just
-            // thinner, so the window reads as a window without
-            // a heavy frame.
-            line::Line(x0, y0, x1, y0, 134);
-            line::Line(x0, y0, x0, y1, 134);
-            line::Line(x1, y0, x1, y1, 103);
-            line::Line(x0, y1, x1, y1, 103);
+            // Bitmap border: the screen frame's own border,
+            // thinner (5 px). The horizontal strips tile across
+            // the top/bottom between the vertical strips (which
+            // own the corners and span the full height); the
+            // vertical strips tile down the left/right. The
+            // strips are 256 px long, so a normal window needs
+            // one tile per edge. When the border sprites fail to
+            // load (an old base.zip), fall back to the thin
+            // chiseled border, so the window still reads as a
+            // window.
+            const int16_t b = SETTINGS_LAYOUT::kDropdown_Border;
+            const s_animation_header* h_border =
+                g_state.dropdown_border_h_sprite;
+            const s_animation_header* v_border =
+                g_state.dropdown_border_v_sprite;
+            if (h_border == nullptr || v_border == nullptr) {
+                line::Line(x0, y0, x1, y0, 134);
+                line::Line(x0, y0, x0, y1, 134);
+                line::Line(x1, y0, x1, y1, 103);
+                line::Line(x0, y1, x1, y1, 103);
+                return;
+            }
+            // Top: rows 0..b-1 of border-h, tiled across
+            // x0+b..x1-b. Bottom: rows b..2b-1, same span.
+            for (int16_t x = (int16_t)(x0 + b); x <= (int16_t)(x1 - b);) {
+                const int16_t w = (int16_t)std::min<int16_t>(
+                    h_border->width, (int16_t)(x1 - b - x + 1));
+                sprite_art::Draw_Sprite_Frame_Region(
+                    h_border, 0, 0, w, b, x, y0);
+                sprite_art::Draw_Sprite_Frame_Region(
+                    h_border, 0, b, w, b, x, (int16_t)(y1 - b + 1));
+                x = (int16_t)(x + w);
+            }
+            // Left: cols 0..b-1 of border-v, tiled down y0..y1.
+            // Right: cols b..2b-1, same span.
+            for (int16_t y = y0; y <= y1;) {
+                const int16_t hh = (int16_t)std::min<int16_t>(
+                    v_border->height, (int16_t)(y1 - y + 1));
+                sprite_art::Draw_Sprite_Frame_Region(
+                    v_border, 0, 0, b, hh, x0, y);
+                sprite_art::Draw_Sprite_Frame_Region(
+                    v_border, b, 0, b, hh, (int16_t)(x1 - b + 1), y);
+                y = (int16_t)(y + hh);
+            }
         }
 
         // The picker's selection bar: Gradient_Fill mode 17
@@ -1945,9 +1997,16 @@ namespace SETTINGS_SCREEN {
             const int16_t y1 = (sel + 2 < w.rows)
                 ? (int16_t)(SETTINGS_LAYOUT::Dropdown_Separator_Y(w,
                       (int16_t)(sel + 2)) - 1)
-                : (int16_t)(w.window.y + w.window.h - 2);
-            graphics::Fill((int16_t)(w.window.x + 1), y0,
-                (int16_t)(w.window.x + w.window.w - 2), y1, 138);
+                : (int16_t)(w.window.y + w.window.h - 1 -
+                      SETTINGS_LAYOUT::kDropdown_Border);
+            // Inside the bitmap border (kDropdown_Border), not the
+            // old 1 px chisel.
+            graphics::Fill(
+                (int16_t)(w.window.x + SETTINGS_LAYOUT::kDropdown_Border),
+                y0,
+                (int16_t)(w.window.x + w.window.w - 1 -
+                    SETTINGS_LAYOUT::kDropdown_Border),
+                y1, 138);
         }
 
         void Draw_Dropdown_Separators() {
@@ -1961,16 +2020,17 @@ namespace SETTINGS_SCREEN {
                 (int16_t)(w.window.x + w.window.w - 1);
             // One separator between every two rows: a 2 px
             // chiseled groove (light over dark) on the row
-            // boundary, inside the 1 px border. Drawn after the
+            // boundary, inside the bitmap border. Drawn after the
             // fields, so the separators stay visible over the
             // selection highlight, framing the selected row.
+            const int16_t b = SETTINGS_LAYOUT::kDropdown_Border;
             for (int k = 1; k < w.rows; ++k) {
                 const int16_t sy =
                     SETTINGS_LAYOUT::Dropdown_Separator_Y(w, k);
-                line::Line((int16_t)(x0 + 1), (int16_t)(sy - 1),
-                    (int16_t)(x1 - 1), (int16_t)(sy - 1), 134);
-                line::Line((int16_t)(x0 + 1), sy,
-                    (int16_t)(x1 - 1), sy, 103);
+                line::Line((int16_t)(x0 + b), (int16_t)(sy - 1),
+                    (int16_t)(x1 - b), (int16_t)(sy - 1), 134);
+                line::Line((int16_t)(x0 + b), sy,
+                    (int16_t)(x1 - b), sy, 103);
             }
         }
 

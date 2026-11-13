@@ -15,15 +15,16 @@ namespace {
         // Title + 3 items, 20 px rows, at (100, 50), 200 wide.
         const s_dropdown_window w = Dropdown_Window(kContent,
             100, 50, 200, 80, 20, 4);
-        // The margin is the 1 px thin border plus 3 px of padding.
-        CHECK(w.margin == 4);
+        // The margin is the 5 px bitmap border plus 3 px of padding.
+        CHECK(w.margin == 8);
+        CHECK(w.margin == kDropdown_Border + 3);
         CHECK(w.step == 20);
         CHECK(w.rows == 4);
         // The window is the list plus the margin on all sides.
-        CHECK(w.window.x == 96);
-        CHECK(w.window.y == 46);
-        CHECK(w.window.w == 208);
-        CHECK(w.window.h == 88);
+        CHECK(w.window.x == 92);
+        CHECK(w.window.y == 42);
+        CHECK(w.window.w == 216);
+        CHECK(w.window.h == 96);
         // The list itself sits inside the window.
         CHECK(w.window.x <= 100);
         CHECK(w.window.y <= 50);
@@ -52,10 +53,10 @@ namespace {
         const s_dropdown_window w = Dropdown_Window(kContent,
             100, 50, 200, 80, 20, 4);
         // Three separators for four rows (title + 3 items).
-        // Window y (46) + margin (4) + row index * step.
-        CHECK(Dropdown_Separator_Y(w, 1) == 46 + 4 + 20);
-        CHECK(Dropdown_Separator_Y(w, 2) == 46 + 4 + 40);
-        CHECK(Dropdown_Separator_Y(w, 3) == 46 + 4 + 60);
+        // Window y (42) + margin (8) + row index * step.
+        CHECK(Dropdown_Separator_Y(w, 1) == 42 + 8 + 20);
+        CHECK(Dropdown_Separator_Y(w, 2) == 42 + 8 + 40);
+        CHECK(Dropdown_Separator_Y(w, 3) == 42 + 8 + 60);
         // Each separator is strictly inside the window, between
         // the first and last row.
         for (int k = 1; k < 4; ++k) {
@@ -68,6 +69,16 @@ namespace {
             Dropdown_Separator_Y(w, 1));
         CHECK(Dropdown_Separator_Y(w, 99) ==
             Dropdown_Separator_Y(w, 3));
+    }
+
+    TEST_CASE("dropdown border is the screen frame's border, thinner") {
+        // The bitmap border (5 px) is thinner than the screen
+        // frame's ~8 px border; the margin is the border plus
+        // 3 px of padding.
+        CHECK(kDropdown_Border == 5);
+        const s_dropdown_window w = Dropdown_Window(kContent,
+            100, 50, 200, 80, 20, 4);
+        CHECK(w.margin == kDropdown_Border + 3);
     }
 
     TEST_CASE("dropdown triangle sits at the button's right end") {

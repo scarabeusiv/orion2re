@@ -238,3 +238,26 @@ the same command plus `--check`.
   "screen", like the other screen-derived sprites). The settings
   screen uses it for dropdown rows only; edit rows keep the
   plain wide box.
+
+- `dropdown-border-h` / `dropdown-border-v` -- the expanded dropdown
+  window's border, a BITMAP like the one drawn on the background all
+  around the screen (the outer frame: riveted, textured, chiseled),
+  just thinner (Tom, 2026-11-13). The screen frame is ~8 px thick;
+  these strips are 5 px, derived by compressing the frame's own 8 px
+  edge profile (sampling rows/cols [0, 2, 4, 5, 7] in outer-to-inner
+  order), so the border reads as the same border family, only
+  thinner -- not a code-drawn chisel. Built by
+  `build_dropdown_border.py` from the authored background
+  (`settings-background/settings-bg-v8.png`): the horizontal sprite
+  (256x10) carries the top strip (rows 0..4, frame rows 0..7) and the
+  bottom strip (rows 5..9, frame rows 472..479), the vertical sprite
+  (10x256) the left strip (cols 0..4, frame cols 0..7) and the right
+  strip (cols 5..9, frame cols 632..639), each 256 px long from the
+  middle of its edge (x/y 64..319), away from the corners, so it
+  carries the frame's natural rivet texture. RGB is remapped to
+  menu-palette indices with the png_to_bin rule (MAINMENU.LBX entry
+  2, excluding the transient navy ramp and vivid blue), so the strips
+  are pixel-identical to the frame they came from. The draw code tiles
+  the strips if a window ever exceeds 256 px. Verify with
+  `build_dropdown_border.py --check --lbx <mainmenu.lbx>` (rebuilds
+  and byte-compares).

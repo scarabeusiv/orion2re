@@ -489,10 +489,11 @@ namespace SETTINGS_LAYOUT {
         return s_rect{x, y, popup_w, popup_h};
     }
 
-    // The dropdown window's margin: 1 px for the thin chiseled
-    // border (like the whole screen border) plus 3 px of padding,
-    // so the text never touches the border.
-    constexpr int16_t kDropdown_Margin = 4;
+    // The dropdown window's margin: the bitmap border
+    // (kDropdown_Border, 5 px) plus 3 px of padding, so the text
+    // never touches the border.
+    constexpr int16_t kDropdown_Margin =
+        (int16_t)(kDropdown_Border + 3);
     // The collapsed triangle: 7 px wide, 4 tall, its right edge
     // 4 px inside the button's right edge.
     constexpr int16_t kDropdown_Triangle_W = 7;
