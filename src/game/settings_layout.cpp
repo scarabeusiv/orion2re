@@ -56,15 +56,16 @@ namespace SETTINGS_LAYOUT {
         // corner with the header plates, like the colony's
         // (whose up arrow is at the header's height).
         constexpr int32_t kScrollbar_Gap = 0;
-        // The VALUE zone starts at 82.0% of the width: the zone
-        // is 89 px at 640x480, so the 85 px colony RETURN frame
-        // the dropdown/edit values sit on nearly fills it (2 px
-        // of margin each side), like the sample's wide value
-        // boxes filling their column -- the frame is the widest
-        // the fields system has, so the zone is sized to it
-        // instead. The freed width goes to the name zone, so
-        // long labels truncate less.
-        constexpr int32_t kValue_X = 820;
+        // The VALUE zone starts at 79.1% of the width: the zone
+        // is 108 px at 640x480, so the 104 px widened value-box
+        // frame the dropdown/edit values sit on nearly fills it
+        // (2 px of margin each side), like the sample's wide value
+        // boxes filling their column. The widest value, "overview"
+        // (74 px at the value font), fits with room to spare --
+        // the 85 px colony RETURN frame truncated it to "overvi..."
+        // (Tom, 2026-11-13). The freed width goes to the name zone,
+        // so long labels truncate less.
+        constexpr int32_t kValue_X = 791;
         constexpr int32_t kValue_Gap = 10;
         constexpr int32_t kBottom_Gap = 12;
         // MORE and RETURN are the SAME width: one button width,
@@ -88,14 +89,22 @@ namespace SETTINGS_LAYOUT {
         // bar's left ~55 px (86 permille of the width); the
         // tabs start after it, so no tab overlaps the label.
         constexpr int32_t kOptions_Reserve = 86;
-        // The tabs ARE the colony sort-tab frames: 78 px for
-        // Internals/Gameplay (the sort-population frame) and
-        // 42 px for Mods (the sort-food frame) at 640x480, as
-        // permille of the width, so the tiling scales with the
-        // resolution. The tab rects are the frame rects, so the
-        // fields built from them match the visible frames.
-        constexpr int32_t kTab_Wide_W = 122;
-        constexpr int32_t kTab_Narrow_W = 66;
+        // The tabs ARE the colony sort-tab frames, stretched
+        // wider by repeating a flat middle column (the frames are
+        // uniform across their middles, so the stretch is
+        // pixel-exact colonies art -- tools/stretch_sprite.py):
+        // 160 px for Internals (sort-population-wide), 104 px for
+        // Gameplay (sort-population-mid), 80 px for Mods
+        // (sort-food-wide) at 640x480, as permille of the width,
+        // so the tiling scales with the resolution. The tab rects
+        // are the frame rects, so the fields built from them match
+        // the visible frames. The widths are sized to the labels
+        // (Tom's sample: the tabs fill the bar to MORE): "Game
+        // Internals" is 85 px, "Gameplay" 55 px, "Mods" 29 px at
+        // the tab font, so the full names fit (Tom, 2026-11-13).
+        constexpr int32_t kTab_Internals_W = 250;
+        constexpr int32_t kTab_Gameplay_W = 162;
+        constexpr int32_t kTab_Mods_W = 125;
 
         // The value control's height, as a fraction of the row
         // height (percent): the control is vertically centred in
@@ -179,8 +188,9 @@ namespace SETTINGS_LAYOUT {
         // them: one continuous band like the colony's SORT band,
         // their shared borders one line. The tab rects ARE the
         // frame rects (the fields built from them match the
-        // visible frames exactly); the strip ends after Mods,
-        // leaving the rest of the bar -- up to MORE -- bare.
+        // visible frames exactly); the strip fills the bar to
+        // MORE, like Tom's sample (the 78/78/42 px tabs left a
+        // bare 155 px gap, Tom, 2026-11-13).
         // The label lengths no longer size the tabs: the frames
         // do. (tab_label_lengths stays in the signature so the
         // layout stays a pure function of the screen and the tab
@@ -188,8 +198,8 @@ namespace SETTINGS_LAYOUT {
         (void)tab_label_lengths;
         const int16_t tab_x0 =
             (int16_t)(content_x + Scale(width, kOptions_Reserve));
-        const int16_t tab_widths[3] = {Scale(width, kTab_Wide_W),
-            Scale(width, kTab_Wide_W), Scale(width, kTab_Narrow_W)};
+        const int16_t tab_widths[3] = {Scale(width, kTab_Internals_W),
+            Scale(width, kTab_Gameplay_W), Scale(width, kTab_Mods_W)};
         int16_t tab_x = tab_x0;
         for (int tab = 0; tab < 3; ++tab) {
             layout.tabs[tab] = s_rect{tab_x, button_y,

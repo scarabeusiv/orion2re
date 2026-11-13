@@ -107,35 +107,35 @@ namespace {
         // Tabs tile adjacently right after the "Options" label
         // (the bar's left ~55 px), with no gap between them (one
         // continuous band, like the colony's SORT band): the tab
-        // rects ARE the colony sort-tab frame rects (78 px for
-        // Internals/Gameplay, 42 px for Mods), spanning the
-        // bar's full height, so their borders are the bar's
-        // borders. The strip ends after Mods; the rest of the
-        // bar up to MORE is bare.
+        // rects ARE the widened colony sort-tab frame rects
+        // (160 px for Internals, 104 px for Gameplay, 80 px for
+        // Mods), spanning the bar's full height, so their
+        // borders are the bar's borders. The strip fills the
+        // bar to MORE, like Tom's sample.
         CHECK(layout.tab_bar.x == 68);
         CHECK(layout.tab_bar.y == 439);
-        CHECK(layout.tab_bar.w == 198);
+        CHECK(layout.tab_bar.w == 344);
         CHECK(layout.tab_bar.h == 31);
         CHECK(layout.tabs[0].x == 68);
-        CHECK(layout.tabs[0].w == 78);
-        CHECK(layout.tabs[1].x == 146);
-        CHECK(layout.tabs[1].w == 78);
-        CHECK(layout.tabs[2].x == 224);
-        CHECK(layout.tabs[2].w == 42);
+        CHECK(layout.tabs[0].w == 160);
+        CHECK(layout.tabs[1].x == 228);
+        CHECK(layout.tabs[1].w == 104);
+        CHECK(layout.tabs[2].x == 332);
+        CHECK(layout.tabs[2].w == 80);
         CHECK(Rect_Right(layout.tabs[2]) == Rect_Right(layout.tab_bar));
         CHECK(layout.tabs[1].x == Rect_Right(layout.tabs[0]));
         CHECK(layout.tabs[2].x == Rect_Right(layout.tabs[1]));
-        CHECK(layout.tabs[0].w == layout.tabs[1].w);
+        CHECK(layout.tabs[0].w > layout.tabs[1].w);
         CHECK(layout.tabs[1].w > layout.tabs[2].w);
-        // VALUE zone at 82.0% of the width, in the header and rows.
-        // The zone is 89 px at 640x480, so the 85 px colony RETURN
-        // frame the dropdown/edit values sit on nearly fills it
-        // (2 px of margin each side), like the sample's wide value
-        // boxes filling their column; the freed width goes to the
-        // name zone, so long labels truncate less.
-        CHECK(layout.header_value.x == 525);
-        CHECK(layout.header_value.w == 89);
-        CHECK(layout.header_setting.w == 506);
+        // VALUE zone at 79.1% of the width, in the header and rows.
+        // The zone is 108 px at 640x480, so the 104 px widened
+        // value-box frame the dropdown/edit values sit on nearly
+        // fills it (2 px of margin each side), like the sample's
+        // wide value boxes filling their column; the freed width
+        // goes to the name zone, so long labels truncate less.
+        CHECK(layout.header_value.x == 506);
+        CHECK(layout.header_value.w == 108);
+        CHECK(layout.header_setting.w == 487);
         // Scrollbar strip at the content's right edge: chunky, like
         // the colony's, so the arrows read as buttons. It runs the
         // header band as well as the list.

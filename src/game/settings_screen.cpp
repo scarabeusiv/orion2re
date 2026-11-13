@@ -48,7 +48,7 @@ namespace SETTINGS_SCREEN {
         // drawing. Row labels are STRING_LIST fields (the
         // field system draws the text and the selection
         // highlight) in the sample's bright green; values are BUTTON fields on derived
-        // sprites (the colony RETURN frame for a dropdown/edit
+        // sprites (the widened value-box frame for a dropdown/edit
         // value, the colony buy-button toggle frames for a
         // bool/mod); the category tabs are BUTTON fields on
         // the colony sort-tab frames (active for the current
@@ -139,17 +139,10 @@ namespace SETTINGS_SCREEN {
             "Gameplay",
             "Mods",
         };
-
-        // Short tab labels for the fields-rendered tabs: the
-        // tab sprite is a fixed-size derived frame (78 px), so
-        // the label must fit it -- the full category names do
-        // not. The full name stays the category's description;
-        // the tab shows the short name.
-        const char* CATEGORY_SHORT_LABELS[CATEGORY_COUNT] = {
-            "Internals",
-            "Gameplay",
-            "Mods",
-        };
+        // The tab labels ARE the full category names: the tabs
+        // are the widened sort-tab frames (160/104/80 px), sized
+        // to the labels, so the full names fit (Tom, 2026-11-13).
+        // The full name is also the category's description.
 
         config::e_settings_category Settings_Category_For_Tab(int category) {
             switch (category) {
@@ -228,14 +221,18 @@ namespace SETTINGS_SCREEN {
             // the element falls back to a hidden field, so the
             // screen stays usable.
             bool sprites_loaded = false;
+            // The widened sort-tab frames (the colony's sort-tab
+            // frames stretched by repeating a flat middle column,
+            // pixel-exact colonies art): 160 px for Internals
+            // (sort-population-wide), 104 px for Gameplay
+            // (sort-population-mid), 80 px for Mods
+            // (sort-food-wide). The colony's switcher sizes each
+            // tab to its label, so the tabs read as a switcher
+            // instead of three identical wide buttons.
             s_animation_header* tab_sprite_normal = nullptr;
             s_animation_header* tab_sprite_active = nullptr;
-            // The narrow sort-tab frames (42 px, the colony's
-            // sort-food frame) for the short tabs: the colony's
-            // switcher sizes each tab to its label (Name 50 px,
-            // Food 42 px, Population 78 px), so a short tab gets
-            // the narrow frame and the tabs read as a switcher
-            // instead of three identical wide buttons.
+            s_animation_header* tab_sprite_mid_normal = nullptr;
+            s_animation_header* tab_sprite_mid_active = nullptr;
             s_animation_header* tab_sprite_small_normal = nullptr;
             s_animation_header* tab_sprite_small_active = nullptr;
             s_animation_header* return_sprite = nullptr;
@@ -246,6 +243,14 @@ namespace SETTINGS_SCREEN {
             // ("Rhalf", "RETURN" for the value 1). The
             // bottom-bar RETURN keeps the labelled frame.
             s_animation_header* value_box_sprite = nullptr;
+            // The widened value box (the blank RETURN frame
+            // stretched to 104 px by repeating a flat middle
+            // column): the row dropdown/edit value buttons draw
+            // on it, so the widest value, "overview" (74 px),
+            // fits instead of truncating to "overvi..." (Tom,
+            // 2026-11-13). MORE keeps the 85 px frame: its zone
+            // is 99 px and the wide frame would overflow it.
+            s_animation_header* value_box_wide_sprite = nullptr;
             s_animation_header* toggle_off = nullptr;
             s_animation_header* toggle_on = nullptr;
             s_animation_header* arrow_up = nullptr;
@@ -738,19 +743,28 @@ namespace SETTINGS_SCREEN {
             }
             g_state.sprites_loaded = true;
             g_state.tab_sprite_normal = sprite_art::Load_Sprite_Frame(
-                "sort-population", "normal", MOX::screen_seg);
+                "sort-population-wide", "normal", MOX::screen_seg);
             g_state.tab_sprite_active = sprite_art::Load_Sprite_Frame(
-                "sort-population", "active", MOX::screen_seg);
+                "sort-population-wide", "active", MOX::screen_seg);
+            g_state.tab_sprite_mid_normal =
+                sprite_art::Load_Sprite_Frame(
+                    "sort-population-mid", "normal", MOX::screen_seg);
+            g_state.tab_sprite_mid_active =
+                sprite_art::Load_Sprite_Frame(
+                    "sort-population-mid", "active", MOX::screen_seg);
             g_state.tab_sprite_small_normal =
                 sprite_art::Load_Sprite_Frame(
-                    "sort-food", "normal", MOX::screen_seg);
+                    "sort-food-wide", "normal", MOX::screen_seg);
             g_state.tab_sprite_small_active =
                 sprite_art::Load_Sprite_Frame(
-                    "sort-food", "active", MOX::screen_seg);
+                    "sort-food-wide", "active", MOX::screen_seg);
             g_state.return_sprite = sprite_art::Load_Sprite_Frame(
                 "return", "normal", MOX::screen_seg);
             g_state.value_box_sprite = sprite_art::Load_Sprite_Frame(
                 "value-box", "normal", MOX::screen_seg);
+            g_state.value_box_wide_sprite =
+                sprite_art::Load_Sprite_Frame(
+                    "value-box-wide", "normal", MOX::screen_seg);
             sprite_art::Buy_Button_Frames toggle =
                 sprite_art::Load_Buy_Button_Frames(MOX::screen_seg);
             g_state.toggle_off = toggle.off;
@@ -862,26 +876,40 @@ namespace SETTINGS_SCREEN {
                 g_state.selected, 0,
                 std::max(0, Visible_Count() - 1));
             // Category tabs in the bottom bar: one button per
-            // category on the sort-tab frame, the active tab on
-            // its "active" frame. The label is the short
+            // category on its widened sort-tab frame, the active
+            // tab on its "active" frame. The label is the full
             // category name, centred by the field system. The
             // frame is sized to the label, like the colony's
-            // switcher: the short "Mods" tab gets the narrow
-            // 42 px sort-food frame, "Internals" and "Gameplay"
-            // the wide 78 px sort-population frame. A missing
-            // narrow frame falls back to the wide one.
+            // switcher: Internals gets the 160 px
+            // sort-population-wide frame, Gameplay the 104 px
+            // sort-population-mid frame, Mods the 80 px
+            // sort-food-wide frame. A missing frame falls back
+            // to the wide one.
             for (int category = 0; category < CATEGORY_COUNT; ++category) {
                 const SETTINGS_LAYOUT::s_rect tab = layout.tabs[category];
-                const bool small_tab =
-                    category == CATEGORY_MODS &&
-                    g_state.tab_sprite_small_normal != nullptr &&
-                    g_state.tab_sprite_small_active != nullptr;
+                s_animation_header* pic_normal = nullptr;
+                s_animation_header* pic_active = nullptr;
+                switch (category) {
+                    case CATEGORY_GAMEPLAY:
+                        pic_normal = g_state.tab_sprite_mid_normal;
+                        pic_active = g_state.tab_sprite_mid_active;
+                        break;
+                    case CATEGORY_MODS:
+                        pic_normal = g_state.tab_sprite_small_normal;
+                        pic_active = g_state.tab_sprite_small_active;
+                        break;
+                    case CATEGORY_INTERNALS:
+                    default:
+                        pic_normal = g_state.tab_sprite_normal;
+                        pic_active = g_state.tab_sprite_active;
+                        break;
+                }
+                if (pic_normal == nullptr || pic_active == nullptr) {
+                    pic_normal = g_state.tab_sprite_normal;
+                    pic_active = g_state.tab_sprite_active;
+                }
                 s_animation_header* pic =
-                    category == g_state.category
-                        ? (small_tab ? g_state.tab_sprite_small_active
-                                     : g_state.tab_sprite_active)
-                        : (small_tab ? g_state.tab_sprite_small_normal
-                                     : g_state.tab_sprite_normal);
+                    category == g_state.category ? pic_active : pic_normal;
                 if (pic != nullptr) {
                     const int16_t w = animate::Get_Width(pic);
                     const int16_t h = animate::Get_Height(pic);
@@ -894,7 +922,7 @@ namespace SETTINGS_SCREEN {
                         fields::Add_Button_Field(
                             (int16_t)(tab.x + (tab.w - w) / 2),
                             (int16_t)(tab.y + (tab.h - h) / 2 + 4),
-                            CATEGORY_SHORT_LABELS[category], pic, "", 0);
+                            CATEGORY_LABELS[category], pic, "", 0);
                     pin_button_color(g_state.tab_fields[category]);
                 } else {
                     g_state.tab_fields[category] =
@@ -985,7 +1013,7 @@ namespace SETTINGS_SCREEN {
                             config::SETTINGS_WIDGET_DROPDOWN ||
                         row_data.widget ==
                             config::SETTINGS_WIDGET_EDIT) {
-                        value_pic = g_state.value_box_sprite;
+                        value_pic = g_state.value_box_wide_sprite;
                         value_text = Row_Value_Text(row_data);
                         show_value = true;
                     }

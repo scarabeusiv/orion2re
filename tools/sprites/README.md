@@ -89,6 +89,21 @@ Contents:
   style 2, with a white face at rest and a blue-white face when
   active (see src/game/ui_kit.h, Colony_Theme).
 
+- `sort-population-wide`, `sort-population-mid`, `sort-food-wide`,
+  `value-box-wide` — the sort-tab and value-box frames stretched
+  wider by repeating a flat middle column (`../stretch_sprite.py`;
+  the tool asserts the repeat column is identical to its neighbour
+  in every row, so the stretch is pixel-exact colonies art with no
+  seam): Population 78 -> 160 px (column 40, x82) for the
+  Internals tab and 78 -> 104 px (column 40, x26) for the Gameplay
+  tab, Food 42 -> 80 px (column 21, x38) for the Mods tab, the
+  value box 85 -> 104 px (column 32, x19) for the row dropdown/edit
+  values. The tabs fill the bottom bar to MORE (Tom, 2026-11-13)
+  and the widened value box fits the widest value, "overview"
+  (74 px), which the 85 px frame truncated to "overvi...". MORE
+  keeps the 85 px `value-box`: its zone is 99 px and the wide
+  frame would overflow it.
+
 - `colony-background` — COLSUM.LBX entry 0, the colony screen's
   baked 640x480 background, colony palette -> menu palette. It
   carries the frame, the header plates (NAME / FARMERS / WORKERS /
@@ -126,16 +141,18 @@ Contents:
   anchored on the row-divider band centres, so it stays continuous
   through every crossing with the colonies' bright "+" bloom),
   and the VALUE plate's
-  left edge straightened to x=525);
+  left edge straightened to x=506, with the vertical divider at
+  x=502..504 (the VALUE column widened to 108 px so "overview"
+  fits, Tom, 2026-11-13));
   the SETTING/VALUE text is rendered by code on the blank
   plates. No entry in `sprites.json` (that manifest is for
   LBX-extracted sprites only). Source PNG and converter live
   in `settings-background/` here; reproduce with
-  `settings-background/png_to_bin.py settings-bg-v6.png
+  `settings-background/png_to_bin.py settings-bg-v7.png
   MAINMENU.LBX data/base/sprites/settings-background/normal.bin`
-  (settings-bg-v6.png is settings-bg-v5.png with the vertical
-  divider transplanted from the colonies screen by
-  `build_bg_v7.py`, kept with the round screenshots)
+  (settings-bg-v7.png is settings-bg-v6.png with the vertical
+  divider and the VALUE plate moved 19 px left by
+  `build_bg_v8.py`, kept with the round screenshots)
   (remaps to the menu palette, excluding the transient navy
   ramp 160-223 and vivid blue 253 that Install_Background
   overwrites at runtime). The settings screen draws it at
@@ -191,4 +208,7 @@ settings background reproduces with
 sort tabs reproduce with `tools/derive_sort_tabs.py --game <game
 data> --grabs <colony screenshots> --out data/base/sprites`, which
 needs the colony-screen screengrabs (not committed) and the same
-game data.
+game data. The widened tabs and value box reproduce with
+`tools/stretch_sprite.py --in <source .bin> --column <c> --repeat
+<n> --out <out .bin>` (parameters in `sprites.json`); verify with
+the same command plus `--check`.
