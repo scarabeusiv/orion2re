@@ -91,6 +91,15 @@ namespace SETTINGS_SCREEN {
         s_colors g_header_white_colors =
             {{249, 250, 250, 250, 250, 250, 250, 250}};
 
+        // The dark button-label colour: the menu palette's black
+        // (index 0 is (0,0,0), and the settings screen does not
+        // remap it -- it owns only 160-223 and 253). MORE sits on
+        // the light value-box frame, like the colonies RETURN, so
+        // its label is dark like the colonies RETURN's baked label,
+        // not the teal g_normal_colors.
+        s_colors g_button_dark_colors =
+            {{0, 0, 0, 0, 0, 0, 0, 0}};
+
         // The row-label green, as in Tom's settings sample: the
         // setting names are bright green, while the button labels
         // and header/description stay the council grey. The
@@ -840,6 +849,12 @@ namespace SETTINGS_SCREEN {
                         &g_normal_colors;
                 }
             };
+            auto pin_button_dark_color = [](int16_t field_id) {
+                if (field_id >= 0) {
+                    fields::fields[field_id].font_color =
+                        &g_button_dark_colors;
+                }
+            };
             Sync_Scroll();
             // The selection follows the selected row, clamped
             // into the visible range.
@@ -870,10 +885,15 @@ namespace SETTINGS_SCREEN {
                 if (pic != nullptr) {
                     const int16_t w = animate::Get_Width(pic);
                     const int16_t h = animate::Get_Height(pic);
+                    // The tab frames sit 4 px below the centred
+                    // position: centred, they overlap the bottom
+                    // strip's chiseled top edge (y 439-442); the
+                    // colony's bar elements sit below that edge,
+                    // on the outer frame's bottom.
                     g_state.tab_fields[category] =
                         fields::Add_Button_Field(
                             (int16_t)(tab.x + (tab.w - w) / 2),
-                            (int16_t)(tab.y + (tab.h - h) / 2),
+                            (int16_t)(tab.y + (tab.h - h) / 2 + 4),
                             CATEGORY_SHORT_LABELS[category], pic, "", 0);
                     pin_button_color(g_state.tab_fields[category]);
                 } else {
@@ -1053,17 +1073,27 @@ namespace SETTINGS_SCREEN {
                 }
                 const int16_t w = animate::Get_Width(pic);
                 const int16_t h = animate::Get_Height(pic);
+                // The bar buttons sit 4 px below the centred
+                // position: centred, they overlap the bottom
+                // strip's chiseled top edge (y 439-442); the
+                // colony's RETURN sits below that edge, its
+                // text centred at y 457 and its bottom on the
+                // outer frame (measured from the colony screen).
                 const int16_t field_id = fields::Add_Button_Field(
                     (int16_t)(zone.x + (zone.w - w) / 2),
-                    (int16_t)(zone.y + (zone.h - h) / 2),
+                    (int16_t)(zone.y + (zone.h - h) / 2 + 4),
                     label, pic, "", 0);
                 pin_button_color(field_id);
                 return field_id;
             };
             g_state.show_all_field = add_bar_button(layout.show_more,
-                "MORE", g_state.tab_sprite_normal);
+                "MORE", g_state.value_box_sprite);
+            pin_button_dark_color(g_state.show_all_field);
+            // RETURN draws no label text: the RETURN frame's baked
+            // dark "RETURN" is the label (like the colonies button),
+            // and a drawn teal label would cover it.
             g_state.done_field = add_bar_button(layout.done,
-                "RETURN", g_state.return_sprite);
+                "", g_state.return_sprite);
         }
 
         // The field system's modal list picker for a dropdown:
