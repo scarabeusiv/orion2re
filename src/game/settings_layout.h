@@ -174,17 +174,17 @@ namespace SETTINGS_LAYOUT {
 
     // The scrollbar thumb for a list of `total_lines` lines whose
     // first visible line is `first_line` and whose page shows
-    // `visible_lines` lines. When the whole list fits, the thumb
-    // spans the whole track (the colony's rule -- there is
-    // nothing to scroll, and the arrows stay visible); otherwise
-    // a rect inside the scrollbar track, its height proportional
-    // to the visible fraction and its position proportional to
-    // the scroll offset (top of the track = first lines). Empty
-    // (w == 0) only for a degenerate (empty) list. The thumb is
-    // the colony's indicator bar: 6 px wide in the colony's
-    // 13 px strip, inset 2 px from the strip's left edge, and it
-    // travels between the arrow/track dividers (inset 2 px at
-    // each end of the track), so it never paints over one.
+    // `visible_lines` lines. When the whole list fits there is no
+    // thumb (the colony's rule -- colsum.cpp Draw_Bar_Indicator
+    // draws only when the list scrolls); otherwise a rect inside
+    // the scrollbar track, its height proportional to the visible
+    // fraction and its position proportional to the scroll offset
+    // (top of the track = first lines). Empty (w == 0) when the
+    // list fits or is empty. The thumb is the colony's indicator
+    // bar: 6 px wide in the colony's 13 px strip, inset 2 px from
+    // the strip's left edge, and it travels between the arrow/
+    // track dividers (inset 2 px at each end of the track), so it
+    // never paints over one.
     s_rect Scrollbar_Thumb_Rect(const s_settings_layout& layout,
         int total_lines, int first_line, int visible_lines);
 

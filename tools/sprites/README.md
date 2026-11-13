@@ -148,11 +148,17 @@ Contents:
   plates. No entry in `sprites.json` (that manifest is for
   LBX-extracted sprites only). Source PNG and converter live
   in `settings-background/` here; reproduce with
-  `settings-background/png_to_bin.py settings-bg-v7.png
+  `settings-background/png_to_bin.py settings-bg-v8.png
   MAINMENU.LBX data/base/sprites/settings-background/normal.bin`
-  (settings-bg-v7.png is settings-bg-v6.png with the vertical
-  divider and the VALUE plate moved 19 px left by
-  `build_bg_v8.py`, kept with the round screenshots)
+  (settings-bg-v8.png is settings-bg-v7.png with the scrollbar
+  transplanted verbatim from the colonies screen (pure-black
+  track, divider, frame edge; row dividers stop at the track),
+  every row-divider band repainted from one colonies profile
+  (uniform across the width, no left/right step, no spurious
+  "+" blob at x=599), the description-band top border repainted
+  from one profile so it wraps continuously (the vertical divider
+  stops at y=340), and the list area cleaned to flat face, by
+  `build_bg_v9.py`, kept with the round screenshots)
   (remaps to the menu palette, excluding the transient navy
   ramp 160-223 and vivid blue 253 that Install_Background
   overwrites at runtime). The settings screen draws it at

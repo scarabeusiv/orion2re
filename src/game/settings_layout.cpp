@@ -431,11 +431,10 @@ namespace SETTINGS_LAYOUT {
         const int16_t span_h =
             (int16_t)std::max(0, track.h - 4);
         if (total_lines <= visible_lines) {
-            // The colony's rule: when the whole list fits, the
-            // thumb spans the whole track (there is nothing to
-            // scroll) -- the arrows stay visible and do nothing,
-            // like the colony's on a short list.
-            return s_rect{thumb_x, span_y, thumb_w, span_h};
+            // The colony draws no thumb when the list fits
+            // (colsum.cpp Draw_Bar_Indicator draws only when
+            // num_colonies >= 10): no scrolling, no indicator.
+            return s_rect{track.x, track.y, 0, 0};
         }
         const int max_first = total_lines - visible_lines;
         if (first_line < 0) {

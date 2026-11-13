@@ -1773,16 +1773,42 @@ namespace SETTINGS_SCREEN {
             if (thumb.w <= 0 || thumb.h <= 0) {
                 return;
             }
-            // The colony's indicator bar: a solid face with a
-            // light top edge, drawn with the game's own fill and
-            // line primitives (colsum.cpp draws its scroll bar
-            // the same way). The face is a mid-ramp navy, the
-            // edge the ramp's brightest index.
+            // The colony's indicator bar (colsum.cpp
+            // Draw_Bar_Indicator): a solid face with shaded edges
+            // -- light top/left, dark right/bottom -- and black
+            // corner dots at the track's ends. The colony indices
+            // are colony-palette indices (its face 229 is vivid
+            // blue (28,28,164) there); this screen runs on the
+            // menu palette, where 229 is near-black, so the
+            // indices below are the menu palette's nearest
+            // matches, keeping the colony's lightness steps
+            // (light edge 99, face 79, dark edge 36): face 138
+            // renders (52,48,136), light edge 134 renders
+            // (88,80,128), dark edge 103 renders (24,32,52).
             graphics::Fill(thumb.x, thumb.y,
                 (int16_t)(thumb.x + thumb.w - 1),
-                (int16_t)(thumb.y + thumb.h - 1), 200);
+                (int16_t)(thumb.y + thumb.h - 1), 138);
             line::Line(thumb.x, thumb.y,
-                (int16_t)(thumb.x + thumb.w - 1), thumb.y, 223);
+                (int16_t)(thumb.x + thumb.w - 1), thumb.y, 134);
+            line::Line(thumb.x, thumb.y, thumb.x,
+                (int16_t)(thumb.y + thumb.h - 1), 134);
+            line::Line((int16_t)(thumb.x + thumb.w - 1), thumb.y,
+                (int16_t)(thumb.x + thumb.w - 1),
+                (int16_t)(thumb.y + thumb.h - 1), 103);
+            line::Line(thumb.x, (int16_t)(thumb.y + thumb.h - 1),
+                (int16_t)(thumb.x + thumb.w - 1),
+                (int16_t)(thumb.y + thumb.h - 1), 103);
+            // Corner dots at the track's ends, at the thumb's
+            // left/right edges (the colony's Dot(621/626, 40/311,
+            // 80)); the colony dot colour is black, so the dots
+            // are black here too (invisible on the black track,
+            // as in the colony).
+            const SETTINGS_LAYOUT::s_rect track = layout.scrollbar_track;
+            graphics::Dot(thumb.x, track.y, 0);
+            graphics::Dot((int16_t)(thumb.x + thumb.w - 1), track.y, 0);
+            graphics::Dot(thumb.x, (int16_t)(track.y + track.h - 1), 0);
+            graphics::Dot((int16_t)(thumb.x + thumb.w - 1),
+                (int16_t)(track.y + track.h - 1), 0);
         }
 
         void Draw_Text_Elements() {

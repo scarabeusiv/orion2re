@@ -291,17 +291,15 @@ namespace {
     TEST_CASE("scrollbar thumb follows the scroll offset") {
         const s_settings_layout layout =
             Compute_Layout(640, 480, 10, kLabel_Lengths);
-        // A list that fits spans the whole track (the colony's
-        // rule): the thumb is the colony's narrow indicator bar,
-        // inset from the strip's edges, travelling between the
-        // arrow/track dividers.
+        // A list that fits draws no thumb (the colony's rule:
+        // colsum.cpp Draw_Bar_Indicator draws only when the list
+        // scrolls -- no scrolling, no indicator).
         const s_rect none = Scrollbar_Thumb_Rect(layout, 10, 0, 10);
-        CHECK(none.w == 6);
-        CHECK(none.x == layout.scrollbar_track.x + 2);
-        CHECK(none.y == layout.scrollbar_track.y + 2);
-        CHECK(none.h == layout.scrollbar_track.h - 4);
+        CHECK(none.w == 0);
+        CHECK(none.h == 0);
         const s_rect none2 = Scrollbar_Thumb_Rect(layout, 5, 0, 10);
-        CHECK(none2.w == 6);
+        CHECK(none2.w == 0);
+        CHECK(none2.h == 0);
         // 186 lines, 10 visible: the thumb is ~10/186 of the
         // track, at the top when scrolled to the first lines,
         // at the bottom at the end.
