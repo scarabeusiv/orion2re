@@ -251,6 +251,25 @@ namespace SETTINGS_SCREEN {
             // 2026-11-13). MORE keeps the 85 px frame: its zone
             // is 99 px and the wide frame would overflow it.
             s_animation_header* value_box_wide_sprite = nullptr;
+            // The widened value box with a down-triangle baked in
+            // (7x4, header white, palette 250, right edge 4 px
+            // inside the frame, vertically centred -- the
+            // Dropdown_Triangle_Rect geometry): the collapsed
+            // dropdown's affordance. White, not black: a black
+            // triangle sat on the frame's dark right-edge bevel
+            // and was invisible, and the widest value
+            // ("overview") leaves no room for a dark triangle on
+            // the light face. It
+            // has to live in the button art: the field system
+            // redraws button fields after the screen's
+            // auto-function, so a triangle drawn at runtime is
+            // covered by the button (proven by a solid blue rect
+            // over a button showing only 111 of 2704 px).
+            // Derived by tools/sprites/add_dropdown_triangle.py
+            // from value-box-wide. An edit row draws on the plain
+            // wide box: it is not a dropdown.
+            s_animation_header* value_box_wide_dropdown_sprite =
+                nullptr;
             s_animation_header* toggle_off = nullptr;
             s_animation_header* toggle_on = nullptr;
             s_animation_header* arrow_up = nullptr;
@@ -274,6 +293,17 @@ namespace SETTINGS_SCREEN {
             // system's string-list value is int8_t; the settings
             // list is far below 127 rows.
             int8_t list_selection = 0;
+            // The open dropdown's window: set while Pick_From_List
+            // runs the field system's picker, so the auto-function
+            // (Draw_Settings_Screen) can draw the window behind
+            // the list. Cleared when the picker returns.
+            bool dropdown_open = false;
+            SETTINGS_LAYOUT::s_dropdown_window dropdown_window{};
+            // The picker's live selection (the caller's index
+            // variable, updated by the picker as the user moves):
+            // the auto-function draws the selection bar behind
+            // this row. Null when no dropdown is open.
+            int8_t* dropdown_selected = nullptr;
             std::vector<config::s_resolution_option> resolution_options;
         };
 
@@ -765,6 +795,10 @@ namespace SETTINGS_SCREEN {
             g_state.value_box_wide_sprite =
                 sprite_art::Load_Sprite_Frame(
                     "value-box-wide", "normal", MOX::screen_seg);
+            g_state.value_box_wide_dropdown_sprite =
+                sprite_art::Load_Sprite_Frame(
+                    "value-box-wide-dropdown", "normal",
+                    MOX::screen_seg);
             sprite_art::Buy_Button_Frames toggle =
                 sprite_art::Load_Buy_Button_Frames(MOX::screen_seg);
             g_state.toggle_off = toggle.off;
@@ -991,6 +1025,7 @@ namespace SETTINGS_SCREEN {
                 s_animation_header* value_pic = nullptr;
                 std::string value_text;
                 bool show_value = false;
+                bool is_dropdown = false;
                 if (Is_Mod_Row(visible)) {
                     const config::s_mod_catalogue_entry& entry =
                         g_state.mods[(size_t)Mod_Index(visible)];
@@ -1013,7 +1048,19 @@ namespace SETTINGS_SCREEN {
                             config::SETTINGS_WIDGET_DROPDOWN ||
                         row_data.widget ==
                             config::SETTINGS_WIDGET_EDIT) {
-                        value_pic = g_state.value_box_wide_sprite;
+                        // A dropdown draws on the wide box with
+                        // the triangle baked in; an edit draws on
+                        // the plain wide box. If the dropdown
+                        // frame failed to load, fall back to the
+                        // plain box (no triangle, still usable).
+                        is_dropdown = (row_data.widget ==
+                            config::SETTINGS_WIDGET_DROPDOWN);
+                        value_pic = is_dropdown &&
+                                g_state
+                                        .value_box_wide_dropdown_sprite !=
+                                    nullptr
+                            ? g_state.value_box_wide_dropdown_sprite
+                            : g_state.value_box_wide_sprite;
                         value_text = Row_Value_Text(row_data);
                         show_value = true;
                     }
@@ -1023,9 +1070,19 @@ namespace SETTINGS_SCREEN {
                     const int16_t h = animate::Get_Height(value_pic);
                     const char* value_help = "";
                     if (!value_text.empty()) {
+                        // A dropdown's value text must clear its
+                        // triangle (baked into the dropdown button
+                        // sprite at the button's right end), so it
+                        // truncates narrower than an edit's: the
+                        // centred text's right edge must clear the
+                        // triangle's left edge.
+                        const int16_t max_w = is_dropdown
+                            ? (int16_t)std::min<int32_t>(w - 2 * pad,
+                                SETTINGS_LAYOUT::
+                                    Dropdown_Value_Text_Width(w))
+                            : (int16_t)(w - 2 * pad);
                         g_state.row_value_texts[(size_t)index] =
-                            Truncate_To_Width(value_text,
-                                (int16_t)(w - 2 * pad));
+                            Truncate_To_Width(value_text, max_w);
                         value_help =
                             g_state.row_value_texts[(size_t)index].c_str();
                     }
@@ -1180,10 +1237,34 @@ namespace SETTINGS_SCREEN {
             if (list_y < layout.content.y) {
                 list_y = layout.content.y;
             }
+            // The open dropdown's window, for the auto-function
+            // to draw behind the list while the picker runs.
+            g_state.dropdown_open = true;
+            g_state.dropdown_window =
+                SETTINGS_LAYOUT::Dropdown_Window(layout.content,
+                    list_x, list_y, list_w, list_h, step,
+                    (int16_t)(records.size() + 1));
+            g_state.dropdown_selected = selected;
+            // Get_List_Field reads records until one starts with
+            // NUL, so the list must be NUL-terminated: pass a copy
+            // with an empty terminator record, or the picker reads
+            // past the vector and shows phantom rows (garbage from
+            // the heap). The window above is sized from the real
+            // record count, not the terminator.
+            std::vector<std::array<char, 64>> terminated = records;
+            terminated.push_back({});
+            // The picker's selected-row text draws in the font's
+            // highlight colour; the default highlight is dark
+            // enough to vanish on the window, so pin it to the
+            // row-label green (readable on the blue selection
+            // bar, like the main screen's selected row).
+            fonts::Set_Font_Highlight_Colors(&g_list_green_colors);
             const int16_t choice = fields::Get_List_Field(list_x,
                 list_y, list_w, title.c_str(),
-                (const char*)records.data(), 64, selected,
+                (const char*)terminated.data(), 64, selected,
                 nullptr, 17, nullptr, 0, nullptr, 0, nullptr);
+            g_state.dropdown_open = false;
+            g_state.dropdown_selected = nullptr;
             Rebuild_Fields();
             return choice;
         }
@@ -1811,6 +1892,91 @@ namespace SETTINGS_SCREEN {
                 (int16_t)(track.y + track.h - 1), 0);
         }
 
+        void Draw_Dropdown_Window() {
+            if (!g_state.dropdown_open) {
+                return;
+            }
+            const SETTINGS_LAYOUT::s_dropdown_window& w =
+                g_state.dropdown_window;
+            const int16_t x0 = w.window.x;
+            const int16_t y0 = w.window.y;
+            const int16_t x1 =
+                (int16_t)(w.window.x + w.window.w - 1);
+            const int16_t y1 =
+                (int16_t)(w.window.y + w.window.h - 1);
+            // Opaque fill: the rows behind the list must not
+            // show through.
+            graphics::Fill(x0, y0, x1, y1, 0);
+            // Chiseled border, 2 px: light top/left, dark
+            // bottom/right, like the scroll thumb's edges.
+            line::Line(x0, y0, x1, y0, 134);
+            line::Line(x0, y0, x0, y1, 134);
+            line::Line(x1, y0, x1, y1, 103);
+            line::Line(x0, y1, x1, y1, 103);
+            line::Line((int16_t)(x0 + 1), (int16_t)(y0 + 1),
+                (int16_t)(x1 - 1), (int16_t)(y0 + 1), 134);
+            line::Line((int16_t)(x0 + 1), (int16_t)(y0 + 1),
+                (int16_t)(x0 + 1), (int16_t)(y1 - 1), 134);
+            line::Line((int16_t)(x1 - 1), (int16_t)(y0 + 1),
+                (int16_t)(x1 - 1), (int16_t)(y1 - 1), 103);
+            line::Line((int16_t)(x0 + 1), (int16_t)(y1 - 1),
+                (int16_t)(x1 - 1), (int16_t)(y1 - 1), 103);
+        }
+
+        // The picker's selection bar: Gradient_Fill mode 17
+        // (the field system's selection gradient) is not
+        // implemented in this port -- it draws nothing -- so the
+        // bar is drawn here, behind the list items and inside
+        // the separators, in the thumb's dusty blue (menu
+        // palette 138). The selected index is the picker's live
+        // variable, so the bar follows arrow-key / mouse moves.
+        void Draw_Dropdown_Selection() {
+            if (!g_state.dropdown_open ||
+                g_state.dropdown_selected == nullptr) {
+                return;
+            }
+            const SETTINGS_LAYOUT::s_dropdown_window& w =
+                g_state.dropdown_window;
+            const int16_t sel = (int16_t)*g_state.dropdown_selected;
+            if (sel < 0 || sel >= w.rows - 1) {
+                return;
+            }
+            // Item sel is row sel+1 (row 0 is the title): it sits
+            // between separator sel+1 and separator sel+2.
+            const int16_t y0 =
+                SETTINGS_LAYOUT::Dropdown_Separator_Y(w, (int16_t)(sel + 1));
+            const int16_t y1 = (sel + 2 < w.rows)
+                ? (int16_t)(SETTINGS_LAYOUT::Dropdown_Separator_Y(w,
+                      (int16_t)(sel + 2)) - 1)
+                : (int16_t)(w.window.y + w.window.h - 3);
+            graphics::Fill((int16_t)(w.window.x + 2), y0,
+                (int16_t)(w.window.x + w.window.w - 3), y1, 138);
+        }
+
+        void Draw_Dropdown_Separators() {
+            if (!g_state.dropdown_open) {
+                return;
+            }
+            const SETTINGS_LAYOUT::s_dropdown_window& w =
+                g_state.dropdown_window;
+            const int16_t x0 = w.window.x;
+            const int16_t x1 =
+                (int16_t)(w.window.x + w.window.w - 1);
+            // One separator between every two rows: a 2 px
+            // chiseled groove (light over dark) on the row
+            // boundary, inside the border. Drawn after the
+            // fields, so the separators stay visible over the
+            // selection highlight, framing the selected row.
+            for (int k = 1; k < w.rows; ++k) {
+                const int16_t sy =
+                    SETTINGS_LAYOUT::Dropdown_Separator_Y(w, k);
+                line::Line((int16_t)(x0 + 2), (int16_t)(sy - 1),
+                    (int16_t)(x1 - 2), (int16_t)(sy - 1), 134);
+                line::Line((int16_t)(x0 + 2), sy,
+                    (int16_t)(x1 - 2), sy, 103);
+            }
+        }
+
         void Draw_Text_Elements() {
             const SETTINGS_LAYOUT::s_settings_layout layout = Layout();
             // The header labels are the colonies header font
@@ -1823,8 +1989,16 @@ namespace SETTINGS_SCREEN {
             Draw_Centred_Text("SETTING", layout.header_setting);
             Draw_Centred_Text("VALUE", layout.header_value);
             fonts::Set_Font_Style(4, &g_normal_colors);
-            Draw_Description();
-            Draw_Scroll_Thumb();
+            // While a dropdown is open the description and the
+            // scroll thumb stay hidden: both are drawn after the
+            // window, so a list overlapping the description band
+            // (or the scrollbar) would have their text painted
+            // over it.
+            if (!g_state.dropdown_open) {
+                Draw_Description();
+                Draw_Scroll_Thumb();
+            }
+            Draw_Dropdown_Separators();
         }
 
         void Draw_Settings_Screen() {
@@ -1837,6 +2011,8 @@ namespace SETTINGS_SCREEN {
             Sync_Scroll();
             video::Set_Page_Off();
             SETTINGS_BACKGROUND::Draw_Background();
+            Draw_Dropdown_Window();
+            Draw_Dropdown_Selection();
             fields::Draw_Visible_Fields();
             Draw_Text_Elements();
         }

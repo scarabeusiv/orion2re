@@ -353,6 +353,29 @@
      "from": "value-box/normal"
     }
    }
+  },
+  {
+   "id": "value-box-wide-dropdown",
+   "size": [
+    104,
+    26
+   ],
+   "source": "screen",
+   "source_palette": "colony",
+   "target_palette": "menu",
+   "tool": "add_dropdown_triangle.py",
+   "from": "value-box-wide",
+   "triangle": {
+    "w": 7,
+    "h": 4,
+    "inset": 4,
+    "color": 250
+   },
+   "states": {
+    "normal": {
+     "from": "value-box-wide/normal"
+    }
+   }
   }
  ]
 }
