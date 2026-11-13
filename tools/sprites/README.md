@@ -121,14 +121,21 @@ Contents:
   textured face (the strip beside the tabs plate, not the tabs
   plate's dark navy face) -- across the bottom bar with the
   "Options" label baked in, the 3px chiseled vertical divider
-  between the SETTING and VALUE columns, and the VALUE plate's
+  between the SETTING and VALUE columns (a transplant of the
+  colonies divider itself, sampled via a piecewise-linear map
+  anchored on the row-divider band centres, so it stays continuous
+  through every crossing with the colonies' bright "+" bloom),
+  and the VALUE plate's
   left edge straightened to x=525);
   the SETTING/VALUE text is rendered by code on the blank
   plates. No entry in `sprites.json` (that manifest is for
   LBX-extracted sprites only). Source PNG and converter live
   in `settings-background/` here; reproduce with
-  `settings-background/png_to_bin.py settings-bg-v5.png
+  `settings-background/png_to_bin.py settings-bg-v6.png
   MAINMENU.LBX data/base/sprites/settings-background/normal.bin`
+  (settings-bg-v6.png is settings-bg-v5.png with the vertical
+  divider transplanted from the colonies screen by
+  `build_bg_v7.py`, kept with the round screenshots)
   (remaps to the menu palette, excluding the transient navy
   ramp 160-223 and vivid blue 253 that Install_Background
   overwrites at runtime). The settings screen draws it at
