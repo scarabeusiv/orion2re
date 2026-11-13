@@ -114,13 +114,16 @@ Contents:
 
 - `settings-background` — AUTHORED, not extracted from an LBX:
   the settings screen's 640x480 background, drawn from the
-  colony frame verbatim (dark interior, row dividers at the
-  settings row boundaries, blank header plates, navy
-  description band); the SETTING/VALUE text is rendered by
-  code on the blank plates. No entry in `sprites.json` (that
-  manifest is for LBX-extracted sprites only). Source PNG and
-  converter live in `settings-background/` here; reproduce
-  with `settings-background/png_to_bin.py settings-bg-v3.png
+  colony frame verbatim (dark interior, the colony's 8px
+  chiseled row dividers at the settings row boundaries, blank
+  header plates, navy description band, and the colony SORT
+  band's textured strip -- chiseled top edge, navy face --
+  across the bottom bar with the "Options" label baked in);
+  the SETTING/VALUE text is rendered by code on the blank
+  plates. No entry in `sprites.json` (that manifest is for
+  LBX-extracted sprites only). Source PNG and converter live
+  in `settings-background/` here; reproduce with
+  `settings-background/png_to_bin.py settings-bg-v4.png
   MAINMENU.LBX data/base/sprites/settings-background/normal.bin`
   (remaps to the menu palette, excluding the transient navy
   ramp 160-223 and vivid blue 253 that Install_Background

@@ -902,10 +902,32 @@ namespace SETTINGS_SCREEN {
                 g_state.row_labels[(size_t)index] =
                     Truncate_To_Width(Visible_Row_Name(visible),
                         (int16_t)(name_rect.w - 2 * pad));
+                // The label's ink centres on the row's plate (the
+                // row minus its bottom divider), not on the full
+                // row slot -- the plate is what the eye reads as
+                // the row. Falls back to the font cell when the
+                // label has no ink.
+                const SETTINGS_LAYOUT::s_rect plate =
+                    SETTINGS_LAYOUT::Row_Plate_Rect_For_Row(layout, row);
+                int16_t label_ink_top = -1;
+                int16_t label_ink_bottom = -1;
+                fonts::Get_String_Ink_Rows(
+                    g_state.row_labels[(size_t)index].c_str(),
+                    &label_ink_top, &label_ink_bottom);
+                int16_t label_y = plate.y;
+                if (label_ink_top >= 0 &&
+                    label_ink_bottom >= label_ink_top) {
+                    const int16_t ink_h = (int16_t)(
+                        label_ink_bottom - label_ink_top + 1);
+                    label_y = (int16_t)(plate.y +
+                        (plate.h - ink_h) / 2 - label_ink_top);
+                } else {
+                    label_y = (int16_t)(plate.y +
+                        (plate.h - font_height) / 2);
+                }
                 g_state.row_fields[index] =
                     fields::Add_String_List_Field(
-                        (int16_t)(name_rect.x + pad),
-                        (int16_t)(row.y + (row.h - font_height) / 2),
+                        (int16_t)(name_rect.x + pad), label_y,
                         (int16_t)(name_rect.w - 2 * pad),
                         g_state.row_labels[(size_t)index].c_str(),
                         1, &g_state.list_selection, (int16_t)visible,
@@ -1600,10 +1622,25 @@ namespace SETTINGS_SCREEN {
         void Draw_Centred_Text(const char* text,
             const SETTINGS_LAYOUT::s_rect& rect) {
             const int16_t w = fonts::Get_String_Width(text);
-            const int16_t h = fonts::Get_Font_Height();
+            // Centre the visible glyphs, not the font cell: a
+            // glyph's cell is taller than its ink (capitals sit in
+            // the top rows with empty rows below), so centring by
+            // Get_Font_Height() puts the text high in its plate.
+            // Falls back to the cell when the string has no ink.
+            int16_t ink_top = -1;
+            int16_t ink_bottom = -1;
+            fonts::Get_String_Ink_Rows(text, &ink_top, &ink_bottom);
+            int16_t y = rect.y;
+            if (ink_top >= 0 && ink_bottom >= ink_top) {
+                const int16_t ink_h =
+                    (int16_t)(ink_bottom - ink_top + 1);
+                y = (int16_t)(rect.y + (rect.h - ink_h) / 2 - ink_top);
+            } else {
+                const int16_t h = fonts::Get_Font_Height();
+                y = (int16_t)(rect.y + (rect.h - h) / 2);
+            }
             fonts::Print(
-                (int16_t)(rect.x + (rect.w - w) / 2),
-                (int16_t)(rect.y + (rect.h - h) / 2), text);
+                (int16_t)(rect.x + (rect.w - w) / 2), y, text);
         }
 
         void Draw_Description() {

@@ -161,14 +161,17 @@ namespace {
         // Rows tile the list height exactly. The description
         // shrank to its content and the list took the freed
         // space, so the rows are taller and the bottom bar does
-        // not move. The value control is 80% of the row (the
-        // sample's tall inset boxes), vertically centred.
+        // not move. The value control is 80% of the row's plate
+        // (the row minus its 8px bottom divider -- 23px at
+        // 640x480), vertically centred on the plate.
         CHECK(Row_Rect(layout, 0).y == 36);
         CHECK(Row_Rect(layout, 0).h == 31);
         CHECK(Row_Rect(layout, 9).y == 318);
         CHECK(Rect_Bottom(Row_Rect(layout, 9)) == 350);
-        CHECK(Row_Value_Rect(layout, 0).y == 39);
-        CHECK(Row_Value_Rect(layout, 0).h == 24);
+        CHECK(Row_Plate_Rect(layout, 0).y == 36);
+        CHECK(Row_Plate_Rect(layout, 0).h == 23);
+        CHECK(Row_Value_Rect(layout, 0).y == 38);
+        CHECK(Row_Value_Rect(layout, 0).h == 18);
         Check_Bands_In_Order(layout);
     }
 
@@ -235,20 +238,26 @@ namespace {
         CHECK(Row_Rect_For_Span(layout, 3, 0).h == single.h);
         // The name and value zones follow the merged row: the
         // name spans the merged width, the value control is 80%
-        // of the merged height, vertically centred.
+        // of the merged plate height (the span minus its bottom
+        // divider), vertically centred on the plate.
         const s_rect name = Row_Name_Rect_For_Row(layout, span);
         CHECK(name.y == span.y);
         CHECK(name.h == span.h);
         CHECK(Rect_Right(name) == Rect_Right(layout.header_setting));
+        const s_rect span_plate =
+            Row_Plate_Rect_For_Row(layout, span);
+        CHECK(span_plate.y == span.y);
+        CHECK(span_plate.h == span.h - 8);
         const s_rect value = Row_Value_Rect_For_Row(layout, span);
         CHECK(value.x == layout.header_value.x);
         CHECK(value.w == layout.header_value.w);
-        CHECK(value.h == span.h * 80 / 100);
-        CHECK(value.y == span.y + (span.h - value.h) / 2);
+        CHECK(value.h == span_plate.h * 80 / 100);
+        CHECK(value.y == span_plate.y + (span_plate.h - value.h) / 2);
         CHECK(Inside(value, span));
         // The single-slot helpers agree with the span helpers.
         CHECK(Row_Name_Rect(layout, 3).h == single.h);
-        CHECK(Row_Value_Rect(layout, 3).h == single.h * 80 / 100);
+        CHECK(Row_Value_Rect(layout, 3).h ==
+            Row_Plate_Rect(layout, 3).h * 80 / 100);
     }
 
     TEST_CASE("slot arithmetic over per-setting line counts") {

@@ -104,6 +104,15 @@ namespace SETTINGS_LAYOUT {
         // (62% left empty space above and below them).
         constexpr int32_t kValue_Control_H_Percent = 80;
 
+        // The row divider's height, permille of the screen height:
+        // the background's row dividers are the colony's 8px
+        // chiseled bands (8 px at 640x480), so a row's plate --
+        // the face the elements sit on -- is the row minus this
+        // divider at its bottom. The elements centre on the plate,
+        // not on the full row slot: the slot's centre is the
+        // divider's height below the plate's centre.
+        constexpr int32_t kRow_Divider_H = 17;
+
         // The scrollbar thumb's minimum height, in pixels.
         constexpr int16_t kThumb_Min_H = 8;
 
@@ -273,6 +282,21 @@ namespace SETTINGS_LAYOUT {
             (int16_t)(Rect_Bottom(last) - first.y)};
     }
 
+    s_rect Row_Plate_Rect_For_Row(const s_settings_layout& layout,
+        const s_rect& row) {
+        // The plate is the row minus its bottom divider: the face
+        // the background draws flat dark, with the chiseled divider
+        // band below it. The divider height scales with the screen.
+        const int16_t divider_h = Scale(layout.height, kRow_Divider_H);
+        const int16_t plate_h =
+            (int16_t)std::max(1, row.h - divider_h);
+        return s_rect{row.x, row.y, row.w, plate_h};
+    }
+
+    s_rect Row_Plate_Rect(const s_settings_layout& layout, int index) {
+        return Row_Plate_Rect_For_Row(layout, Row_Rect(layout, index));
+    }
+
     s_rect Row_Name_Rect_For_Row(const s_settings_layout& layout,
         const s_rect& row) {
         // The name zone ends where the header's SETTING zone ends
@@ -288,10 +312,14 @@ namespace SETTINGS_LAYOUT {
 
     s_rect Row_Value_Rect_For_Row(const s_settings_layout& layout,
         const s_rect& row) {
+        // The value control centres on the plate (the row minus
+        // its bottom divider), not on the full row slot -- the
+        // plate is what the eye reads as the row.
+        const s_rect plate = Row_Plate_Rect_For_Row(layout, row);
         const int16_t value_h =
-            (int16_t)(row.h * kValue_Control_H_Percent / 100);
+            (int16_t)(plate.h * kValue_Control_H_Percent / 100);
         const int16_t value_y =
-            (int16_t)(row.y + (row.h - value_h) / 2);
+            (int16_t)(plate.y + (plate.h - value_h) / 2);
         return s_rect{layout.header_value.x, value_y,
             layout.header_value.w, value_h};
     }

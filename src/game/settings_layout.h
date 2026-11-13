@@ -141,11 +141,19 @@ namespace SETTINGS_LAYOUT {
     s_rect Row_Value_Rect_For_Row(const s_settings_layout& layout,
         const s_rect& row);
 
+    // The row's plate: the row minus its bottom divider (the
+    // background's 8px chiseled band). The plate is the face the
+    // row's elements sit on; the elements centre on it, not on
+    // the full row slot.
+    s_rect Row_Plate_Rect_For_Row(const s_settings_layout& layout,
+        const s_rect& row);
+    s_rect Row_Plate_Rect(const s_settings_layout& layout, int index);
+
     // The value-control zone inside a row: the row's VALUE zone,
-    // vertically centred, 80% of the row height -- the sample's
-    // tall inset value boxes, filling most of the row. Dropdowns,
-    // toggles and edit fields sit in this rect (step 4 renders
-    // them; step 3 only allocates it).
+    // vertically centred on the row's plate, 80% of the plate
+    // height -- the sample's tall inset value boxes, filling most
+    // of the row. Dropdowns, toggles and edit fields sit in this
+    // rect (step 4 renders them; step 3 only allocates it).
     s_rect Row_Value_Rect(const s_settings_layout& layout, int index);
 
     // Slot arithmetic over per-setting line counts (each entry is
