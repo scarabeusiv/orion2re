@@ -15,14 +15,15 @@ namespace {
         // Title + 3 items, 20 px rows, at (100, 50), 200 wide.
         const s_dropdown_window w = Dropdown_Window(kContent,
             100, 50, 200, 80, 20, 4);
-        CHECK(w.margin == 5);
+        // The margin is the 1 px thin border plus 3 px of padding.
+        CHECK(w.margin == 4);
         CHECK(w.step == 20);
         CHECK(w.rows == 4);
         // The window is the list plus the margin on all sides.
-        CHECK(w.window.x == 95);
-        CHECK(w.window.y == 45);
-        CHECK(w.window.w == 210);
-        CHECK(w.window.h == 90);
+        CHECK(w.window.x == 96);
+        CHECK(w.window.y == 46);
+        CHECK(w.window.w == 208);
+        CHECK(w.window.h == 88);
         // The list itself sits inside the window.
         CHECK(w.window.x <= 100);
         CHECK(w.window.y <= 50);
@@ -51,9 +52,10 @@ namespace {
         const s_dropdown_window w = Dropdown_Window(kContent,
             100, 50, 200, 80, 20, 4);
         // Three separators for four rows (title + 3 items).
-        CHECK(Dropdown_Separator_Y(w, 1) == 45 + 5 + 20);
-        CHECK(Dropdown_Separator_Y(w, 2) == 45 + 5 + 40);
-        CHECK(Dropdown_Separator_Y(w, 3) == 45 + 5 + 60);
+        // Window y (46) + margin (4) + row index * step.
+        CHECK(Dropdown_Separator_Y(w, 1) == 46 + 4 + 20);
+        CHECK(Dropdown_Separator_Y(w, 2) == 46 + 4 + 40);
+        CHECK(Dropdown_Separator_Y(w, 3) == 46 + 4 + 60);
         // Each separator is strictly inside the window, between
         // the first and last row.
         for (int k = 1; k < 4; ++k) {
@@ -86,16 +88,17 @@ namespace {
         CHECK(Rect_Bottom(tri) <= Rect_Bottom(button));
     }
 
-    TEST_CASE("dropdown value text clears the triangle") {
-        // A 104 px button (the value-box-wide frame): the centred
-        // text's right edge must clear the triangle's left edge.
+    TEST_CASE("dropdown value text clears the triangle zone") {
+        // A 104 px button (the dropdown-closed frame): the centred
+        // text's right edge must clear the triangle zone's left
+        // edge (104 - 14). The zone is 14 px wide, plus 1 px.
         const int16_t max_w = Dropdown_Value_Text_Width(104);
-        CHECK(max_w == 104 - 2 * 4 - 2 * 7);
+        CHECK(max_w == 104 - 2 * 14 - 2);
         // The widest dropdown value, "overview" (74 px), fits.
         CHECK(max_w >= 74);
-        // The text's right edge, centred, clears the triangle:
-        // (104 + max_w) / 2 <= triangle left edge (104 - 4 - 7).
-        CHECK((104 + max_w) / 2 <= 104 - 4 - 7);
+        // The text's right edge, centred, clears the zone:
+        // (104 + max_w) / 2 <= zone left edge - 1 (104 - 14 - 1).
+        CHECK((104 + max_w) / 2 <= 104 - 14 - 1);
         // Narrower buttons still leave room for a short value.
         CHECK(Dropdown_Value_Text_Width(85) >= 10);
         CHECK(Dropdown_Value_Text_Width(20) >= 1);

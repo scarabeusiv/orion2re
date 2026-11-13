@@ -219,18 +219,22 @@ game data. The widened tabs and value box reproduce with
 <n> --out <out .bin>` (parameters in `sprites.json`); verify with
 the same command plus `--check`.
 
-- `value-box-wide-dropdown` — value-box-wide with a 7x4
-  header-white (palette 250) down-triangle stamped on it, right
-  edge 4 px inside the frame, vertically centred: the collapsed
-  dropdown's affordance. White, not black: a black triangle sat
-  on the frame's dark right-edge bevel and was invisible, and
-  the widest value ("overview") leaves no room for a dark
-  triangle on the light face. It has to live in the button art -- the field system
+- `dropdown-closed` — the collapsed dropdown's own button, built
+  from scratch by `build_dropdown_closed.py` (104x26, menu
+  palette), not a reuse of the value box: the value-box face and
+  border language, so it matches its sibling edit buttons, with
+  a darker triangle zone at its right end (the rightmost 14 px,
+  palette 233) holding a 7x4 header-white (palette 250)
+  down-triangle, right edge 4 px inside the frame, vertically
+  centred. White, not black: a black triangle sat on the frame's
+  dark right-edge bevel and was invisible, and the widest value
+  ("overview") leaves no room for a dark triangle on the light
+  face. It has to live in the button art -- the field system
   redraws button fields after the screen's auto-function, so a
-  triangle drawn at runtime is covered by the button (a solid blue
-  rect over a button showed only 111 of 2704 px). Derived by
-  `add_dropdown_triangle.py` from value-box-wide; verified by
-  that tool's own `--check` (re-derives and byte-compares).
-  `extract_sprite.py` skips it (source "screen", like the other
-  screen-derived sprites). The settings screen uses it for
-  dropdown rows only; edit rows keep the plain wide box.
+  triangle drawn at runtime is covered by the button (a solid
+  blue rect over a button showed only 111 of 2704 px). Verify
+  with `build_dropdown_closed.py --check` (rebuilds and
+  byte-compares). `extract_sprite.py` skips it (source
+  "screen", like the other screen-derived sprites). The settings
+  screen uses it for dropdown rows only; edit rows keep the
+  plain wide box.

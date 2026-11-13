@@ -48,8 +48,9 @@ namespace SETTINGS_SCREEN {
         // drawing. Row labels are STRING_LIST fields (the
         // field system draws the text and the selection
         // highlight) in the sample's bright green; values are BUTTON fields on derived
-        // sprites (the widened value-box frame for a dropdown/edit
-        // value, the colony buy-button toggle frames for a
+        // sprites (the dropdown-closed button for a dropdown
+        // value, the widened value-box frame for an edit value,
+        // the colony buy-button toggle frames for a
         // bool/mod); the category tabs are BUTTON fields on
         // the colony sort-tab frames (active for the current
         // category, sized to the label like the colony's
@@ -251,25 +252,25 @@ namespace SETTINGS_SCREEN {
             // 2026-11-13). MORE keeps the 85 px frame: its zone
             // is 99 px and the wide frame would overflow it.
             s_animation_header* value_box_wide_sprite = nullptr;
-            // The widened value box with a down-triangle baked in
-            // (7x4, header white, palette 250, right edge 4 px
-            // inside the frame, vertically centred -- the
-            // Dropdown_Triangle_Rect geometry): the collapsed
-            // dropdown's affordance. White, not black: a black
+            // The collapsed dropdown's own button (104x26, built
+            // from scratch by tools/sprites/build_dropdown_closed.py,
+            // not a reuse of the value box): the value-box face and
+            // border language, so it matches its sibling edit
+            // buttons, with a darker triangle zone at its right end
+            // holding a header-white down-triangle (7x4, right edge
+            // 4 px inside the frame, vertically centred -- the
+            // Dropdown_Triangle_Rect geometry). The triangle has to
+            // live in the button art: the field system redraws
+            // button fields after the screen's auto-function, so a
+            // triangle drawn at runtime is covered by the button
+            // (proven by a solid blue rect over a button showing
+            // only 111 of 2704 px). White, not black: a black
             // triangle sat on the frame's dark right-edge bevel
-            // and was invisible, and the widest value
-            // ("overview") leaves no room for a dark triangle on
-            // the light face. It
-            // has to live in the button art: the field system
-            // redraws button fields after the screen's
-            // auto-function, so a triangle drawn at runtime is
-            // covered by the button (proven by a solid blue rect
-            // over a button showing only 111 of 2704 px).
-            // Derived by tools/sprites/add_dropdown_triangle.py
-            // from value-box-wide. An edit row draws on the plain
-            // wide box: it is not a dropdown.
-            s_animation_header* value_box_wide_dropdown_sprite =
-                nullptr;
+            // and was invisible, and the widest value ("overview")
+            // leaves no room for a dark triangle on the light
+            // face. An edit row draws on the plain wide box: it is
+            // not a dropdown.
+            s_animation_header* dropdown_closed_sprite = nullptr;
             s_animation_header* toggle_off = nullptr;
             s_animation_header* toggle_on = nullptr;
             s_animation_header* arrow_up = nullptr;
@@ -760,10 +761,11 @@ namespace SETTINGS_SCREEN {
         // The derived sprites this screen renders with
         // (sprite_art): the colony sort-tab frames (blanked
         // labels) for the category tabs and MORE, the colony
-        // RETURN frame for RETURN, the blank RETURN frame
-        // (value-box) for the dropdown/edit value buttons,
-        // the colony buy-button toggle frames for bool values
-        // and mods, and the colony scroll arrows. Loaded once
+        // RETURN frame for RETURN, the dropdown-closed button
+        // for dropdown values and the blank RETURN frame
+        // (value-box) for edit values, the colony buy-button
+        // toggle frames for bool values and mods, and the
+        // colony scroll arrows. Loaded once
         // into MOX::screen_seg; a missing frame leaves its
         // element on a hidden field (the screen stays usable),
         // never a null sprite.
@@ -795,10 +797,9 @@ namespace SETTINGS_SCREEN {
             g_state.value_box_wide_sprite =
                 sprite_art::Load_Sprite_Frame(
                     "value-box-wide", "normal", MOX::screen_seg);
-            g_state.value_box_wide_dropdown_sprite =
+            g_state.dropdown_closed_sprite =
                 sprite_art::Load_Sprite_Frame(
-                    "value-box-wide-dropdown", "normal",
-                    MOX::screen_seg);
+                    "dropdown-closed", "normal", MOX::screen_seg);
             sprite_art::Buy_Button_Frames toggle =
                 sprite_art::Load_Buy_Button_Frames(MOX::screen_seg);
             g_state.toggle_off = toggle.off;
@@ -841,7 +842,8 @@ namespace SETTINGS_SCREEN {
             // label is a STRING_LIST field (the field system
             // draws the text and the selection highlight); the
             // value is a BUTTON field on a derived sprite (the
-            // RETURN frame for a dropdown/edit value, the
+            // dropdown-closed button for a dropdown value, the
+            // widened value-box frame for an edit value, the
             // buy-button toggle frames for a bool/mod); the tabs
             // are BUTTON fields on the sort-tab frames (active
             // for the current category); MORE and RETURN are
@@ -1048,18 +1050,18 @@ namespace SETTINGS_SCREEN {
                             config::SETTINGS_WIDGET_DROPDOWN ||
                         row_data.widget ==
                             config::SETTINGS_WIDGET_EDIT) {
-                        // A dropdown draws on the wide box with
-                        // the triangle baked in; an edit draws on
-                        // the plain wide box. If the dropdown
-                        // frame failed to load, fall back to the
-                        // plain box (no triangle, still usable).
+                        // A dropdown draws on its own button
+                        // (dropdown-closed, with the triangle zone
+                        // designed in); an edit draws on the plain
+                        // wide box. If the dropdown frame failed to
+                        // load, fall back to the plain box (no
+                        // triangle, still usable).
                         is_dropdown = (row_data.widget ==
                             config::SETTINGS_WIDGET_DROPDOWN);
                         value_pic = is_dropdown &&
-                                g_state
-                                        .value_box_wide_dropdown_sprite !=
+                                g_state.dropdown_closed_sprite !=
                                     nullptr
-                            ? g_state.value_box_wide_dropdown_sprite
+                            ? g_state.dropdown_closed_sprite
                             : g_state.value_box_wide_sprite;
                         value_text = Row_Value_Text(row_data);
                         show_value = true;
@@ -1071,11 +1073,11 @@ namespace SETTINGS_SCREEN {
                     const char* value_help = "";
                     if (!value_text.empty()) {
                         // A dropdown's value text must clear its
-                        // triangle (baked into the dropdown button
-                        // sprite at the button's right end), so it
-                        // truncates narrower than an edit's: the
-                        // centred text's right edge must clear the
-                        // triangle's left edge.
+                        // triangle zone (the dropdown button's
+                        // darker right-end panel holding the
+                        // triangle), so it truncates narrower than
+                        // an edit's: the centred text's right edge
+                        // must clear the zone's left edge.
                         const int16_t max_w = is_dropdown
                             ? (int16_t)std::min<int32_t>(w - 2 * pad,
                                 SETTINGS_LAYOUT::
@@ -1907,20 +1909,15 @@ namespace SETTINGS_SCREEN {
             // Opaque fill: the rows behind the list must not
             // show through.
             graphics::Fill(x0, y0, x1, y1, 0);
-            // Chiseled border, 2 px: light top/left, dark
-            // bottom/right, like the scroll thumb's edges.
+            // Thin chiseled border, 1 px: light top/left, dark
+            // bottom/right, like the whole screen border (the
+            // riveted outer frame) -- the same chisel, just
+            // thinner, so the window reads as a window without
+            // a heavy frame.
             line::Line(x0, y0, x1, y0, 134);
             line::Line(x0, y0, x0, y1, 134);
             line::Line(x1, y0, x1, y1, 103);
             line::Line(x0, y1, x1, y1, 103);
-            line::Line((int16_t)(x0 + 1), (int16_t)(y0 + 1),
-                (int16_t)(x1 - 1), (int16_t)(y0 + 1), 134);
-            line::Line((int16_t)(x0 + 1), (int16_t)(y0 + 1),
-                (int16_t)(x0 + 1), (int16_t)(y1 - 1), 134);
-            line::Line((int16_t)(x1 - 1), (int16_t)(y0 + 1),
-                (int16_t)(x1 - 1), (int16_t)(y1 - 1), 103);
-            line::Line((int16_t)(x0 + 1), (int16_t)(y1 - 1),
-                (int16_t)(x1 - 1), (int16_t)(y1 - 1), 103);
         }
 
         // The picker's selection bar: Gradient_Fill mode 17
@@ -1948,9 +1945,9 @@ namespace SETTINGS_SCREEN {
             const int16_t y1 = (sel + 2 < w.rows)
                 ? (int16_t)(SETTINGS_LAYOUT::Dropdown_Separator_Y(w,
                       (int16_t)(sel + 2)) - 1)
-                : (int16_t)(w.window.y + w.window.h - 3);
-            graphics::Fill((int16_t)(w.window.x + 2), y0,
-                (int16_t)(w.window.x + w.window.w - 3), y1, 138);
+                : (int16_t)(w.window.y + w.window.h - 2);
+            graphics::Fill((int16_t)(w.window.x + 1), y0,
+                (int16_t)(w.window.x + w.window.w - 2), y1, 138);
         }
 
         void Draw_Dropdown_Separators() {
@@ -1964,16 +1961,16 @@ namespace SETTINGS_SCREEN {
                 (int16_t)(w.window.x + w.window.w - 1);
             // One separator between every two rows: a 2 px
             // chiseled groove (light over dark) on the row
-            // boundary, inside the border. Drawn after the
+            // boundary, inside the 1 px border. Drawn after the
             // fields, so the separators stay visible over the
             // selection highlight, framing the selected row.
             for (int k = 1; k < w.rows; ++k) {
                 const int16_t sy =
                     SETTINGS_LAYOUT::Dropdown_Separator_Y(w, k);
-                line::Line((int16_t)(x0 + 2), (int16_t)(sy - 1),
-                    (int16_t)(x1 - 2), (int16_t)(sy - 1), 134);
-                line::Line((int16_t)(x0 + 2), sy,
-                    (int16_t)(x1 - 2), sy, 103);
+                line::Line((int16_t)(x0 + 1), (int16_t)(sy - 1),
+                    (int16_t)(x1 - 1), (int16_t)(sy - 1), 134);
+                line::Line((int16_t)(x0 + 1), sy,
+                    (int16_t)(x1 - 1), sy, 103);
             }
         }
 

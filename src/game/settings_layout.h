@@ -233,10 +233,10 @@ namespace SETTINGS_LAYOUT {
     s_rect Dropdown_Triangle_Rect(const s_rect& button);
 
     // The widest value text a dropdown button of width
-    // `button_w` can show without running under its triangle:
-    // the centred text's right edge must clear the triangle's
+    // `button_w` can show without running under its triangle
+    // zone: the centred text's right edge must clear the zone's
     // left edge, so the text is limited to the button width
-    // minus twice the triangle inset and twice its width.
+    // minus twice the zone width and twice 1 px.
     int16_t Dropdown_Value_Text_Width(int16_t button_w);
 
     // Exclusive right / bottom edges.

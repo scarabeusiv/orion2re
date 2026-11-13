@@ -355,26 +355,25 @@
    }
   },
   {
-   "id": "value-box-wide-dropdown",
+   "from_scratch": true,
+   "id": "dropdown-closed",
    "size": [
     104,
     26
    ],
    "source": "screen",
-   "source_palette": "colony",
+   "source_palette": "menu",
+   "states": {
+    "normal": {}
+   },
    "target_palette": "menu",
-   "tool": "add_dropdown_triangle.py",
-   "from": "value-box-wide",
+   "tool": "build_dropdown_closed.py",
    "triangle": {
-    "w": 7,
+    "color": 250,
     "h": 4,
     "inset": 4,
-    "color": 250
-   },
-   "states": {
-    "normal": {
-     "from": "value-box-wide/normal"
-    }
+    "w": 7,
+    "zone_from_right": 14
    }
   }
  ]

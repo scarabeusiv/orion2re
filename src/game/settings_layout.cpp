@@ -489,15 +489,21 @@ namespace SETTINGS_LAYOUT {
         return s_rect{x, y, popup_w, popup_h};
     }
 
-    // The dropdown window's margin: 2 px for the chiseled
-    // border plus 3 px of padding, so the text never touches
-    // the border.
-    constexpr int16_t kDropdown_Margin = 5;
+    // The dropdown window's margin: 1 px for the thin chiseled
+    // border (like the whole screen border) plus 3 px of padding,
+    // so the text never touches the border.
+    constexpr int16_t kDropdown_Margin = 4;
     // The collapsed triangle: 7 px wide, 4 tall, its right edge
     // 4 px inside the button's right edge.
     constexpr int16_t kDropdown_Triangle_W = 7;
     constexpr int16_t kDropdown_Triangle_H = 4;
     constexpr int16_t kDropdown_Triangle_Inset = 4;
+    // The collapsed dropdown's triangle zone: the rightmost 14 px
+    // of the button is a darker panel holding the triangle (the
+    // dropdown-closed bitmap, designed as a dropdown from the
+    // start). The value text must clear the zone, not just the
+    // triangle.
+    constexpr int16_t kDropdown_Zone_From_Right = 14;
 
     s_dropdown_window Dropdown_Window(const s_rect& content,
         int16_t list_x, int16_t list_y, int16_t list_w,
@@ -571,9 +577,12 @@ namespace SETTINGS_LAYOUT {
     }
 
     int16_t Dropdown_Value_Text_Width(int16_t button_w) {
+        // The centred text's right edge must clear the triangle
+        // zone's left edge (button_w - kDropdown_Zone_From_Right):
+        // (button_w + max_w) / 2 <= button_w -
+        // kDropdown_Zone_From_Right - 1.
         const int16_t max_w = (int16_t)(button_w -
-            2 * kDropdown_Triangle_Inset -
-            2 * kDropdown_Triangle_W);
+            2 * kDropdown_Zone_From_Right - 2);
         return (int16_t)(max_w < 1 ? 1 : max_w);
     }
 
